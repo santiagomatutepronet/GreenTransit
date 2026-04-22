@@ -1,0 +1,27 @@
+@page "/dashboard"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@inject ILogger<Dashboard> Logger
+
+<PageTitle>Dashboard</PageTitle>
+<h1>Dashboard</h1>
+
+@code {
+    protected override void OnInitialized()
+    {
+        // ILogger<T> se inyecta directamente — Serilog lo recibe via Microsoft.Extensions.Logging
+        Logger.LogInformation("Dashboard inicializado por el usuario.");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        using (Serilog.Context.LogContext.PushProperty("Accion", "CargaDashboard"))
+        {
+            Logger.LogDebug("Primera renderización del Dashboard completada.");
+        }
+
+        await Task.CompletedTask;
+    }
+}

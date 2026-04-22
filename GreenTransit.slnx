@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GreenTransit.Application/GreenTransit.Application.csproj" />
+    <Project Path="src/GreenTransit.Domain/GreenTransit.Domain.csproj" />
+    <Project Path="src/GreenTransit.Infrastructure/GreenTransit.Infrastructure.csproj" />
+    <Project Path="src/GreenTransit.Web/GreenTransit.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GreenTransit.Tests/GreenTransit.Tests.csproj" />
+  </Folder>
+</Solution>
