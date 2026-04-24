@@ -9,6 +9,12 @@ public static class AuthClaims
     /// <summary>OwnerId del tenant (Guid, extraído del claim organizativo del token OIDC).</summary>
     public const string OwnerId = "greentransit:ownerid";
 
+    /// <summary>Nombre para mostrar del usuario (CompleteName de la tabla Users).</summary>
+    public const string UserName = "greentransit:username";
+
+    /// <summary>Reference del perfil del usuario (p. ej. ADMIN, SCRAP, PRODUCER…).</summary>
+    public const string Profile = "greentransit:profile";
+
     /// <summary>Nombre del claim estándar 'sub' del proveedor OIDC.</summary>
     public const string Sub = "sub";
 

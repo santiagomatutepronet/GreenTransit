@@ -1,0 +1,20 @@
+@* Helper de solo lectura para filas de detalle *@
+<div class="detail-row mb-2">
+    <span class="detail-label text-muted small">@Label</span>
+    <div class="detail-value @(Mono ? "font-monospace" : "")">
+        @if (!string.IsNullOrEmpty(Value))
+        {
+            @Value
+        }
+        else
+        {
+            <span class="text-muted">—</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string  Label { get; set; } = string.Empty;
+    [Parameter]                 public string? Value { get; set; }
+    [Parameter]                 public bool    Mono  { get; set; }
+}

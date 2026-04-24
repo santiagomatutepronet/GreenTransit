@@ -1,30 +1,179 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">GreenTransit.Web</a>
+﻿@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+
+<nav class="nav-groups">
+
+    @* ── Inicio ──────────────────────────────────────────────────────────── *@
+    <div class="nav-group">
+        <NavLink class="nav-item" href="/" Match="NavLinkMatch.All">
+            <i class="bi bi-house-door-fill nav-icon"></i>
+            <span class="nav-label">Inicio</span>
+        </NavLink>
     </div>
-</div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+    @* ── Configuración ──────────────────────────────────────────────────── *@
+    <AuthorizeView Roles="ADMIN,SCRAP,PRODUCER,PLANT_OP,CAC_OP,PUBLIC_ENT,COORDINATOR,CARRIER">
+        <div class="nav-group">
+            <div class="nav-group-title">
+                <i class="bi bi-book-fill nav-icon"></i>
+                <span class="nav-label">Configuración</span>
+            </div>
+            <AuthorizeView Roles="ADMIN" Context="adminCtx">
+                <NavLink class="nav-item nav-item--child" href="/entities">
+                    <i class="bi bi-building nav-icon"></i>
+                    <span class="nav-label">Entidades</span>
+                </NavLink>
+                <NavLink class="nav-item nav-item--child" href="/ler-codes">
+                    <i class="bi bi-list-ol nav-icon"></i>
+                    <span class="nav-label">LER</span>
+                </NavLink>
+            </AuthorizeView>
+            <NavLink class="nav-item nav-item--child" href="/residues">
+                <i class="bi bi-recycle nav-icon"></i>
+                <span class="nav-label">Residuos</span>
+            </NavLink>
+            <AuthorizeView Roles="ADMIN,PLANT_OP" Context="treatmentCtx">
+                <NavLink class="nav-item nav-item--child" href="/treatment-operations">
+                    <i class="bi bi-gear-fill nav-icon"></i>
+                    <span class="nav-label">Operaciones R/D</span>
+                </NavLink>
+            </AuthorizeView>
+        </div>
+    </AuthorizeView>
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+    @* ── Operaciones ─────────────────────────────────────────────────────── *@
+    <AuthorizeView Roles="ADMIN,SCRAP,PRODUCER,CARRIER,PLANT_OP,CAC_OP,PUBLIC_ENT,COORDINATOR">
+        <div class="nav-group">
+            <div class="nav-group-title">
+                <i class="bi bi-truck nav-icon"></i>
+                <span class="nav-label">Operaciones</span>
+            </div>
+            <AuthorizeView Roles="ADMIN,SCRAP,PRODUCER,PUBLIC_ENT,COORDINATOR" Context="soCtx">
+                <NavLink class="nav-item nav-item--child" href="/service-orders">
+                    <i class="bi bi-clipboard2-check nav-icon"></i>
+                    <span class="nav-label">Órdenes de Servicio</span>
+                </NavLink>
+            </AuthorizeView>
+            <AuthorizeView Roles="ADMIN,SCRAP,CARRIER,COORDINATOR" Context="wmCtx">
+                <NavLink class="nav-item nav-item--child" href="/waste-moves">
+                    <i class="bi bi-arrow-left-right nav-icon"></i>
+                    <span class="nav-label">Traslados</span>
+                </NavLink>
+            </AuthorizeView>
+            <AuthorizeView Roles="ADMIN,PLANT_OP,SCRAP" Context="epCtx">
+                <NavLink class="nav-item nav-item--child" href="/entry-plants">
+                    <i class="bi bi-box-arrow-in-down nav-icon"></i>
+                    <span class="nav-label">Entradas Planta</span>
+                </NavLink>
+            </AuthorizeView>
+            <AuthorizeView Roles="ADMIN,CAC_OP,SCRAP" Context="cacCtx">
+                <NavLink class="nav-item nav-item--child" href="/entry-cacs">
+                    <i class="bi bi-collection nav-icon"></i>
+                    <span class="nav-label">Entradas CAC</span>
+                </NavLink>
+            </AuthorizeView>
+            <AuthorizeView Roles="ADMIN,PLANT_OP" Context="tpCtx">
+                <NavLink class="nav-item nav-item--child" href="/treatment-plants">
+                    <i class="bi bi-arrow-repeat nav-icon"></i>
+                    <span class="nav-label">Tratamiento</span>
+                </NavLink>
+            </AuthorizeView>
+        </div>
+    </AuthorizeView>
+
+    @* ── Economía ─────────────────────────────────────────────────────────── *@
+    <AuthorizeView Roles="ADMIN,SCRAP,PUBLIC_ENT,COORDINATOR">
+        <div class="nav-group">
+            <div class="nav-group-title">
+                <i class="bi bi-currency-euro nav-icon"></i>
+                <span class="nav-label">Economía</span>
+            </div>
+            <NavLink class="nav-item nav-item--child" href="/agreements">
+                <i class="bi bi-file-earmark-text nav-icon"></i>
+                <span class="nav-label">Acuerdos</span>
+            </NavLink>
+            <NavLink class="nav-item nav-item--child" href="/settlements">
+                <i class="bi bi-receipt nav-icon"></i>
+                <span class="nav-label">Liquidaciones</span>
+            </NavLink>
+            <NavLink class="nav-item nav-item--child" href="/market-shares">
+                <i class="bi bi-pie-chart-fill nav-icon"></i>
+                <span class="nav-label">Cuotas</span>
             </NavLink>
         </div>
+    </AuthorizeView>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
+    @* ── Sostenibilidad ──────────────────────────────────────────────────── *@
+    <AuthorizeView Roles="ADMIN,SCRAP,PLANT_OP,CARRIER,PUBLIC_ENT,COORDINATOR">
+        <div class="nav-group">
+            <div class="nav-group-title">
+                <i class="bi bi-tree-fill nav-icon"></i>
+                <span class="nav-label">Sostenibilidad</span>
+            </div>
+            <NavLink class="nav-item nav-item--child" href="/incidents">
+                <i class="bi bi-exclamation-triangle-fill nav-icon"></i>
+                <span class="nav-label">Incidencias</span>
+            </NavLink>
+            <AuthorizeView Roles="ADMIN" Context="dumCtx">
+                <NavLink class="nav-item nav-item--child" href="/dum-zones">
+                    <i class="bi bi-geo-alt-fill nav-icon"></i>
+                    <span class="nav-label">Zonas DUM</span>
+                </NavLink>
+            </AuthorizeView>
+            <AuthorizeView Roles="ADMIN,SCRAP,PUBLIC_ENT" Context="emCtx">
+                <NavLink class="nav-item nav-item--child" href="/emissions">
+                    <i class="bi bi-cloud-haze2-fill nav-icon"></i>
+                    <span class="nav-label">Emisiones</span>
+                </NavLink>
+            </AuthorizeView>
+            <AuthorizeView Roles="ADMIN,PLANT_OP" Context="peCtx">
+                <NavLink class="nav-item nav-item--child" href="/plant-energies">
+                    <i class="bi bi-lightning-charge-fill nav-icon"></i>
+                    <span class="nav-label">Energía Planta</span>
+                </NavLink>
+            </AuthorizeView>
+        </div>
+    </AuthorizeView>
+
+    @* ── Reporting ──────────────────────────────────────────────────────── *@
+    <AuthorizeView Roles="ADMIN,SCRAP,PUBLIC_ENT,COORDINATOR">
+        <div class="nav-group">
+            <div class="nav-group-title">
+                <i class="bi bi-bar-chart-fill nav-icon"></i>
+                <span class="nav-label">Reporting</span>
+            </div>
+            <NavLink class="nav-item nav-item--child" href="/traceability">
+                <i class="bi bi-diagram-3-fill nav-icon"></i>
+                <span class="nav-label">Trazabilidad</span>
+            </NavLink>
+            <NavLink class="nav-item nav-item--child" href="/kpis">
+                <i class="bi bi-graph-up-arrow nav-icon"></i>
+                <span class="nav-label">KPIs</span>
+            </NavLink>
+            <NavLink class="nav-item nav-item--child" href="/documents">
+                <i class="bi bi-folder2-open nav-icon"></i>
+                <span class="nav-label">Documentos</span>
             </NavLink>
         </div>
+    </AuthorizeView>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
+    @* ── Seguridad ──────────────────────────────────────────────────────── *@
+    <AuthorizeView Roles="ADMIN">
+        <div class="nav-group">
+            <div class="nav-group-title">
+                <i class="bi bi-shield-lock-fill nav-icon"></i>
+                <span class="nav-label">Seguridad</span>
+            </div>
+            <NavLink class="nav-item nav-item--child" href="/users">
+                <i class="bi bi-people-fill nav-icon"></i>
+                <span class="nav-label">Usuarios</span>
+            </NavLink>
+            <NavLink class="nav-item nav-item--child" href="/profiles">
+                <i class="bi bi-person-badge-fill nav-icon"></i>
+                <span class="nav-label">Perfiles</span>
             </NavLink>
         </div>
-    </nav>
-</div>
+    </AuthorizeView>
+
+</nav>
 

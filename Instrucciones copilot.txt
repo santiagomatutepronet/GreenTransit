@@ -1,0 +1,11 @@
+Cómo usarlo en cada sesión nueva
+Al abrir un chat nuevo en Copilot, adjunta los 3 archivos en este orden y con este prompt inicial:
+Adjunto los documentos de referencia de mi proyecto:
+1. COPILOT_CONTEXT.md → estado actual y por dónde continuar
+2. README.md → especificaciones del proyecto
+3. Crear_BD_v4_1.sql → script de base de datos con 38 tablas
+4. Mapa_Funcionalidades_GreenTransit.md  → Conjunto de funcionalidades del proyecto
+Lee los cuatro documentos y confirma que entiendes el stack, la arquitectura y el mapa de funcionalidades.
+
+
+Cada vez que completes un paso, actualiza las líneas de estado del archivo cambiando ⬜ Pendiente ejecutar por ✅ Completado  para que la próxima sesión sepa exactamente dónde dejaste el trabajo.

@@ -53,5 +53,18 @@ public interface IApplicationDbContext
     DbSet<DumZone> DumZones { get; }
     DbSet<DumRestrictionRule> DumRestrictionRules { get; }
 
+    // ── Seguridad ─────────────────────────────────────────────────────────────
+    DbSet<AppUser>     AppUsers     { get; }
+    DbSet<UserProfile> UserProfiles { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Desactiva el filtro global de tenant para este contexto.
+    /// Usar únicamente en consultas administrativas multi-tenant.
+    /// </summary>
+    void IgnoreTenantFilter();
+
+    /// <summary>Reactiva el filtro de tenant tras haberlo desactivado.</summary>
+    void RestoreTenantFilter();
 }

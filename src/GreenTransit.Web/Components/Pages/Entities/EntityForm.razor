@@ -1,0 +1,408 @@
+@page "/entities/new"
+@page "/entities/{EntityId:guid}/edit"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using FluentValidation
+@using GreenTransit.Application.Features.Entities.Commands
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>@(_isEdit ? "Editar Entidad" : "Nueva Entidad")</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-building me-2"></i>
+        @(_isEdit ? "Editar Entidad" : "Nueva Entidad")
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="SaveAsync">
+        <div class="row g-3">
+
+            @* ── 1. Datos de identificación ──────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-person-vcard me-2"></i>Datos de identificación
+                    </div>
+                    <div class="card-body row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre <span class="text-danger">*</span></label>
+                            <InputText class="form-control" @bind-Value="_model.Name" />
+                            <FieldMessage Field="Name" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">NIF / NationalId</label>
+                            <InputText class="form-control" @bind-Value="_model.NationalId" />
+                            <FieldMessage Field="NationalId" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">NIMA / CenterCode</label>
+                            <InputText class="form-control" @bind-Value="_model.CenterCode" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Rol de la entidad <span class="text-danger">*</span></label>
+                            <InputSelect class="form-select" @bind-Value="_model.EntityRole"
+                                         @bind-Value:after="OnRoleChanged">
+                                <option value="">— Seleccionar —</option>
+                                @foreach (var r in EntityRoles.All)
+                                {
+                                    <option value="@r">@r</option>
+                                }
+                            </InputSelect>
+                            <FieldMessage Field="EntityRole" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo de entidad</label>
+                            <InputText class="form-control" @bind-Value="_model.EntityType" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Actividad económica</label>
+                            <InputText class="form-control" @bind-Value="_model.EconomicActivity" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── 2. Clasificación normativa ──────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-shield-check me-2"></i>Clasificación normativa
+                    </div>
+                    <div class="card-body row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo de tercero</label>
+                            <InputText class="form-control" @bind-Value="_model.TypeThirdParty" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">
+                                Tipo de inscripción
+                                @if (EntityRoles.RequiresInscriptionNumber(_model.EntityRole))
+                                { <span class="text-danger">*</span> }
+                            </label>
+                            <InputText class="form-control" @bind-Value="_model.InscriptionType" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">
+                                Nº de inscripción (RAT)
+                                @if (EntityRoles.RequiresInscriptionNumber(_model.EntityRole))
+                                { <span class="text-danger">*</span> }
+                            </label>
+                            <InputText class="form-control" @bind-Value="_model.InscriptionNumber" />
+                            <FieldMessage Field="InscriptionNumber" Errors="_validationErrors" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── 3. Localización ─────────────────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-geo-alt me-2"></i>Localización
+                        @if (EntityRoles.RequiresCoordinates(_model.EntityRole))
+                        { <small class="text-muted ms-2">(Coordenadas obligatorias para este rol)</small> }
+                    </div>
+                    <div class="card-body row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">País</label>
+                            <InputText class="form-control" @bind-Value="_model.CountryCode"
+                                       placeholder="Código país" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">CCAA</label>
+                            <InputText class="form-control" @bind-Value="_model.StateCode" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Provincia</label>
+                            <InputText class="form-control" @bind-Value="_model.ProvinceCode" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Municipio</label>
+                            <InputText class="form-control" @bind-Value="_model.MunicipalityCode" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Código postal</label>
+                            <InputText class="form-control" @bind-Value="_model.ZipCode" />
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label">Dirección</label>
+                            <InputText class="form-control" @bind-Value="_model.Address" />
+                        </div>
+                        <div class="col-md-2">
+                            @* Placeholder para GeographySelector (B-3) *@
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">
+                                Latitud
+                                @if (EntityRoles.RequiresCoordinates(_model.EntityRole))
+                                { <span class="text-danger">*</span> }
+                            </label>
+                            <InputText class="form-control" @bind-Value="_model.Latitude"
+                                       placeholder="41.3825" />
+                            <FieldMessage Field="Latitude" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">
+                                Longitud
+                                @if (EntityRoles.RequiresCoordinates(_model.EntityRole))
+                                { <span class="text-danger">*</span> }
+                            </label>
+                            <InputText class="form-control" @bind-Value="_model.Longitude"
+                                       placeholder="2.1769" />
+                            <FieldMessage Field="Longitude" Errors="_validationErrors" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── 4. Contacto ─────────────────────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-telephone me-2"></i>Contacto
+                    </div>
+                    <div class="card-body row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">
+                                Email
+                                @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is not null)
+                                { <span class="text-danger">*</span> }
+                            </label>
+                            <InputText class="form-control" type="email"
+                                       @bind-Value="_model.Email"
+                                       @bind-Value:after="SuggestLogin" />
+                            <FieldMessage Field="Email" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Teléfono</label>
+                            <InputText class="form-control" @bind-Value="_model.PhoneNumber" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Persona de contacto</label>
+                            <InputText class="form-control" @bind-Value="_model.ContactPerson" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── 5. Acceso al sistema (colapsable, solo si el rol genera usuario) *@
+            @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is string profileRef)
+            {
+                <div class="col-12">
+                    <div class="card border-info">
+                        <div class="card-header bg-info bg-opacity-10 fw-semibold"
+                             style="cursor:pointer" @onclick="ToggleAccessSection">
+                            <i class="bi bi-person-lock me-2"></i>
+                            Acceso al sistema — Perfil: <strong>@profileRef</strong>
+                            <i class="bi @(_accessOpen ? "bi-chevron-up" : "bi-chevron-down") float-end"></i>
+                        </div>
+                        @if (_accessOpen)
+                        {
+                            <div class="card-body row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Login sugerido</label>
+                                    <InputText class="form-control"
+                                               @bind-Value="_model.SuggestedLogin"
+                                               placeholder="Se usará el email si se deja vacío" />
+                                    <small class="text-muted">
+                                        Se creará automáticamente un usuario con perfil
+                                        <strong>@profileRef</strong>.
+                                    </small>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+        </div>
+
+        @* ── Errores y acciones ──────────────────────────────────────────── *@
+        @if (_validationErrors.Any())
+        {
+            <div class="alert alert-danger mt-3">
+                <ul class="mb-0">
+                    @foreach (var err in _validationErrors.Values.SelectMany(v => v))
+                    {
+                        <li>@err</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(_serverError))
+        {
+            <div class="alert alert-danger mt-3">@_serverError</div>
+        }
+
+        <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary" disabled="@_saving">
+                @if (_saving)
+                { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="bi bi-floppy me-1"></i>Guardar
+            </button>
+            <button type="button" class="btn btn-outline-secondary"
+                    @onclick="Cancel">Cancelar</button>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter] public Guid? EntityId { get; set; }
+
+    private bool   _isEdit  => EntityId.HasValue;
+    private bool   _loading = true;
+    private bool   _saving  = false;
+    private bool   _accessOpen = true;
+    private string? _serverError;
+    private Dictionary<string, List<string>> _validationErrors = new();
+
+    // ── Modelo del formulario ─────────────────────────────────────────────────
+    private FormModel _model = new();
+
+    private sealed class FormModel
+    {
+        public string  Name              { get; set; } = string.Empty;
+        public string? NationalId        { get; set; }
+        public string? CenterCode        { get; set; }
+        public string  EntityRole        { get; set; } = string.Empty;
+        public string? EntityType        { get; set; }
+        public string? EconomicActivity  { get; set; }
+        public string? TypeThirdParty    { get; set; }
+        public string? InscriptionType   { get; set; }
+        public string? InscriptionNumber { get; set; }
+        public string? CountryCode       { get; set; }
+        public string? StateCode         { get; set; }
+        public string? ProvinceCode      { get; set; }
+        public string? MunicipalityCode  { get; set; }
+        public string? ZipCode           { get; set; }
+        public string? Address           { get; set; }
+        public string? Latitude          { get; set; }
+        public string? Longitude         { get; set; }
+        public string? PhoneNumber       { get; set; }
+        public string? Email             { get; set; }
+        public string? ContactPerson     { get; set; }
+        public string? SuggestedLogin    { get; set; }
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        if (_isEdit)
+        {
+            var detail = await Mediator.Send(new GetEntityByIdQuery(EntityId!.Value));
+            if (detail is not null)
+            {
+                _model = new FormModel
+                {
+                    Name              = detail.Name,
+                    NationalId        = detail.NationalId,
+                    CenterCode        = detail.CenterCode,
+                    EntityRole        = detail.EntityRole,
+                    EntityType        = detail.EntityType,
+                    EconomicActivity  = detail.EconomicActivity,
+                    TypeThirdParty    = detail.TypeThirdParty,
+                    InscriptionType   = detail.InscriptionType,
+                    InscriptionNumber = detail.InscriptionNumber,
+                    CountryCode       = detail.CountryCode,
+                    StateCode         = detail.StateCode,
+                    ProvinceCode      = detail.ProvinceCode,
+                    MunicipalityCode  = detail.MunicipalityCode,
+                    ZipCode           = detail.ZipCode,
+                    Address           = detail.Address,
+                    Latitude          = detail.Latitude,
+                    Longitude         = detail.Longitude,
+                    PhoneNumber       = detail.PhoneNumber,
+                    Email             = detail.Email,
+                    ContactPerson     = detail.ContactPerson
+                };
+            }
+        }
+        _loading = false;
+    }
+
+    // ── Eventos del formulario ────────────────────────────────────────────────
+    private void OnRoleChanged()
+    {
+        _accessOpen = EntityRoles.GetAutoUserProfile(_model.EntityRole) is not null;
+        SuggestLogin();
+    }
+
+    private void SuggestLogin()
+    {
+        if (string.IsNullOrEmpty(_model.SuggestedLogin) && !string.IsNullOrEmpty(_model.Email))
+            _model.SuggestedLogin = _model.Email;
+    }
+
+    private void ToggleAccessSection() => _accessOpen = !_accessOpen;
+
+    // ── Guardar ───────────────────────────────────────────────────────────────
+    private async Task SaveAsync()
+    {
+        _validationErrors = new();
+        _serverError      = null;
+        _saving           = true;
+
+        try
+        {
+            if (_isEdit)
+            {
+                await Mediator.Send(new UpdateEntityCommand(
+                    EntityId!.Value,
+                    _model.Name, _model.NationalId, _model.CenterCode,
+                    _model.EntityRole, _model.EntityType, _model.EconomicActivity,
+                    _model.TypeThirdParty, _model.InscriptionType, _model.InscriptionNumber,
+                    _model.CountryCode, _model.StateCode, _model.ProvinceCode,
+                    _model.MunicipalityCode, _model.ZipCode, _model.Address,
+                    _model.Latitude, _model.Longitude,
+                    _model.PhoneNumber, _model.Email, _model.ContactPerson));
+
+                Nav.NavigateTo($"/entities/{EntityId!.Value}");
+            }
+            else
+            {
+                var newId = await Mediator.Send(new CreateEntityCommand(
+                    _model.Name, _model.NationalId, _model.CenterCode,
+                    _model.EntityRole, _model.EntityType, _model.EconomicActivity,
+                    _model.TypeThirdParty, _model.InscriptionType, _model.InscriptionNumber,
+                    _model.CountryCode, _model.StateCode, _model.ProvinceCode,
+                    _model.MunicipalityCode, _model.ZipCode, _model.Address,
+                    _model.Latitude, _model.Longitude,
+                    _model.PhoneNumber, _model.Email, _model.ContactPerson,
+                    _model.SuggestedLogin));
+
+                Nav.NavigateTo($"/entities/{newId}");
+            }
+        }
+        catch (FluentValidation.ValidationException ex)
+        {
+            foreach (var err in ex.Errors)
+            {
+                if (!_validationErrors.ContainsKey(err.PropertyName))
+                    _validationErrors[err.PropertyName] = [];
+                _validationErrors[err.PropertyName].Add(err.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _serverError = ex.Message;
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => Nav.NavigateTo("/entities");
+}

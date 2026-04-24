@@ -1,23 +1,85 @@
-.navbar-toggler {
-    appearance: none;
-    cursor: pointer;
-    width: 3.5rem;
-    height: 2.5rem;
-    color: white;
-    position: absolute;
-    top: 0.5rem;
-    right: 1rem;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 0.55%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") no-repeat center/1.75rem rgba(255, 255, 255, 0.1);
+/* ── Grupos de navegación ──────────────────────────────────────────────────── */
+.nav-groups {
+    display:        flex;
+    flex-direction: column;
+    gap:            2px;
+    padding:        4px 0;
 }
 
-.navbar-toggler:checked {
-    background-color: rgba(255, 255, 255, 0.5);
+.nav-group {
+    margin-bottom: 4px;
 }
 
-.top-row {
-    min-height: 3.5rem;
-    background-color: rgba(0,0,0,0.4);
+/* Título de grupo (no clickable) */
+.nav-group-title {
+    display:        flex;
+    align-items:    center;
+    gap:            10px;
+    padding:        6px 16px;
+    font-size:      0.68rem;
+    font-weight:    700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color:          rgba(200, 217, 205, 0.45);
+    white-space:    nowrap;
+    overflow:       hidden;
+    cursor:         default;
+    user-select:    none;
+}
+
+/* Ítems de navegación */
+::deep .nav-item {
+    display:         flex;
+    align-items:     center;
+    gap:             10px;
+    padding:         9px 16px;
+    font-size:       0.875rem;
+    color:           rgba(200, 217, 205, 0.80);
+    text-decoration: none;
+    border-radius:   0;
+    white-space:     nowrap;
+    overflow:        hidden;
+    transition:      background 0.15s ease, color 0.15s ease;
+    cursor:          pointer;
+    border-left:     3px solid transparent;
+}
+
+::deep .nav-item:hover {
+    background:  rgba(42, 64, 51, 0.70);
+    color:       #ffffff;
+    border-left: 3px solid rgba(26, 122, 74, 0.5);
+}
+
+::deep .nav-item.active {
+    background:  rgba(26, 122, 74, 0.25);
+    color:       #ffffff;
+    border-left: 3px solid #1a7a4a;
+    font-weight: 600;
+}
+
+/* Ítems hijos (nivel 2) */
+::deep .nav-item--child {
+    padding-left: 28px;
+    font-size:    0.83rem;
+}
+
+/* Icono de nav */
+::deep .nav-icon {
+    font-size:   1rem;
+    flex-shrink: 0;
+    width:       20px;
+    text-align:  center;
+}
+
+/* Etiqueta de nav */
+::deep .nav-label {
+    transition: opacity 0.2s ease, width 0.2s ease;
+    overflow:   hidden;
+}
+
+/* ── Sidebar colapsado: ocultar labels ────────────────────────────────────── */
+/* El selector de contexto viene del CSS isolation del padre (MainLayout) */
+
 }
 
 .navbar-brand {

@@ -1,0 +1,13 @@
+@* Muestra errores de validación para un campo específico *@
+@if (Errors.TryGetValue(Field, out var messages))
+{
+    @foreach (var msg in messages)
+    {
+        <div class="invalid-feedback d-block">@msg</div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public string                           Field  { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public Dictionary<string, List<string>> Errors { get; set; } = new();
+}

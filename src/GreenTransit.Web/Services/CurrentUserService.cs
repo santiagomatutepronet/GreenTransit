@@ -36,4 +36,17 @@ public sealed class CurrentUserService : ICurrentUserService
         ?? User?.FindFirstValue("email")
         ?? User?.FindFirstValue("preferred_username")
         ?? string.Empty;
+
+    /// <inheritdoc/>
+    public string UserName =>
+        User?.FindFirstValue(AuthClaims.UserName)
+        ?? User?.FindFirstValue(ClaimTypes.Name)
+        ?? User?.FindFirstValue("name")
+        ?? Email;
+
+    /// <inheritdoc/>
+    public string UserProfile =>
+        User?.FindFirstValue(AuthClaims.Profile)
+        ?? User?.FindFirstValue(ClaimTypes.Role)
+        ?? string.Empty;
 }

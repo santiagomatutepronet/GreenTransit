@@ -1,0 +1,171 @@
+@page "/entities/{EntityId:guid}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator         Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Detalle de Entidad</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Entidad no encontrada.</div>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="GoBack">
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    var d = _detail!;
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">
+                <i class="bi bi-building me-2"></i>@d.Name
+            </h1>
+            <div class="d-flex gap-2 mt-1">
+                <span class="badge bg-secondary">@d.EntityRole</span>
+                @if (d.IsActive)
+                {
+                    <span class="badge bg-success">Activo</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary text-dark">Inactivo</span>
+                }
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            @if (d.LinkedUserId.HasValue)
+            {
+                <a class="btn btn-outline-info btn-sm"
+                   href="/users/@d.LinkedUserId">
+                    <i class="bi bi-person-check me-1"></i>Ir al usuario vinculado
+                </a>
+            }
+            <button class="btn btn-outline-primary btn-sm"
+                    @onclick="GoEdit">
+                <i class="bi bi-pencil me-1"></i>Editar
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="GoBack">
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-1">
+
+        @* ── Identificación ───────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-person-vcard me-2"></i>Identificación
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="ID"             Value="@d.Id.ToString()" Mono />
+                    <DetailRow Label="Nombre"          Value="@d.Name" />
+                    <DetailRow Label="NIF / NationalId" Value="@d.NationalId" />
+                    <DetailRow Label="NIMA / CenterCode" Value="@d.CenterCode" />
+                    <DetailRow Label="Rol"             Value="@d.EntityRole" />
+                    <DetailRow Label="Tipo"            Value="@d.EntityType" />
+                    <DetailRow Label="Act. económica"  Value="@d.EconomicActivity" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Clasificación normativa ──────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-shield-check me-2"></i>Clasificación normativa
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Tipo de tercero"    Value="@d.TypeThirdParty" />
+                    <DetailRow Label="Tipo inscripción"   Value="@d.InscriptionType" />
+                    <DetailRow Label="Nº inscripción"     Value="@d.InscriptionNumber" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Localización ─────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-geo-alt me-2"></i>Localización
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="País"         Value="@d.CountryCode" />
+                    <DetailRow Label="CCAA"         Value="@d.StateCode" />
+                    <DetailRow Label="Provincia"    Value="@d.ProvinceCode" />
+                    <DetailRow Label="Municipio"    Value="@d.MunicipalityCode" />
+                    <DetailRow Label="Código postal" Value="@d.ZipCode" />
+                    <DetailRow Label="Dirección"    Value="@d.Address" />
+                    <DetailRow Label="Latitud"      Value="@d.Latitude" />
+                    <DetailRow Label="Longitud"     Value="@d.Longitude" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Contacto y acceso ────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-telephone me-2"></i>Contacto y acceso
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Email"            Value="@d.Email" />
+                    <DetailRow Label="Teléfono"         Value="@d.PhoneNumber" />
+                    <DetailRow Label="Persona contacto" Value="@d.ContactPerson" />
+                    <hr />
+                    <DetailRow Label="Usuario vinculado" Value="@d.LinkedUserLogin" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Auditoría ────────────────────────────────────────────────────── *@
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-clock-history me-2"></i>Auditoría
+                </div>
+                <div class="card-body row">
+                    <div class="col-md-4">
+                        <DetailRow Label="Creado el"   Value="@d.CreatedAt.ToString("dd/MM/yyyy HH:mm")" />
+                    </div>
+                    <div class="col-md-4">
+                        <DetailRow Label="Actualizado" Value="@d.UpdatedAt.ToString("dd/MM/yyyy HH:mm")" />
+                    </div>
+                    <div class="col-md-4">
+                        <DetailRow Label="IdUser"      Value="@d.IdUser.ToString()" />
+                        <DetailRow Label="Sistema origen" Value="@d.SourceSystem" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+}
+
+@code {
+    [Parameter] public Guid EntityId { get; set; }
+
+    private bool             _loading = true;
+    private EntityDetailDto? _detail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail  = await Mediator.Send(new GetEntityByIdQuery(EntityId));
+        _loading = false;
+    }
+
+    private void GoBack() => Nav.NavigateTo("/entities");
+    private void GoEdit()  => Nav.NavigateTo($"/entities/{EntityId}/edit");
+}

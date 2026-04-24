@@ -9,12 +9,22 @@ namespace GreenTransit.Infrastructure.Persistence;
 public class AppDbContext : DbContext, IApplicationDbContext
 {
     private readonly ICurrentUserService _currentUserService;
+    private bool _ignoreTenantFilter;
 
     public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserService currentUserService)
         : base(options)
     {
         _currentUserService = currentUserService;
     }
+
+    /// <summary>
+    /// Desactiva el filtro global de tenant para el scope de este contexto.
+    /// Usar únicamente en consultas administrativas que requieran visibilidad multi-tenant.
+    /// </summary>
+    public void IgnoreTenantFilter() => _ignoreTenantFilter = true;
+
+    /// <summary>Reactiva el filtro de tenant tras haberlo desactivado.</summary>
+    public void RestoreTenantFilter() => _ignoreTenantFilter = false;
 
     // ── Catálogos ─────────────────────────────────────────────────────────────
     public DbSet<BusinessEntity> BusinessEntities => Set<BusinessEntity>();
@@ -118,10 +128,12 @@ public class AppDbContext : DbContext, IApplicationDbContext
 
     private void ConfigureTenantFilter<T>(ModelBuilder modelBuilder) where T : class, ITenantEntity
     {
-        // Si no está autenticado (IsAuthenticated=false) no aplica filtro.
-        // Si está autenticado filtra estrictamente por OwnerId.
+        // _ignoreTenantFilter: bypass para consultas de administración.
+        // !IsAuthenticated: sin sesión activa no se aplica filtro (seeds, migraciones).
+        // OwnerId: filtro estricto de tenant para usuarios autenticados.
         modelBuilder.Entity<T>().HasQueryFilter(
-            e => !_currentUserService.IsAuthenticated
+            e => _ignoreTenantFilter
+                 || !_currentUserService.IsAuthenticated
                  || e.OwnerId == _currentUserService.OwnerId);
     }
 

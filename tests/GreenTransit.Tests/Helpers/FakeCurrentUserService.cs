@@ -14,13 +14,16 @@ public sealed class FakeCurrentUserService : ICurrentUserService
     /// <summary>OwnerId de un segundo tenant para tests de aislamiento.</summary>
     public static readonly Guid TenantB = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
 
-    public FakeCurrentUserService(Guid? ownerId = null)
+    public FakeCurrentUserService(Guid? ownerId = null, string userProfile = "ADMIN")
     {
-        OwnerId = ownerId ?? TenantA;
+        OwnerId     = ownerId ?? TenantA;
+        UserProfile = userProfile;
     }
 
     public bool IsAuthenticated => true;
-    public int IdUser => 1;
-    public Guid OwnerId { get; }
-    public string Email => "test@greentransit.dev";
+    public int IdUser           => 1;
+    public Guid OwnerId         { get; }
+    public string Email         => "test@greentransit.dev";
+    public string UserName      => "Test User";
+    public string UserProfile   { get; }
 }

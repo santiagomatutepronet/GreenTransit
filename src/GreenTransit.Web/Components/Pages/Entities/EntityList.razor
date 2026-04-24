@@ -1,0 +1,284 @@
+@page "/entities"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Models
+@using GreenTransit.Application.Features.Entities.Commands
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator    Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Entidades del Ecosistema</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-building me-2"></i>Entidades del Ecosistema</h1>
+    <button class="btn btn-primary btn-sm" @onclick="CreateNew">
+        <i class="bi bi-plus-lg me-1"></i>Nueva Entidad
+    </button>
+</div>
+
+@* ── Barra de filtros ──────────────────────────────────────────────────────── *@
+<div class="filter-bar card mb-3">
+    <div class="card-body d-flex flex-wrap gap-2 align-items-end">
+        <div>
+            <label class="form-label form-label-sm">Búsqueda</label>
+            <input class="form-control form-control-sm" style="min-width:200px"
+                   placeholder="Nombre, NIF, NIMA…"
+                   @bind="_searchTerm" @bind:event="oninput"
+                   @onkeyup="@(async e => { if (e.Key == "Enter") await LoadAsync(); })" />
+        </div>
+        <div>
+            <label class="form-label form-label-sm">Rol</label>
+            <select class="form-select form-select-sm" @bind="_filterRole">
+                <option value="">— Todos —</option>
+                @foreach (var r in EntityRoles.All)
+                {
+                    <option value="@r">@r</option>
+                }
+            </select>
+        </div>
+        <div>
+            <label class="form-label form-label-sm">Estado</label>
+            <select class="form-select form-select-sm" @bind="_filterActive">
+                <option value="">— Todos —</option>
+                <option value="true">Activo</option>
+                <option value="false">Inactivo</option>
+            </select>
+        </div>
+        <div>
+            <label class="form-label form-label-sm">Provincia</label>
+            <input class="form-control form-control-sm" style="width:120px"
+                   placeholder="Código…" @bind="_filterProvince" />
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="ApplyFilters">
+            <i class="bi bi-search me-1"></i>Filtrar
+        </button>
+        <button class="btn btn-link btn-sm" @onclick="ResetFilters">Limpiar</button>
+    </div>
+</div>
+
+@* ── Tabla ─────────────────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (_result is null || _result.Items.Count == 0)
+{
+    <div class="alert alert-info">No se encontraron entidades con los filtros aplicados.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Nombre</th>
+                    <th>NIF</th>
+                    <th>Rol</th>
+                    <th>Provincia</th>
+                    <th>Estado</th>
+                    <th>Usuario vinculado</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in _result.Items)
+                {
+                    <tr>
+                        <td>
+                            <a class="fw-semibold text-decoration-none"
+                               href="/entities/@e.Id">@e.Name</a>
+                        </td>
+                        <td><code>@(e.NationalId ?? "—")</code></td>
+                        <td><span class="badge bg-secondary">@e.EntityRole</span></td>
+                        <td>@(e.ProvinceCode ?? "—")</td>
+                        <td>
+                            @if (e.IsActive)
+                            {
+                                <span class="badge bg-success">Activo</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactivo</span>
+                            }
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(e.LinkedUserLogin))
+                            {
+                                <a href="/users?login=@e.LinkedUserLogin" class="text-decoration-none">
+                                    <i class="bi bi-person-check-fill text-success me-1"></i>@e.LinkedUserLogin
+                                </a>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-outline-primary btn-xs me-1"
+                                    title="Editar"
+                                    @onclick="() => Edit(e.Id)">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            @if (e.IsActive)
+                            {
+                                <button class="btn btn-outline-danger btn-xs"
+                                        title="Desactivar"
+                                        @onclick="() => ConfirmDeactivate(e)">
+                                    <i class="bi bi-slash-circle"></i>
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* Paginación *@
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <span class="text-muted small">
+            @((_result.PageNumber - 1) * _result.PageSize + 1)–@Math.Min(_result.PageNumber * _result.PageSize, _result.TotalCount)
+            de @_result.TotalCount entidades
+        </span>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary"
+                    disabled="@(!_result.HasPrevious)"
+                    @onclick="PrevPage">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <span class="btn btn-outline-secondary disabled">
+                Pág. @_result.PageNumber / @_result.TotalPages
+            </span>
+            <button class="btn btn-outline-secondary"
+                    disabled="@(!_result.HasNext)"
+                    @onclick="NextPage">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+}
+
+@* ── Modal de confirmación de desactivación ───────────────────────────────── *@
+@if (_deactivateTarget is not null)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Desactivar entidad</h5>
+                    <button type="button" class="btn-close"
+                            @onclick="() => _deactivateTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Desactivar <strong>@_deactivateTarget.Name</strong>?</p>
+                    @if (!string.IsNullOrEmpty(_deactivateTarget.LinkedUserLogin))
+                    {
+                        <div class="alert alert-warning py-2 small">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            Esta entidad tiene el usuario vinculado
+                            <strong>@_deactivateTarget.LinkedUserLogin</strong>.
+                            ¿Desactivar también el usuario?
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer gap-2">
+                    <button class="btn btn-secondary btn-sm"
+                            @onclick="() => _deactivateTarget = null">Cancelar</button>
+                    <button class="btn btn-danger btn-sm"
+                            @onclick="ExecuteDeactivate">Desactivar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger mt-3">@_errorMessage</div>
+}
+
+@code {
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private PaginatedResult<EntityDto>? _result;
+    private bool   _loading       = true;
+    private string _searchTerm    = string.Empty;
+    private string _filterRole    = string.Empty;
+    private string _filterActive  = string.Empty;
+    private string _filterProvince= string.Empty;
+    private int    _pageNumber    = 1;
+    private const int PageSize    = 20;
+    private string? _errorMessage;
+
+    private EntityDto? _deactivateTarget;
+
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    // ── Carga de datos ─────────────────────────────────────────────────────────
+    private async Task LoadAsync()
+    {
+        _loading      = true;
+        _errorMessage = null;
+        try
+        {
+            bool? activeFilter = _filterActive switch
+            {
+                "true"  => true,
+                "false" => false,
+                _       => null
+            };
+
+            _result = await Mediator.Send(new GetEntitiesQuery(
+                EntityRole:   string.IsNullOrEmpty(_filterRole)    ? null : _filterRole,
+                ProvinceCode: string.IsNullOrEmpty(_filterProvince) ? null : _filterProvince,
+                IsActive:     activeFilter,
+                SearchTerm:   string.IsNullOrEmpty(_searchTerm)    ? null : _searchTerm,
+                PageNumber:   _pageNumber,
+                PageSize:     PageSize));
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error al cargar entidades: {ex.Message}";
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task ApplyFilters() { _pageNumber = 1; await LoadAsync(); }
+    private async Task ResetFilters()
+    {
+        _searchTerm = _filterRole = _filterActive = _filterProvince = string.Empty;
+        _pageNumber = 1;
+        await LoadAsync();
+    }
+    private async Task PrevPage() { _pageNumber--; await LoadAsync(); }
+    private async Task NextPage() { _pageNumber++; await LoadAsync(); }
+
+    // ── Navegación ─────────────────────────────────────────────────────────────
+    private void CreateNew() => Nav.NavigateTo("/entities/new");
+    private void Edit(Guid id) => Nav.NavigateTo($"/entities/{id}/edit");
+
+    // ── Desactivación ──────────────────────────────────────────────────────────
+    private void ConfirmDeactivate(EntityDto e) => _deactivateTarget = e;
+
+    private async Task ExecuteDeactivate()
+    {
+        if (_deactivateTarget is null) return;
+        try
+        {
+            await Mediator.Send(new DeactivateEntityCommand(_deactivateTarget.Id));
+            _deactivateTarget = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage     = $"Error al desactivar: {ex.Message}";
+            _deactivateTarget = null;
+        }
+    }
+}

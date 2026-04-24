@@ -1,6 +1,13 @@
 using System.Security.Claims;
+using FluentValidation;
+using GreenTransit.Application.Common.Behaviours;
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Application.Features.ServiceOrders.Commands;
+using GreenTransit.Infrastructure.Persistence;
+using GreenTransit.Infrastructure.Persistence.Repositories;
 using GreenTransit.Web.Auth;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using GreenTransit.Web.Components;
 using GreenTransit.Web.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -53,6 +60,28 @@ try
         options.SlidingExpiration = true;
         options.LoginPath         = "/login";
         options.AccessDeniedPath  = "/access-denied";
+
+        options.Events = new CookieAuthenticationEvents
+        {
+            OnValidatePrincipal = ctx =>
+            {
+                var logger = ctx.HttpContext.RequestServices
+                    .GetRequiredService<ILogger<Program>>();
+                logger.LogDebug(
+                    "Cookie ValidatePrincipal: IsAuthenticated={IsAuthenticated}, Path={Path}",
+                    ctx.Principal?.Identity?.IsAuthenticated,
+                    ctx.HttpContext.Request.Path);
+                return Task.CompletedTask;
+            },
+            OnSignedIn = ctx =>
+            {
+                var logger = ctx.HttpContext.RequestServices
+                    .GetRequiredService<ILogger<Program>>();
+                logger.LogInformation("Cookie SignedIn: sub={Sub}",
+                    ctx.Principal?.FindFirstValue("sub") ?? "(none)");
+                return Task.CompletedTask;
+            }
+        };
     })
     .AddOpenIdConnect(options =>
     {
@@ -62,9 +91,17 @@ try
         options.CallbackPath = builder.Configuration["OpenIdConnect:CallbackPath"] ?? "/signin-oidc";
 
         options.ResponseType = OpenIdConnectResponseType.Code;
+        options.ResponseMode = OpenIdConnectResponseMode.Query;
         options.SaveTokens   = true;
         options.GetClaimsFromUserInfoEndpoint = true;
         options.MapInboundClaims = false;
+
+        // Permite que las cookies de correlación y nonce sobrevivan
+        // el redirect cross-site (identity server externo → localhost)
+        options.CorrelationCookie.SameSite = SameSiteMode.None;
+        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.NonceCookie.SameSite = SameSiteMode.None;
+        options.NonceCookie.SecurePolicy = CookieSecurePolicy.Always;
 
         options.Scope.Clear();
         options.Scope.Add("openid");
@@ -83,6 +120,23 @@ try
                 logger.LogInformation(
                     "Token OIDC validado. Subject: {Subject}", sub);
 
+                return Task.CompletedTask;
+            },
+
+            // Captura errores de correlación, nonce, timeout, etc.
+            OnRemoteFailure = ctx =>
+            {
+                var logger = ctx.HttpContext.RequestServices
+                    .GetRequiredService<ILogger<Program>>();
+
+                logger.LogError(
+                    ctx.Failure,
+                    "Error remoto OIDC: {ErrorMessage}", ctx.Failure?.Message);
+
+                ctx.HandleResponse();
+                // Si es un fallo de correlación reinicia el flujo de login
+                var isCorrelationError = ctx.Failure?.Message.Contains("Correlation") == true;
+                ctx.Response.Redirect(isCorrelationError ? "/login" : "/access-denied");
                 return Task.CompletedTask;
             },
 
@@ -110,6 +164,33 @@ try
     // ── Contexto de usuario (multi-tenant + auditoría) ────────────────────────
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+
+    // ── EF Core: AppDbContext con SQL Server ──────────────────────────────────
+    // AddDbContext resuelve ICurrentUserService del contenedor al construir el contexto.
+    builder.Services.AddDbContext<AppDbContext>((sp, options) =>
+    {
+        options.UseSqlServer(
+            builder.Configuration.GetConnectionString("DefaultConnection"),
+            sql => sql.EnableRetryOnFailure(maxRetryCount: 3));
+    });
+    builder.Services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+
+    // ── Repositorios y Unit of Work ───────────────────────────────────────────
+    builder.Services.AddScoped(typeof(IRepository<>), typeof(GreenTransit.Infrastructure.Persistence.Repositories.EfRepository<>));
+    builder.Services.AddScoped<IUnitOfWork, GreenTransit.Infrastructure.Persistence.UnitOfWork>();
+    builder.Services.AddScoped<IUserRepository, GreenTransit.Infrastructure.Persistence.Repositories.UserRepository>();
+
+    // ── MediatR: handlers + pipeline behaviors ────────────────────────────────
+    // Orden: LoggingBehavior (externo) → ValidationBehavior → handler
+    builder.Services.AddMediatR(cfg =>
+    {
+        cfg.RegisterServicesFromAssembly(typeof(CreateServiceOrderCommand).Assembly);
+        cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+        cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+    });
+
+    // ── FluentValidation: registro automático de todos los validators ─────────
+    builder.Services.AddValidatorsFromAssembly(typeof(CreateServiceOrderCommand).Assembly);
 
     // ── Pipeline ──────────────────────────────────────────────────────────────
     var app = builder.Build();

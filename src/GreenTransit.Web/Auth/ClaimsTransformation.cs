@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using GreenTransit.Application.Common;
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Domain.Entities;
 using Microsoft.AspNetCore.Authentication;
 
 namespace GreenTransit.Web.Auth;
@@ -13,14 +14,19 @@ namespace GreenTransit.Web.Auth;
 public sealed class ClaimsTransformation : IClaimsTransformation
 {
     private readonly IUserRepository _userRepository;
+    private readonly ILogger<ClaimsTransformation> _logger;
 
-    public ClaimsTransformation(IUserRepository userRepository)
+    public ClaimsTransformation(IUserRepository userRepository, ILogger<ClaimsTransformation> logger)
     {
         _userRepository = userRepository;
+        _logger = logger;
     }
 
     public async Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
     {
+        _logger.LogDebug("TransformAsync iniciado. IsAuthenticated={IsAuthenticated}",
+            principal.Identity?.IsAuthenticated);
+
         // Solo transforma identidades autenticadas
         if (principal.Identity?.IsAuthenticated != true)
             return principal;
@@ -33,13 +39,31 @@ public sealed class ClaimsTransformation : IClaimsTransformation
         var sub = principal.FindFirstValue(AuthClaims.Sub)
                   ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
+        _logger.LogDebug("TransformAsync: sub={Sub}", sub);
+
         if (string.IsNullOrEmpty(sub))
+        {
+            _logger.LogWarning("TransformAsync: sub claim no encontrado en el principal");
             return principal;
+        }
 
         // Busca el usuario interno en la base de datos
-        var user = await _userRepository.FindByLoginAsync(sub);
-        if (user is null)
+        AppUser? user;
+        try
+        {
+            user = await _userRepository.FindByLoginAsync(sub);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "TransformAsync: error al buscar usuario con login={Sub}", sub);
             return principal;
+        }
+
+        if (user is null)
+        {
+            _logger.LogWarning("TransformAsync: usuario no encontrado para login={Sub}", sub);
+            return principal;
+        }
 
         // Añade claims internos en una nueva identidad
         var identity = new ClaimsIdentity();
@@ -54,6 +78,20 @@ public sealed class ClaimsTransformation : IClaimsTransformation
             identity.AddClaim(new Claim(
                 AuthClaims.OwnerId,
                 user.OwnerId.Value.ToString()));
+        }
+
+        // Nombre para mostrar (CompleteName → Email → Login como fallback)
+        var displayName = user.CompleteName
+                          ?? user.Email
+                          ?? sub;
+        identity.AddClaim(new Claim(AuthClaims.UserName, displayName));
+        identity.AddClaim(new Claim(ClaimTypes.Name, displayName));
+
+        // Perfil / rol interno → habilita AuthorizeView Roles="ADMIN" etc.
+        if (!string.IsNullOrEmpty(user.Profile?.Reference))
+        {
+            identity.AddClaim(new Claim(AuthClaims.Profile,   user.Profile.Reference));
+            identity.AddClaim(new Claim(ClaimTypes.Role,      user.Profile.Reference));
         }
 
         principal.AddIdentity(identity);

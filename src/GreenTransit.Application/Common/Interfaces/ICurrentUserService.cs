@@ -23,4 +23,17 @@ public interface ICurrentUserService
 
     /// <summary>Email del usuario autenticado (claim 'email' o 'preferred_username').</summary>
     string Email { get; }
+
+    /// <summary>
+    /// Nombre para mostrar del usuario autenticado (claim 'name' o CompleteName).
+    /// Fallback a Email si no está disponible.
+    /// </summary>
+    string UserName { get; }
+
+    /// <summary>
+    /// Reference del perfil del usuario (claim de rol interno: ADMIN, SCRAP, PRODUCER…).
+    /// Devuelve string vacío si no está autenticado o el perfil no está resuelto.
+    /// </summary>
+    string UserProfile { get; }
 }
+
