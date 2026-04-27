@@ -18,7 +18,7 @@
 | A-3 | Infraestructura | FluentValidation + MediatR Pipeline Behaviours | 🔴 | ✅ |
 | A-4 | Infraestructura | Layout Blazor: Sidebar + Topbar + NavMenu | 🔴 | ✅ |
 | B-1 | Maestros | Gestión de Entidades (Ecosistema): CQRS + UI | 🟠 | ✅ |
-| B-2 | Maestros | Catálogos: LER + Residuos + Operaciones R/D | 🟠 | ⬜ |
+| B-2 | Maestros | Catálogos: LER + Residuos + Operaciones R/D | 🟠 | ✅ |
 | B-3 | Maestros | Catálogos Geográficos: selectores en cascada | 🟠 | ⬜ |
 | C-1 | Economía | Formalización de Acuerdos (Agreements) | 🟡 | ⬜ |
 | C-2 | Economía | Liquidación Económica (Settlements) | 🟡 | ⬜ |

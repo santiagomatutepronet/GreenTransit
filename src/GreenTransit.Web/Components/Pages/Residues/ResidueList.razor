@@ -1,0 +1,271 @@
+@page "/residues"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Models
+@using GreenTransit.Application.Features.Residues.DTOs
+@using GreenTransit.Application.Features.Residues.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Residuos y Productos</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title"><i class="bi bi-recycle me-2"></i>Residuos y Productos</h1>
+    <button class="btn btn-primary btn-sm" @onclick="CreateNew">
+        <i class="bi bi-plus-lg me-1"></i>Nuevo
+    </button>
+</div>
+
+@* ── Tabs de tipo ─────────────────────────────────────────────────────────── *@
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class="nav-link @TabClass("")" @onclick='() => SetTab("")'>Todos</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link @TabClass("Waste")" @onclick='() => SetTab("Waste")'>
+            <i class="bi bi-trash me-1"></i>Residuos
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link @TabClass("Product")" @onclick='() => SetTab("Product")'>
+            <i class="bi bi-box-seam me-1"></i>Productos
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link @TabClass("ProductSpec")" @onclick='() => SetTab("ProductSpec")'>
+            <i class="bi bi-file-earmark-text me-1"></i>Fichas técnicas
+        </button>
+    </li>
+</ul>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar card mb-3">
+    <div class="card-body d-flex flex-wrap gap-2 align-items-end">
+        <div>
+            <label class="form-label form-label-sm">Búsqueda</label>
+            <input class="form-control form-control-sm" style="min-width:200px"
+                   placeholder="Nombre, referencia…"
+                   @bind="_searchTerm" @bind:event="oninput"
+                   @onkeyup="@(async e => { if (e.Key == "Enter") await LoadAsync(); })" />
+        </div>
+        <div>
+            <label class="form-label form-label-sm">Peligroso</label>
+            <select class="form-select form-select-sm" @bind="_filterDangerous">
+                <option value="">— Todos —</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+            </select>
+        </div>
+        <div>
+            <label class="form-label form-label-sm">RAEE</label>
+            <select class="form-select form-select-sm" @bind="_filterRaee">
+                <option value="">— Todos —</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+            </select>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="ApplyFilters">
+            <i class="bi bi-search me-1"></i>Filtrar
+        </button>
+        <button class="btn btn-link btn-sm" @onclick="ResetFilters">Limpiar</button>
+    </div>
+</div>
+
+@* ── Tabla ─────────────────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (_result is null || _result.Items.Count == 0)
+{
+    <div class="alert alert-info">No se encontraron registros con los filtros aplicados.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Nombre</th>
+                    <th>Referencia</th>
+                    <th>Tipo</th>
+                    @if (string.IsNullOrEmpty(_activeTab) || _activeTab == "Waste")
+                    {
+                        <th>LER</th>
+                    }
+                    @if (string.IsNullOrEmpty(_activeTab) || _activeTab == "ProductSpec")
+                    {
+                        <th>Productor</th>
+                    }
+                    <th style="width:80px" class="text-center">Peligroso</th>
+                    <th style="width:60px" class="text-center">RAEE</th>
+                    <th style="width:80px" class="text-center">Estado</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _result.Items)
+                {
+                    <tr>
+                        <td>
+                            <a class="fw-semibold text-decoration-none"
+                               href="/residues/@r.Id">@r.Name</a>
+                        </td>
+                        <td><code>@(r.Reference ?? "—")</code></td>
+                        <td>
+                            <span class="badge @TypeBadgeClass(r.ResidueType)">@r.ResidueType</span>
+                        </td>
+                        @if (string.IsNullOrEmpty(_activeTab) || _activeTab == "Waste")
+                        {
+                            <td>
+                                @if (!string.IsNullOrEmpty(r.LerCode))
+                                {
+                                    <code>@r.LerCode</code>
+                                    <span class="text-muted small ms-1">@r.LerDescription</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                        }
+                        @if (string.IsNullOrEmpty(_activeTab) || _activeTab == "ProductSpec")
+                        {
+                            <td>@(r.ProducerName ?? "—")</td>
+                        }
+                        <td class="text-center">
+                            @if (r.IsDangerous)
+                            {
+                                <span class="badge bg-danger">Sí</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-center">
+                            @if (r.IsRAEE)
+                            {
+                                <span class="badge bg-warning text-dark">Sí</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-center">
+                            @if (r.IsActive)
+                            {
+                                <span class="badge bg-success">Activo</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactivo</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-outline-primary btn-sm py-0 px-1 me-1"
+                               href="/residues/@r.Id/edit" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* ── Paginación ───────────────────────────────────────────────────────── *@
+    @if (_result.TotalPages > 1)
+    {
+        <nav>
+            <ul class="pagination pagination-sm justify-content-center">
+                <li class="page-item @(!_result.HasPrevious ? "disabled" : "")">
+                    <button class="page-link" @onclick="() => GoToPage(_page - 1)">&laquo;</button>
+                </li>
+                @for (var p = 1; p <= _result.TotalPages; p++)
+                {
+                    var pg = p;
+                    <li class="page-item @(pg == _page ? "active" : "")">
+                        <button class="page-link" @onclick="() => GoToPage(pg)">@pg</button>
+                    </li>
+                }
+                <li class="page-item @(!_result.HasNext ? "disabled" : "")">
+                    <button class="page-link" @onclick="() => GoToPage(_page + 1)">&raquo;</button>
+                </li>
+            </ul>
+        </nav>
+    }
+}
+
+@code {
+    private PaginatedResult<ResidueDto>? _result;
+    private bool    _loading         = true;
+    private string  _activeTab       = "";
+    private string? _searchTerm;
+    private string  _filterDangerous = "";
+    private string  _filterRaee      = "";
+    private int     _page            = 1;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _result  = await Mediator.Send(new GetResiduesQuery(
+            ResidueType: string.IsNullOrEmpty(_activeTab) ? null : _activeTab,
+            IsDangerous: ParseBool(_filterDangerous),
+            IsRAEE:      ParseBool(_filterRaee),
+            SearchTerm:  _searchTerm,
+            PageNumber:  _page));
+        _loading = false;
+    }
+
+    private async Task SetTab(string tab)
+    {
+        _activeTab = tab;
+        _page      = 1;
+        await LoadAsync();
+    }
+
+    private async Task ApplyFilters()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ResetFilters()
+    {
+        _searchTerm      = null;
+        _filterDangerous = "";
+        _filterRaee      = "";
+        _page            = 1;
+        await LoadAsync();
+    }
+
+    private async Task GoToPage(int page)
+    {
+        _page = page;
+        await LoadAsync();
+    }
+
+    private void CreateNew() => Nav.NavigateTo("/residues/new");
+
+    private string TabClass(string tab)
+        => _activeTab == tab ? "active" : "";
+
+    private static string TypeBadgeClass(string type) => type switch
+    {
+        "Waste"       => "bg-secondary",
+        "Product"     => "bg-primary",
+        "ProductSpec" => "bg-info text-dark",
+        _             => "bg-light text-dark"
+    };
+
+    private static bool? ParseBool(string value)
+        => value switch { "true" => true, "false" => false, _ => null };
+}

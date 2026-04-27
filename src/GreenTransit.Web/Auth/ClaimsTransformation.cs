@@ -65,13 +65,19 @@ public sealed class ClaimsTransformation : IClaimsTransformation
             return principal;
         }
 
-        // Añade claims internos en una nueva identidad
-        var identity = new ClaimsIdentity();
+        // Añade claims internos a la identidad autenticada para evitar crear
+        // identidades "anónimas" (sin AuthenticationType) que pueden interferir
+        // con el esquema de cookies y provocar bucles de redirección.
+        var identity = principal.Identities.FirstOrDefault(i => i.IsAuthenticated)
+                       ?? principal.Identity as ClaimsIdentity;
+
+        if (identity is null)
+            return principal;
 
         identity.AddClaim(new Claim(
             AuthClaims.IdUser,
             user.Id.ToString(),
-            ClaimValueTypes.Integer32));
+            ClaimValueTypes.String));
 
         if (user.OwnerId.HasValue)
         {
@@ -93,8 +99,6 @@ public sealed class ClaimsTransformation : IClaimsTransformation
             identity.AddClaim(new Claim(AuthClaims.Profile,   user.Profile.Reference));
             identity.AddClaim(new Claim(ClaimTypes.Role,      user.Profile.Reference));
         }
-
-        principal.AddIdentity(identity);
         return principal;
     }
 }

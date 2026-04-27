@@ -1,8 +1,6 @@
 ﻿@inherits LayoutComponentBase
 @inject ICurrentUserService CurrentUser
 @using GreenTransit.Application.Common.Interfaces
-@using Microsoft.AspNetCore.Authorization
-@using Microsoft.AspNetCore.Components.Authorization
 
 <HeadContent>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
@@ -46,13 +44,10 @@
 
             <div class="topbar-right">
 
-                @* Selector de tenant — solo visible para ADMIN *@
-                <AuthorizeView Roles="ADMIN">
-                    <div class="topbar-tenant" title="Tenant activo">
-                        <i class="bi bi-building"></i>
-                        <span class="topbar-tenant-id">@TenantShort</span>
-                    </div>
-                </AuthorizeView>
+                <div class="topbar-tenant" title="Tenant activo">
+                    <i class="bi bi-building"></i>
+                    <span class="topbar-tenant-id">@TenantShort</span>
+                </div>
 
                 @* Información del usuario *@
                 <div class="topbar-user">
@@ -76,12 +71,7 @@
                     <i class="bi @(_darkMode ? "bi-sun-fill" : "bi-moon-fill")"></i>
                 </button>
 
-                @* Logout *@
-                <form method="post" action="/logout" class="topbar-logout-form">
-                    <button type="submit" class="btn-icon btn-logout" title="Cerrar sesión" aria-label="Cerrar sesión">
-                        <i class="bi bi-box-arrow-right"></i>
-                    </button>
-                </form>
+                @* Logout deshabilitado mientras la autenticación esté desactivada *@
 
             </div>
         </header>

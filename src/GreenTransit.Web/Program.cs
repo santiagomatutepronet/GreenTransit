@@ -46,120 +46,17 @@ try
         .AddInteractiveServerComponents();
 
     // Habilita el estado de autenticación en cascada para Blazor (.NET 8+)
-    builder.Services.AddCascadingAuthenticationState();
+    // builder.Services.AddCascadingAuthenticationState()
 
-    // ── Autenticación: Cookie + OpenID Connect (Authorization Code Flow) ──────
-    builder.Services.AddAuthentication(options =>
+    // Servicios mínimos de auth para que [Authorize] no explote mientras la autenticación está deshabilitada.
+    // Se permite todo: no hay scheme de challenge configurado.
+    builder.Services.AddAuthentication();
+    builder.Services.AddAuthorization(options =>
     {
-        options.DefaultScheme          = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
-    })
-    .AddCookie(options =>
-    {
-        options.ExpireTimeSpan    = TimeSpan.FromHours(8);
-        options.SlidingExpiration = true;
-        options.LoginPath         = "/login";
-        options.AccessDeniedPath  = "/access-denied";
-
-        options.Events = new CookieAuthenticationEvents
-        {
-            OnValidatePrincipal = ctx =>
-            {
-                var logger = ctx.HttpContext.RequestServices
-                    .GetRequiredService<ILogger<Program>>();
-                logger.LogDebug(
-                    "Cookie ValidatePrincipal: IsAuthenticated={IsAuthenticated}, Path={Path}",
-                    ctx.Principal?.Identity?.IsAuthenticated,
-                    ctx.HttpContext.Request.Path);
-                return Task.CompletedTask;
-            },
-            OnSignedIn = ctx =>
-            {
-                var logger = ctx.HttpContext.RequestServices
-                    .GetRequiredService<ILogger<Program>>();
-                logger.LogInformation("Cookie SignedIn: sub={Sub}",
-                    ctx.Principal?.FindFirstValue("sub") ?? "(none)");
-                return Task.CompletedTask;
-            }
-        };
-    })
-    .AddOpenIdConnect(options =>
-    {
-        options.Authority    = builder.Configuration["OpenIdConnect:Authority"];
-        options.ClientId     = builder.Configuration["OpenIdConnect:ClientId"];
-        options.ClientSecret = builder.Configuration["OpenIdConnect:ClientSecret"];
-        options.CallbackPath = builder.Configuration["OpenIdConnect:CallbackPath"] ?? "/signin-oidc";
-
-        options.ResponseType = OpenIdConnectResponseType.Code;
-        options.ResponseMode = OpenIdConnectResponseMode.Query;
-        options.SaveTokens   = true;
-        options.GetClaimsFromUserInfoEndpoint = true;
-        options.MapInboundClaims = false;
-
-        // Permite que las cookies de correlación y nonce sobrevivan
-        // el redirect cross-site (identity server externo → localhost)
-        options.CorrelationCookie.SameSite = SameSiteMode.None;
-        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
-        options.NonceCookie.SameSite = SameSiteMode.None;
-        options.NonceCookie.SecurePolicy = CookieSecurePolicy.Always;
-
-        options.Scope.Clear();
-        options.Scope.Add("openid");
-        options.Scope.Add("profile");
-        options.Scope.Add("email");
-
-        // ── Eventos OIDC con Serilog ──────────────────────────────────────────
-        options.Events = new OpenIdConnectEvents
-        {
-            OnTokenValidated = ctx =>
-            {
-                var logger = ctx.HttpContext.RequestServices
-                    .GetRequiredService<ILogger<Program>>();
-
-                var sub = ctx.Principal?.FindFirstValue("sub") ?? "(desconocido)";
-                logger.LogInformation(
-                    "Token OIDC validado. Subject: {Subject}", sub);
-
-                return Task.CompletedTask;
-            },
-
-            // Captura errores de correlación, nonce, timeout, etc.
-            OnRemoteFailure = ctx =>
-            {
-                var logger = ctx.HttpContext.RequestServices
-                    .GetRequiredService<ILogger<Program>>();
-
-                logger.LogError(
-                    ctx.Failure,
-                    "Error remoto OIDC: {ErrorMessage}", ctx.Failure?.Message);
-
-                ctx.HandleResponse();
-                // Si es un fallo de correlación reinicia el flujo de login
-                var isCorrelationError = ctx.Failure?.Message.Contains("Correlation") == true;
-                ctx.Response.Redirect(isCorrelationError ? "/login" : "/access-denied");
-                return Task.CompletedTask;
-            },
-
-            OnAuthenticationFailed = ctx =>
-            {
-                var logger = ctx.HttpContext.RequestServices
-                    .GetRequiredService<ILogger<Program>>();
-
-                logger.LogError(
-                    ctx.Exception,
-                    "Error de autenticación OIDC: {ErrorMessage}", ctx.Exception.Message);
-
-                ctx.HandleResponse();
-                ctx.Response.Redirect("/access-denied");
-                return Task.CompletedTask;
-            }
-        };
+        options.DefaultPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+            .RequireAssertion(_ => true)
+            .Build();
     });
-
-    builder.Services.AddAuthorization();
-
-    // ── Transformación de claims ──────────────────────────────────────────────
-    builder.Services.AddScoped<IClaimsTransformation, ClaimsTransformation>();
 
     // ── Contexto de usuario (multi-tenant + auditoría) ────────────────────────
     builder.Services.AddHttpContextAccessor();
@@ -200,8 +97,11 @@ try
         app.UseExceptionHandler("/Error", createScopeForErrors: true);
         app.UseHsts();
     }
+    else
+    {
+        app.UseDeveloperExceptionPage();
+    }
 
-    app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
     app.UseHttpsRedirection();
 
     // Middleware de logging de requests HTTP con Serilog
@@ -225,27 +125,16 @@ try
         };
     });
 
+    // Autenticación deshabilitada temporalmente (sin scheme real, [Authorize] permite todo)
     app.UseAuthentication();
     app.UseAuthorization();
+
+    // Blazor Server genera endpoints con metadata antiforgery; el middleware es obligatorio
     app.UseAntiforgery();
 
     app.MapStaticAssets();
     app.MapRazorComponents<App>()
         .AddInteractiveServerRenderMode();
-
-    // ── Endpoints de autenticación ────────────────────────────────────────────
-    app.MapGet("/login", (string? returnUrl) =>
-        TypedResults.Challenge(
-            new AuthenticationProperties { RedirectUri = returnUrl ?? "/" },
-            [OpenIdConnectDefaults.AuthenticationScheme]));
-
-    app.MapPost("/logout", async (HttpContext ctx) =>
-    {
-        await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        await ctx.SignOutAsync(
-            OpenIdConnectDefaults.AuthenticationScheme,
-            new AuthenticationProperties { RedirectUri = "/" });
-    });
 
     await app.RunAsync();
 }

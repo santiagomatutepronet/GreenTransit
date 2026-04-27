@@ -1,0 +1,409 @@
+@page "/residues/new"
+@page "/residues/{ResidueId:guid}/edit"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.LerCodes.DTOs
+@using GreenTransit.Application.Features.LerCodes.Queries
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Features.Residues.Commands
+@using GreenTransit.Application.Features.Residues.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>@(_isEdit ? "Editar Residuo / Producto" : "Nuevo Residuo / Producto")</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-recycle me-2"></i>
+        @(_isEdit ? "Editar Residuo / Producto" : "Nuevo Residuo / Producto")
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="SaveAsync">
+        <div class="row g-3">
+
+            @* ── 1. Tipo y datos básicos ──────────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-card-text me-2"></i>Datos generales
+                    </div>
+                    <div class="card-body row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Tipo <span class="text-danger">*</span></label>
+                            <InputSelect class="form-select" @bind-Value="_model.ResidueType"
+                                         @bind-Value:after="OnTypeChanged">
+                                <option value="">— Seleccionar —</option>
+                                <option value="Waste">Residuo (Waste)</option>
+                                <option value="Product">Producto (Product)</option>
+                                <option value="ProductSpec">Ficha técnica (ProductSpec)</option>
+                            </InputSelect>
+                            <FieldMessage Field="ResidueType" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Nombre <span class="text-danger">*</span></label>
+                            <InputText class="form-control" @bind-Value="_model.Name" />
+                            <FieldMessage Field="Name" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Referencia</label>
+                            <InputText class="form-control" @bind-Value="_model.Reference" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Descripción</label>
+                            <InputTextArea class="form-control" rows="2" @bind-Value="_model.Description" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── 2. Clasificación normativa ───────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-shield-exclamation me-2"></i>Clasificación normativa
+                    </div>
+                    <div class="card-body row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Código LER</label>
+                            <select class="form-select" @bind="_model.IdLERCode">
+                                <option value="">— Ninguno —</option>
+                                @foreach (var l in _lerCodesFlat)
+                                {
+                                    <option value="@l.Id">@l.Code — @l.Description</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Categoría de producto</label>
+                            <InputText class="form-control" @bind-Value="_model.ProductCategory" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Uso del producto</label>
+                            <InputText class="form-control" @bind-Value="_model.ProductUse" />
+                        </div>
+                        <div class="col-md-2 d-flex flex-column gap-2 justify-content-end">
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" id="chkDangerous"
+                                               @bind-Value="_model.IsDangerous"
+                                               @bind-Value:after="StateHasChanged" />
+                                <label class="form-check-label" for="chkDangerous">Peligroso</label>
+                            </div>
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" id="chkRaee"
+                                               @bind-Value="_model.IsRAEE" />
+                                <label class="form-check-label" for="chkRaee">RAEE</label>
+                            </div>
+                        </div>
+
+                        @if (_model.IsDangerous)
+                        {
+                            <div class="col-md-4">
+                                <label class="form-label">
+                                    Código peligrosidad <span class="text-danger">*</span>
+                                    <span class="text-muted small">(H-codes, UN, ADR)</span>
+                                </label>
+                                <InputText class="form-control" @bind-Value="_model.DangerousCode" />
+                                <FieldMessage Field="DangerousCode" Errors="_validationErrors" />
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @* ── 3. Unidades y medidas ────────────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-rulers me-2"></i>Unidades y medidas
+                    </div>
+                    <div class="card-body row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Peso por unidad (kg)</label>
+                            <InputNumber class="form-control" @bind-Value="_model.WeightPerUnitKg" />
+                            <FieldMessage Field="WeightPerUnitKg" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Unidad de medida defecto</label>
+                            <InputText class="form-control" @bind-Value="_model.DefaultMeasureUnit" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── 4. Productor (solo ProductSpec) ──────────────────────────── *@
+            @if (_model.ResidueType == "ProductSpec")
+            {
+                <div class="col-12">
+                    <div class="card border-info">
+                        <div class="card-header fw-semibold text-info">
+                            <i class="bi bi-building me-2"></i>Productor
+                        </div>
+                        <div class="card-body row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Productor <span class="text-danger">*</span></label>
+                                <select class="form-select" @bind="_model.IdProducerStr">
+                                    <option value="">— Seleccionar productor —</option>
+                                    @foreach (var p in _producers)
+                                    {
+                                        <option value="@p.Id">@p.Name</option>
+                                    }
+                                </select>
+                                <FieldMessage Field="IdProducer" Errors="_validationErrors" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Referencia del productor</label>
+                                <InputText class="form-control" @bind-Value="_model.ProducerRef" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── 5. Ecodiseño (solo ProductSpec) ──────────────────────────── *@
+            @if (_model.ResidueType == "ProductSpec")
+            {
+                <div class="col-12">
+                    <div class="card border-info">
+                        <div class="card-header fw-semibold text-info">
+                            <i class="bi bi-leaf me-2"></i>Ecodiseño
+                        </div>
+                        <div class="card-body row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Índice reparabilidad (0–10)</label>
+                                <InputNumber class="form-control" @bind-Value="_model.ReparabilityIndex" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Facilidad desmontaje</label>
+                                <InputSelect class="form-select" @bind-Value="_model.DisassemblyEase">
+                                    <option value="">— Seleccionar —</option>
+                                    <option value="Easy">Fácil</option>
+                                    <option value="Medium">Media</option>
+                                    <option value="Hard">Difícil</option>
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Contenido reciclado (%)</label>
+                                <InputNumber class="form-control" @bind-Value="_model.RecycledContentPercent" />
+                                <FieldMessage Field="RecycledContentPercent" Errors="_validationErrors" />
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end pb-1">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" id="chkHazardous"
+                                                   @bind-Value="_model.ContainsHazardousVal" />
+                                    <label class="form-check-label" for="chkHazardous">
+                                        Contiene sustancias peligrosas
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Composición (JSON)</label>
+                                <InputTextArea class="form-control font-monospace" rows="3"
+                                               @bind-Value="_model.CompositionJson" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Códigos LER potenciales (JSON)</label>
+                                <InputTextArea class="form-control font-monospace" rows="3"
+                                               @bind-Value="_model.PotentialLERCodesJson" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Materiales (JSON)</label>
+                                <InputTextArea class="form-control font-monospace" rows="3"
+                                               @bind-Value="_model.MaterialsJson" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+        </div>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-danger mt-3">@_errorMessage</div>
+        }
+
+        <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Guardar
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancelar</button>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter] public Guid? ResidueId { get; set; }
+
+    private bool    _isEdit  = false;
+    private bool    _loading = true;
+    private bool    _saving  = false;
+    private string? _errorMessage;
+    private Dictionary<string, List<string>> _validationErrors = [];
+
+    private List<LerCodeDto>  _lerCodesFlat = [];
+    private List<EntityDto>   _producers    = [];
+
+    private ResidueFormModel _model = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargar catálogos auxiliares de forma secuencial (DbContext es Scoped y no soporta concurrencia)
+        await LoadLerCodesAsync();
+        await LoadProducersAsync();
+
+        _isEdit = ResidueId.HasValue;
+        if (_isEdit)
+        {
+            var detail = await Mediator.Send(new GetResidueByIdQuery(ResidueId!.Value));
+            if (detail is not null)
+                _model = ResidueFormModel.FromDetail(detail);
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadLerCodesAsync()
+    {
+        var chapters = await Mediator.Send(new GetLerCodesQuery());
+        _lerCodesFlat = chapters
+            .SelectMany(c => c.SubChapters.SelectMany(s => s.Codes))
+            .OrderBy(l => l.Code)
+            .ToList();
+    }
+
+    private async Task LoadProducersAsync()
+    {
+        var result = await Mediator.Send(new GetEntitiesQuery(EntityRole: "Producer", PageSize: 500));
+        _producers = [.. result.Items];
+    }
+
+    private void OnTypeChanged() => StateHasChanged();
+
+    private async Task SaveAsync()
+    {
+        _saving       = true;
+        _errorMessage = null;
+        _validationErrors = [];
+        try
+        {
+            if (_isEdit)
+            {
+                await Mediator.Send(new UpdateResidueCommand(
+                    ResidueId!.Value,
+                    _model.ResidueType!, _model.Name!, _model.Description, _model.Reference,
+                    _model.IdLERCode, _model.IsDangerous, _model.IsRAEE, _model.DangerousCode,
+                    _model.ProductUse, _model.ProductCategory, _model.WeightPerUnitKg,
+                    _model.DefaultMeasureUnit, _model.ReparabilityIndex, _model.DisassemblyEase,
+                    _model.ContainsHazardousVal ? true : null,
+                    _model.RecycledContentPercent, _model.CompositionJson,
+                    _model.PotentialLERCodesJson, _model.MaterialsJson,
+                    _model.IdProducer, _model.ProducerRef));
+            }
+            else
+            {
+                await Mediator.Send(new CreateResidueCommand(
+                    _model.ResidueType!, _model.Name!, _model.Description, _model.Reference,
+                    _model.IdLERCode, _model.IsDangerous, _model.IsRAEE, _model.DangerousCode,
+                    _model.ProductUse, _model.ProductCategory, _model.WeightPerUnitKg,
+                    _model.DefaultMeasureUnit, _model.ReparabilityIndex, _model.DisassemblyEase,
+                    _model.ContainsHazardousVal ? true : null,
+                    _model.RecycledContentPercent, _model.CompositionJson,
+                    _model.PotentialLERCodesJson, _model.MaterialsJson,
+                    _model.IdProducer, _model.ProducerRef));
+            }
+            Nav.NavigateTo("/residues");
+        }
+        catch (FluentValidation.ValidationException vex)
+        {
+            _validationErrors = vex.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToList());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => Nav.NavigateTo("/residues");
+
+    // ── Modelo formulario ─────────────────────────────────────────────────────
+    private sealed class ResidueFormModel
+    {
+        public string?   ResidueType            { get; set; }
+        public string?   Name                   { get; set; }
+        public string?   Description            { get; set; }
+        public string?   Reference              { get; set; }
+        public Guid?     IdLERCode              { get; set; }
+        public bool      IsDangerous            { get; set; }
+        public bool      IsRAEE                 { get; set; }
+        public string?   DangerousCode          { get; set; }
+        public string?   ProductUse             { get; set; }
+        public string?   ProductCategory        { get; set; }
+        public decimal?  WeightPerUnitKg        { get; set; }
+        public string?   DefaultMeasureUnit     { get; set; }
+        public int?      ReparabilityIndex      { get; set; }
+        public string?   DisassemblyEase        { get; set; }
+        public bool      ContainsHazardousVal   { get; set; }
+        public decimal?  RecycledContentPercent { get; set; }
+        public string?   CompositionJson        { get; set; }
+        public string?   PotentialLERCodesJson  { get; set; }
+        public string?   MaterialsJson          { get; set; }
+        public Guid?     IdProducer             { get; set; }
+        public string?   ProducerRef            { get; set; }
+
+        // Helper para select con Guid?
+        public string IdProducerStr
+        {
+            get => IdProducer?.ToString() ?? "";
+            set => IdProducer = Guid.TryParse(value, out var g) ? g : null;
+        }
+
+        public static ResidueFormModel FromDetail(
+            GreenTransit.Application.Features.Residues.DTOs.ResidueDetailDto d)
+            => new()
+            {
+                ResidueType            = d.ResidueType,
+                Name                   = d.Name,
+                Description            = d.Description,
+                Reference              = d.Reference,
+                IdLERCode              = d.IdLERCode,
+                IsDangerous            = d.IsDangerous,
+                IsRAEE                 = d.IsRAEE,
+                DangerousCode          = d.DangerousCode,
+                ProductUse             = d.ProductUse,
+                ProductCategory        = d.ProductCategory,
+                WeightPerUnitKg        = d.WeightPerUnitKg,
+                DefaultMeasureUnit     = d.DefaultMeasureUnit,
+                ReparabilityIndex      = d.ReparabilityIndex,
+                DisassemblyEase        = d.DisassemblyEase,
+                ContainsHazardousVal   = d.ContainsHazardous ?? false,
+                RecycledContentPercent = d.RecycledContentPercent,
+                CompositionJson        = d.CompositionJson,
+                PotentialLERCodesJson  = d.PotentialLERCodesJson,
+                MaterialsJson          = d.MaterialsJson,
+                IdProducer             = d.IdProducer,
+                ProducerRef            = d.ProducerRef
+            };
+    }
+}

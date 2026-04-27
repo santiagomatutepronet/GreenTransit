@@ -1,13 +1,7 @@
 ﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
-        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
-            <NotAuthorized>
-                <RedirectToLogin />
-            </NotAuthorized>
-            <Authorizing>
-                <p>Verificando autenticación…</p>
-            </Authorizing>
-        </AuthorizeRouteView>
+        @* Autenticación deshabilitada temporalmente: usar RouteView en lugar de AuthorizeRouteView *@
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>

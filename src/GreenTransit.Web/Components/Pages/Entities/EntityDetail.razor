@@ -16,6 +16,13 @@
 {
     <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
 }
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="GoBack">
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
 else if (_detail is null)
 {
     <div class="alert alert-warning">Entidad no encontrada.</div>
@@ -159,11 +166,22 @@ else
 
     private bool             _loading = true;
     private EntityDetailDto? _detail;
+    private string?          _errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
-        _detail  = await Mediator.Send(new GetEntityByIdQuery(EntityId));
-        _loading = false;
+        try
+        {
+            _detail = await Mediator.Send(new GetEntityByIdQuery(EntityId));
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error al cargar la entidad: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private void GoBack() => Nav.NavigateTo("/entities");

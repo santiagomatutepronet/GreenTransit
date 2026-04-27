@@ -1,0 +1,85 @@
+@*
+    Selector reutilizable de operaciones de tratamiento R/D.
+    Uso:
+        <TreatmentOperationSelect @bind-Value="_selectedOperationId" />
+        <TreatmentOperationSelect @bind-Value="_selectedOperationId" ShowInactive="false" />
+*@
+
+@using GreenTransit.Application.Features.TreatmentOperations.DTOs
+@using GreenTransit.Application.Features.TreatmentOperations.Queries
+@using MediatR
+
+@inject IMediator Mediator
+
+<select class="form-select @CssClass"
+        value="@_valueStr"
+        @onchange="OnChanged"
+        disabled="@Disabled">
+    <option value="">@Placeholder</option>
+
+    @* ── R: Valorización ──────────────────────────────────────────────── *@
+    @if (_recovery.Count > 0)
+    {
+        <optgroup label="R — Valorización (R1–R13)">
+            @foreach (var op in _recovery)
+            {
+                <option value="@op.Id">
+                    @op.Code — @(op.ShortDescription ?? op.Description)
+                    @if (op.IsRecycling)           { <text> ♻</text> }
+                    @if (op.IsEnergyRecovery)      { <text> ⚡</text> }
+                    @if (op.IsPreparationForReuse) { <text> 🔄</text> }
+                </option>
+            }
+        </optgroup>
+    }
+
+    @* ── D: Eliminación ───────────────────────────────────────────────── *@
+    @if (_disposal.Count > 0)
+    {
+        <optgroup label="D — Eliminación (D1–D15)">
+            @foreach (var op in _disposal)
+            {
+                <option value="@op.Id">@op.Code — @(op.ShortDescription ?? op.Description)</option>
+            }
+        </optgroup>
+    }
+</select>
+
+@code {
+    /// <summary>Id de la operación seleccionada. Bindable con @bind-Value.</summary>
+    [Parameter] public Guid? Value { get; set; }
+    [Parameter] public EventCallback<Guid?> ValueChanged { get; set; }
+
+    /// <summary>Mostrar solo operaciones activas (default: true).</summary>
+    [Parameter] public bool ShowInactive { get; set; } = false;
+
+    /// <summary>Texto del placeholder.</summary>
+    [Parameter] public string Placeholder { get; set; } = "— Seleccionar operación —";
+
+    /// <summary>Clases CSS adicionales para el select.</summary>
+    [Parameter] public string CssClass { get; set; } = "";
+
+    [Parameter] public bool Disabled { get; set; } = false;
+
+    private List<TreatmentOperationDto> _recovery = [];
+    private List<TreatmentOperationDto> _disposal  = [];
+
+    private string _valueStr => Value?.ToString() ?? "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await Mediator.Send(new GetTreatmentOperationsQuery());
+
+        var filtered = ShowInactive ? all : all.Where(o => o.IsActive).ToList();
+
+        _recovery = filtered.Where(o => o.OperationType == "Recovery").ToList();
+        _disposal  = filtered.Where(o => o.OperationType == "Disposal").ToList();
+    }
+
+    private async Task OnChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString();
+        var newValue = Guid.TryParse(val, out var g) ? g : (Guid?)null;
+        await ValueChanged.InvokeAsync(newValue);
+    }
+}

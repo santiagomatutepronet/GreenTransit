@@ -21,6 +21,9 @@ public sealed class UnitOfWork : IUnitOfWork
     private IRepository<Agreement>?      _agreements;
     private IRepository<Settlement>?     _settlements;
     private IRepository<Incident>?       _incidents;
+    private IRepository<LerCode>?             _lerCodes;
+    private IRepository<Residue>?             _residues;
+    private IRepository<TreatmentOperation>?  _treatmentOperations;
 
     public UnitOfWork(AppDbContext context, ICurrentUserService currentUserService)
     {
@@ -48,6 +51,15 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IRepository<Incident> Incidents
         => _incidents ??= new EfRepository<Incident>(_context, _currentUserService);
+
+    public IRepository<LerCode> LerCodes
+        => _lerCodes ??= new EfRepository<LerCode>(_context, _currentUserService);
+
+    public IRepository<Residue> Residues
+        => _residues ??= new EfRepository<Residue>(_context, _currentUserService);
+
+    public IRepository<TreatmentOperation> TreatmentOperations
+        => _treatmentOperations ??= new EfRepository<TreatmentOperation>(_context, _currentUserService);
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default)
         => _context.SaveChangesAsync(ct);

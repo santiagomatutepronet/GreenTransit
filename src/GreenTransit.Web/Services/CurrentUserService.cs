@@ -20,33 +20,22 @@ public sealed class CurrentUserService : ICurrentUserService
     private ClaimsPrincipal? User => _httpContextAccessor.HttpContext?.User;
 
     /// <inheritdoc/>
-    public bool IsAuthenticated => User?.Identity?.IsAuthenticated ?? false;
+    /// Autenticación temporalmente deshabilitada en la app web: tratamos al usuario como anónimo.
+    public bool IsAuthenticated => false;
 
     /// <inheritdoc/>
-    public int IdUser =>
-        int.TryParse(User?.FindFirstValue(AuthClaims.IdUser), out var id) ? id : 0;
+    public int IdUser => 0;
 
     /// <inheritdoc/>
-    public Guid OwnerId =>
-        Guid.TryParse(User?.FindFirstValue(AuthClaims.OwnerId), out var guid) ? guid : Guid.Empty;
+    public Guid OwnerId => Guid.Empty;
 
     /// <inheritdoc/>
-    public string Email =>
-        User?.FindFirstValue(ClaimTypes.Email)
-        ?? User?.FindFirstValue("email")
-        ?? User?.FindFirstValue("preferred_username")
-        ?? string.Empty;
+    public string Email => string.Empty;
 
     /// <inheritdoc/>
-    public string UserName =>
-        User?.FindFirstValue(AuthClaims.UserName)
-        ?? User?.FindFirstValue(ClaimTypes.Name)
-        ?? User?.FindFirstValue("name")
-        ?? Email;
+    public string UserName => "Anónimo";
 
     /// <inheritdoc/>
-    public string UserProfile =>
-        User?.FindFirstValue(AuthClaims.Profile)
-        ?? User?.FindFirstValue(ClaimTypes.Role)
-        ?? string.Empty;
+    /// Mientras la autenticación esté deshabilitada, se asume perfil ADMIN para desarrollo.
+    public string UserProfile => "ADMIN";
 }

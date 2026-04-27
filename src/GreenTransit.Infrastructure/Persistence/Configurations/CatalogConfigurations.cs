@@ -91,8 +91,8 @@ public class ResidueConfiguration : IEntityTypeConfiguration<Residue>
         builder.Property(e => e.CreatedAt).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
         builder.Property(e => e.UpdatedAt).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
 
-        builder.HasOne(e => e.LerCode).WithMany().HasForeignKey(e => e.IdLERCode).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(e => e.Producer).WithMany().HasForeignKey(e => e.IdProducer).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(e => e.LerCode).WithMany(l => l.Residues).HasForeignKey(e => e.IdLERCode).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(e => e.Producer).WithMany(b => b.Residues).HasForeignKey(e => e.IdProducer).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => e.ResidueType).HasDatabaseName("IX_Residues_ResidueType");
         builder.HasIndex(e => e.IdLERCode).HasDatabaseName("IX_Residues_IdLERCode");

@@ -15,6 +15,9 @@ public interface IUnitOfWork
     IRepository<Agreement>      Agreements       { get; }
     IRepository<Settlement>     Settlements      { get; }
     IRepository<Incident>       Incidents        { get; }
+    IRepository<LerCode>             LerCodes             { get; }
+    IRepository<Residue>             Residues             { get; }
+    IRepository<TreatmentOperation>  TreatmentOperations  { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

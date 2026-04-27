@@ -82,7 +82,7 @@ Prompt	Estado	Tablas
 5.11 — Geografía	✅ Completado	Country → ZipCodes
 5.12 — Diccionarios	✅ Completado	dic* + DocStates
 
-Paso 6 — Autenticación OpenID Connect ✅ COMPLETADO
+Paso 6 — Autenticación OpenID Connect  ⬜ PENDIENTE
 
 Program.cs configurado
 ClaimsTransformation

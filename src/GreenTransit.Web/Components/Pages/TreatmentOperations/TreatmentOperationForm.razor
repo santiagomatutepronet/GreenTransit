@@ -1,0 +1,238 @@
+@page "/treatment-operations/new"
+@page "/treatment-operations/{OperationId:guid}/edit"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.TreatmentOperations.Commands
+@using GreenTransit.Application.Features.TreatmentOperations.DTOs
+@using GreenTransit.Application.Features.TreatmentOperations.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>@(_isEdit ? "Editar Operación R/D" : "Nueva Operación R/D")</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-gear-fill me-2"></i>
+        @(_isEdit ? "Editar Operación R/D" : "Nueva Operación R/D")
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="SaveAsync">
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-info-circle me-2"></i>Datos de la operación
+                    </div>
+                    <div class="card-body row g-3">
+
+                        @* Tipo *@
+                        <div class="col-md-3">
+                            <label class="form-label">Tipo <span class="text-danger">*</span></label>
+                            <InputSelect class="form-select" @bind-Value="_model.OperationType">
+                                <option value="">— Seleccionar —</option>
+                                <option value="Recovery">R — Valorización</option>
+                                <option value="Disposal">D — Eliminación</option>
+                            </InputSelect>
+                            @if (_validationErrors.TryGetValue("OperationType", out var opErrors))
+                            {
+                                <div class="text-danger small">@string.Join(", ", opErrors)</div>
+                            }
+                        </div>
+
+                        @* Código *@
+                        <div class="col-md-2">
+                            <label class="form-label">Código <span class="text-danger">*</span></label>
+                            <InputText class="form-control text-uppercase" @bind-Value="_model.Code"
+                                       placeholder="R1, D5…" maxlength="8" />
+                            @if (_validationErrors.TryGetValue("Code", out var codeErrors))
+                            {
+                                <div class="text-danger small">@string.Join(", ", codeErrors)</div>
+                            }
+                        </div>
+
+                        @* Orden *@
+                        <div class="col-md-2">
+                            <label class="form-label">Orden</label>
+                            <InputNumber class="form-control" @bind-Value="_model.SortOrder" />
+                        </div>
+
+                        @* Estado (solo en edición) *@
+                        @if (_isEdit)
+                        {
+                            <div class="col-md-2 d-flex align-items-end pb-1">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="_model.IsActive" id="chkActive" />
+                                    <label class="form-check-label" for="chkActive">Activo</label>
+                                </div>
+                            </div>
+                        }
+
+                        @* Descripción *@
+                        <div class="col-12">
+                            <label class="form-label">Descripción <span class="text-danger">*</span></label>
+                            <InputText class="form-control" @bind-Value="_model.Description" maxlength="512" />
+                            @if (_validationErrors.TryGetValue("Description", out var descErrors))
+                            {
+                                <div class="text-danger small">@string.Join(", ", descErrors)</div>
+                            }
+                        </div>
+
+                        @* Descripción corta *@
+                        <div class="col-md-6">
+                            <label class="form-label">Descripción corta</label>
+                            <InputText class="form-control" @bind-Value="_model.ShortDescription" maxlength="128" />
+                        </div>
+
+                        @* Flags de clasificación *@
+                        <div class="col-12">
+                            <label class="form-label d-block">Clasificación</label>
+                            <div class="d-flex gap-4">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="_model.IsRecycling" id="chkRecycling" />
+                                    <label class="form-check-label" for="chkRecycling">♻ Reciclaje</label>
+                                </div>
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="_model.IsEnergyRecovery" id="chkEnergy" />
+                                    <label class="form-check-label" for="chkEnergy">⚡ Recuperación energética</label>
+                                </div>
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="_model.IsPreparationForReuse" id="chkReuse" />
+                                    <label class="form-check-label" for="chkReuse">🔄 Preparación para reutilización</label>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (_errorMessage is not null)
+        {
+            <div class="alert alert-danger mt-3">@_errorMessage</div>
+        }
+
+        <div class="mt-3 d-flex gap-2">
+            <button type="submit" class="btn btn-primary" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Guardar
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancelar</button>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter] public Guid? OperationId { get; set; }
+
+    private bool    _isEdit  = false;
+    private bool    _loading = true;
+    private bool    _saving  = false;
+    private string? _errorMessage;
+    private Dictionary<string, List<string>> _validationErrors = [];
+
+    private FormModel _model = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isEdit = OperationId.HasValue;
+
+        if (_isEdit)
+        {
+            var all    = await Mediator.Send(new GetTreatmentOperationsQuery());
+            var detail = all.FirstOrDefault(o => o.Id == OperationId!.Value);
+
+            if (detail is not null)
+                _model = FormModel.From(detail);
+        }
+
+        _loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving       = true;
+        _errorMessage = null;
+        _validationErrors = [];
+
+        try
+        {
+            if (_isEdit)
+            {
+                await Mediator.Send(new UpdateTreatmentOperationCommand(
+                    OperationId!.Value,
+                    _model.Code!, _model.OperationType!,
+                    _model.Description!, _model.ShortDescription,
+                    _model.IsRecycling, _model.IsEnergyRecovery, _model.IsPreparationForReuse,
+                    _model.SortOrder, _model.IsActive));
+            }
+            else
+            {
+                await Mediator.Send(new CreateTreatmentOperationCommand(
+                    _model.Code!, _model.OperationType!,
+                    _model.Description!, _model.ShortDescription,
+                    _model.IsRecycling, _model.IsEnergyRecovery, _model.IsPreparationForReuse,
+                    _model.SortOrder));
+            }
+
+            Nav.NavigateTo("/treatment-operations");
+        }
+        catch (FluentValidation.ValidationException vex)
+        {
+            _validationErrors = vex.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToList());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => Nav.NavigateTo("/treatment-operations");
+
+    // ── Modelo ────────────────────────────────────────────────────────────────
+    private sealed class FormModel
+    {
+        public string?  Code                  { get; set; }
+        public string?  OperationType         { get; set; }
+        public string?  Description           { get; set; }
+        public string?  ShortDescription      { get; set; }
+        public bool     IsRecycling           { get; set; }
+        public bool     IsEnergyRecovery      { get; set; }
+        public bool     IsPreparationForReuse { get; set; }
+        public int?     SortOrder             { get; set; }
+        public bool     IsActive              { get; set; } = true;
+
+        public static FormModel From(TreatmentOperationDto d) => new()
+        {
+            Code                  = d.Code,
+            OperationType         = d.OperationType,
+            Description           = d.Description,
+            ShortDescription      = d.ShortDescription,
+            IsRecycling           = d.IsRecycling,
+            IsEnergyRecovery      = d.IsEnergyRecovery,
+            IsPreparationForReuse = d.IsPreparationForReuse,
+            SortOrder             = d.SortOrder,
+            IsActive              = d.IsActive
+        };
+    }
+}
