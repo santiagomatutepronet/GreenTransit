@@ -4,6 +4,7 @@ using System.Text.Json;
 using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
+using GreenTransit.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,20 +24,15 @@ public sealed record UpdateServiceOrderCommand(
     string    Priority,
     string?   WasteStream,
     string?   SubStream,
-    int?      ProductUse,
-    int?      ProductCategory,
-    Guid?     IdLERCode,
     Guid?     IdPickupPoint,
     DateTime? PlannedPickupStart,
     DateTime? PlannedPickupEnd,
     DateTime? PlannedDeliveryStart,
     DateTime? PlannedDeliveryEnd,
-    decimal?  EstimatedWeight,
-    int?      MeasureUnit,
-    int?      Units,
     string?   ContainersJson,
     Guid?     IdCarrier,
-    Guid?     IdPlannedPlant
+    Guid?     IdPlannedPlant,
+    ServiceOrderResidueInput[] Residues
 ) : IRequest;
 
 public sealed class UpdateServiceOrderCommandHandler : IRequestHandler<UpdateServiceOrderCommand>
@@ -54,12 +50,16 @@ public sealed class UpdateServiceOrderCommandHandler : IRequestHandler<UpdateSer
     public async Task Handle(UpdateServiceOrderCommand request, CancellationToken ct)
     {
         var so = await _context.ServiceOrders
+            .Include(s => s.Residues)
             .FirstOrDefaultAsync(s => s.Id == request.Id, ct)
             ?? throw new KeyNotFoundException($"ServiceOrder {request.Id} no encontrada.");
 
         if (!ServiceOrderStatuses.Editable.Contains(so.Status))
             throw new InvalidOperationException(
                 $"No se puede editar una SO en estado '{so.Status}'.");
+
+        // ── Cabecera sincronizada desde la primera línea de residuo ───────────
+        var firstLine = request.Residues.Length > 0 ? request.Residues[0] : null;
 
         so.ServiceOrderNumber   = request.ServiceOrderNumber;
         so.IssuedAt             = request.IssuedAt;
@@ -71,17 +71,17 @@ public sealed class UpdateServiceOrderCommandHandler : IRequestHandler<UpdateSer
         so.Priority             = request.Priority;
         so.WasteStream          = request.WasteStream;
         so.SubStream            = request.SubStream;
-        so.ProductUse           = request.ProductUse;
-        so.ProductCategory      = request.ProductCategory;
-        so.IdLERCode            = request.IdLERCode;
+        so.IdLERCode            = firstLine?.IdLERCode;
+        so.ProductUse           = firstLine?.ProductUse;
+        so.ProductCategory      = firstLine?.ProductCategory;
+        so.EstimatedWeight      = firstLine?.EstimatedWeight;
+        so.MeasureUnit          = firstLine?.MeasureUnit;
+        so.Units                = firstLine?.Units;
         so.IdPickupPoint        = request.IdPickupPoint;
         so.PlannedPickupStart   = request.PlannedPickupStart;
         so.PlannedPickupEnd     = request.PlannedPickupEnd;
         so.PlannedDeliveryStart = request.PlannedDeliveryStart;
         so.PlannedDeliveryEnd   = request.PlannedDeliveryEnd;
-        so.EstimatedWeight      = request.EstimatedWeight;
-        so.MeasureUnit          = request.MeasureUnit;
-        so.Units                = request.Units;
         so.ContainersJson       = request.ContainersJson;
         so.IdCarrier            = request.IdCarrier;
         so.IdPlannedPlant       = request.IdPlannedPlant;
@@ -90,10 +90,28 @@ public sealed class UpdateServiceOrderCommandHandler : IRequestHandler<UpdateSer
         so.IdUser               = _currentUser.IdUser;
         so.Hash                 = ComputeHash(so);
 
+        // ── Reemplazar líneas de residuo ─────────────────────────────────────
+        so.Residues.Clear();
+        foreach (var line in request.Residues)
+        {
+            so.Residues.Add(new ServiceOrderResidue
+            {
+                Id              = Guid.NewGuid(),
+                IdServiceOrder  = so.Id,
+                SortOrder       = line.SortOrder,
+                IdLERCode       = line.IdLERCode,
+                ProductUse      = line.ProductUse,
+                ProductCategory = line.ProductCategory,
+                EstimatedWeight = line.EstimatedWeight,
+                MeasureUnit     = line.MeasureUnit,
+                Units           = line.Units
+            });
+        }
+
         await _context.SaveChangesAsync(ct);
     }
 
-    private static string ComputeHash(Domain.Entities.ServiceOrder so)
+    private static string ComputeHash(ServiceOrder so)
     {
         var payload = JsonSerializer.Serialize(new
         {
@@ -178,6 +196,7 @@ public sealed class DuplicateServiceOrderCommandHandler
     {
         var source = await _context.ServiceOrders
             .AsNoTracking()
+            .Include(s => s.Residues)
             .FirstOrDefaultAsync(s => s.Id == request.SourceId, ct)
             ?? throw new KeyNotFoundException($"ServiceOrder {request.SourceId} no encontrada.");
 
@@ -185,7 +204,7 @@ public sealed class DuplicateServiceOrderCommandHandler
         var count   = await _context.ServiceOrders.CountAsync(s => s.OwnerId == ownerId, ct);
         var number  = $"SO-{DateTime.UtcNow.Year}-{(count + 1):00000}";
 
-        var copy = new Domain.Entities.ServiceOrder
+        var copy = new ServiceOrder
         {
             Id                   = Guid.NewGuid(),
             OwnerId              = ownerId,
@@ -199,11 +218,11 @@ public sealed class DuplicateServiceOrderCommandHandler
             Priority             = source.Priority,
             WasteStream          = source.WasteStream,
             SubStream            = source.SubStream,
+            IdLERCode            = source.IdLERCode,
             ProductUse           = source.ProductUse,
             ProductCategory      = source.ProductCategory,
-            IdLERCode            = source.IdLERCode,
             IdPickupPoint        = source.IdPickupPoint,
-            PlannedPickupStart   = null,   // el usuario las rellena
+            PlannedPickupStart   = null,
             PlannedPickupEnd     = null,
             PlannedDeliveryStart = null,
             PlannedDeliveryEnd   = null,
@@ -227,11 +246,29 @@ public sealed class DuplicateServiceOrderCommandHandler
         copy.Hash = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
 
+        // ── Copiar líneas de residuo ──────────────────────────────────────────
+        foreach (var line in source.Residues.OrderBy(r => r.SortOrder))
+        {
+            copy.Residues.Add(new ServiceOrderResidue
+            {
+                Id              = Guid.NewGuid(),
+                IdServiceOrder  = copy.Id,
+                SortOrder       = line.SortOrder,
+                IdLERCode       = line.IdLERCode,
+                ProductUse      = line.ProductUse,
+                ProductCategory = line.ProductCategory,
+                EstimatedWeight = line.EstimatedWeight,
+                MeasureUnit     = line.MeasureUnit,
+                Units           = line.Units
+            });
+        }
+
         _context.ServiceOrders.Add(copy);
         await _context.SaveChangesAsync(ct);
         return copy.Id;
     }
 }
+
 
 // ── CancelServiceOrderCommand ─────────────────────────────────────────────────
 

@@ -9,6 +9,18 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ServiceOrders.Commands;
 
+// ── Input de línea de residuo ─────────────────────────────────────────────────
+
+public sealed record ServiceOrderResidueInput(
+    int      SortOrder,
+    Guid?    IdLERCode,
+    int?     ProductUse,
+    int?     ProductCategory,
+    decimal? EstimatedWeight,
+    int?     MeasureUnit,
+    int?     Units
+);
+
 // ── Comando ───────────────────────────────────────────────────────────────────
 
 public sealed record CreateServiceOrderCommand(
@@ -22,20 +34,15 @@ public sealed record CreateServiceOrderCommand(
     string    Priority,
     string?   WasteStream,
     string?   SubStream,
-    int?      ProductUse,
-    int?      ProductCategory,
-    Guid?     IdLERCode,
     Guid?     IdPickupPoint,
     DateTime? PlannedPickupStart,
     DateTime? PlannedPickupEnd,
     DateTime? PlannedDeliveryStart,
     DateTime? PlannedDeliveryEnd,
-    decimal?  EstimatedWeight,
-    int?      MeasureUnit,
-    int?      Units,
     string?   ContainersJson,
     Guid?     IdCarrier,
-    Guid?     IdPlannedPlant
+    Guid?     IdPlannedPlant,
+    ServiceOrderResidueInput[] Residues
 ) : IRequest<Guid>;
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -64,6 +71,9 @@ public sealed class CreateServiceOrderCommandHandler
             ? await GenerateNumberAsync(ownerId, cancellationToken)
             : request.ServiceOrderNumber;
 
+        // ── Cabecera sincronizada desde la primera línea de residuo ───────────
+        var firstLine = request.Residues.Length > 0 ? request.Residues[0] : null;
+
         // ── Entidad ───────────────────────────────────────────────────────────
         var so = new ServiceOrder
         {
@@ -79,17 +89,17 @@ public sealed class CreateServiceOrderCommandHandler
             Priority             = request.Priority,
             WasteStream          = request.WasteStream,
             SubStream            = request.SubStream,
-            ProductUse           = request.ProductUse,
-            ProductCategory      = request.ProductCategory,
-            IdLERCode            = request.IdLERCode,
+            IdLERCode            = firstLine?.IdLERCode,
+            ProductUse           = firstLine?.ProductUse,
+            ProductCategory      = firstLine?.ProductCategory,
+            EstimatedWeight      = firstLine?.EstimatedWeight,
+            MeasureUnit          = firstLine?.MeasureUnit,
+            Units                = firstLine?.Units,
             IdPickupPoint        = request.IdPickupPoint,
             PlannedPickupStart   = request.PlannedPickupStart,
             PlannedPickupEnd     = request.PlannedPickupEnd,
             PlannedDeliveryStart = request.PlannedDeliveryStart,
             PlannedDeliveryEnd   = request.PlannedDeliveryEnd,
-            EstimatedWeight      = request.EstimatedWeight,
-            MeasureUnit          = request.MeasureUnit,
-            Units                = request.Units,
             ContainersJson       = request.ContainersJson,
             IdCarrier            = request.IdCarrier,
             IdPlannedPlant       = request.IdPlannedPlant,
@@ -100,6 +110,23 @@ public sealed class CreateServiceOrderCommandHandler
         };
 
         so.Hash = ComputeHash(so);
+
+        // ── Líneas de residuo ────────────────────────────────────────────────
+        foreach (var line in request.Residues)
+        {
+            so.Residues.Add(new ServiceOrderResidue
+            {
+                Id             = Guid.NewGuid(),
+                IdServiceOrder = so.Id,
+                SortOrder      = line.SortOrder,
+                IdLERCode      = line.IdLERCode,
+                ProductUse     = line.ProductUse,
+                ProductCategory = line.ProductCategory,
+                EstimatedWeight = line.EstimatedWeight,
+                MeasureUnit    = line.MeasureUnit,
+                Units          = line.Units
+            });
+        }
 
         _context.ServiceOrders.Add(so);
         await _context.SaveChangesAsync(cancellationToken);

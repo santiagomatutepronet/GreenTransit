@@ -27,20 +27,15 @@ public sealed class CreateServiceOrderCommandHandlerTests
         Priority:             priority,
         WasteStream:          null,
         SubStream:            null,
-        ProductUse:           null,
-        ProductCategory:      null,
-        IdLERCode:             null,
         IdPickupPoint:        pickupId,
         PlannedPickupStart:   null,
         PlannedPickupEnd:     null,
         PlannedDeliveryStart: null,
         PlannedDeliveryEnd:   null,
-        EstimatedWeight:      null,
-        MeasureUnit:          null,
-        Units:                null,
         ContainersJson:       null,
         IdCarrier:            null,
-        IdPlannedPlant:       null);
+        IdPlannedPlant:       null,
+        Residues:             []);
 
     // ── Creación exitosa ──────────────────────────────────────────────────────
 

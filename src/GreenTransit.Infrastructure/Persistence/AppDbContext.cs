@@ -38,6 +38,7 @@ public class AppDbContext : DbContext, IApplicationDbContext
 
     // ── Operaciones de recogida y traslado ────────────────────────────────────
     public DbSet<ServiceOrder> ServiceOrders => Set<ServiceOrder>();
+    public DbSet<ServiceOrderResidue> ServiceOrderResidues => Set<ServiceOrderResidue>();
     public DbSet<WasteMove> WasteMoves => Set<WasteMove>();
     public DbSet<WasteMoveResidue> WasteMoveResidues => Set<WasteMoveResidue>();
 

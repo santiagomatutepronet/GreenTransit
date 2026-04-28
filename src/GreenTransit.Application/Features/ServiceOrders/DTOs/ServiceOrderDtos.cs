@@ -19,6 +19,22 @@ public sealed record ServiceOrderDto(
     string?   LerCodeDescription
 );
 
+/// <summary>DTO de una línea de residuo de una Orden de Servicio.</summary>
+public sealed record ServiceOrderResidueDto(
+    Guid     Id,
+    Guid     IdServiceOrder,
+    int      SortOrder,
+    Guid?    IdLERCode,
+    string?  LerCodeCode,
+    string?  LerCodeDescription,
+    bool     LerCodeIsDangerous,
+    int?     ProductUse,
+    int?     ProductCategory,
+    decimal? EstimatedWeight,
+    int?     MeasureUnit,
+    int?     Units
+);
+
 /// <summary>DTO de detalle con todos los campos del mapa sección 3.1.</summary>
 public sealed record ServiceOrderDetailDto(
     Guid      Id,
@@ -32,21 +48,12 @@ public sealed record ServiceOrderDetailDto(
     string    Priority,
     string?   WasteStream,
     string?   SubStream,
-    int?      ProductUse,
-    int?      ProductCategory,
-    Guid?     IdLERCode,
-    string?   LerCodeCode,
-    string?   LerCodeDescription,
-    bool      LerCodeIsDangerous,
     Guid?     IdPickupPoint,
     string?   PickupPointName,
     DateTime? PlannedPickupStart,
     DateTime? PlannedPickupEnd,
     DateTime? PlannedDeliveryStart,
     DateTime? PlannedDeliveryEnd,
-    decimal?  EstimatedWeight,
-    int?      MeasureUnit,
-    int?      Units,
     string?   ContainersJson,
     Guid?     IdCarrier,
     string?   CarrierName,
@@ -57,5 +64,6 @@ public sealed record ServiceOrderDetailDto(
     int       Version,
     DateTime  CreatedAt,
     DateTime  UpdatedAt,
-    int       IdUser
+    int       IdUser,
+    IReadOnlyList<ServiceOrderResidueDto> Residues
 );

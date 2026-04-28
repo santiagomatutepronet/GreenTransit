@@ -22,6 +22,7 @@ public interface IApplicationDbContext
 
     // ── Operaciones logísticas ────────────────────────────────────────────────
     DbSet<ServiceOrder> ServiceOrders { get; }
+    DbSet<ServiceOrderResidue> ServiceOrderResidues { get; }
     DbSet<WasteMove> WasteMoves { get; }
     DbSet<WasteMoveResidue> WasteMoveResidues { get; }
 

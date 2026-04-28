@@ -1,7 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
-using GreenTransit.Application.Features.Entities.DTOs;
-using GreenTransit.Application.Features.Entities.Queries;
 using GreenTransit.Application.Features.ServiceOrders.DTOs;
+using GreenTransit.Application.Features.WasteMoves.DTOs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,48 +21,65 @@ public sealed class GetServiceOrderByIdQueryHandler
     public async Task<ServiceOrderDetailDto?> Handle(
         GetServiceOrderByIdQuery request, CancellationToken cancellationToken)
     {
-        return await _context.ServiceOrders
+        var so = await _context.ServiceOrders
             .AsNoTracking()
-            .Where(s => s.Id == request.Id)
-            .Select(s => new ServiceOrderDetailDto(
-                s.Id,
-                s.ServiceOrderNumber,
-                s.IssuedAt,
-                s.IdIssuedBy,
-                s.IssuedBy != null ? s.IssuedBy.Name : s.IssuedByName,
-                s.IssuedBy != null ? s.IssuedBy.NationalId : s.IssuedByNationalId,
-                s.IssuedBy != null ? s.IssuedBy.CenterCode : s.IssuedByCenterCode,
-                s.Status,
-                s.Priority,
-                s.WasteStream,
-                s.SubStream,
-                s.ProductUse,
-                s.ProductCategory,
-                s.IdLERCode,
-                s.LerCode != null ? s.LerCode.Code : null,
-                s.LerCode != null ? s.LerCode.Description : null,
-                s.LerCode != null && s.LerCode.IsDangerous,
-                s.IdPickupPoint,
-                s.PickupPoint != null ? s.PickupPoint.Name : null,
-                s.PlannedPickupStart,
-                s.PlannedPickupEnd,
-                s.PlannedDeliveryStart,
-                s.PlannedDeliveryEnd,
-                s.EstimatedWeight,
-                s.MeasureUnit,
-                s.Units,
-                s.ContainersJson,
-                s.IdCarrier,
-                s.Carrier != null ? s.Carrier.Name : null,
-                s.IdPlannedPlant,
-                s.PlannedPlant != null ? s.PlannedPlant.Name : null,
-                s.WasteMoveReference,
-                s.TicketScalePlanned,
-                s.Version,
-                s.CreatedAt,
-                s.UpdatedAt,
-                s.IdUser))
-            .FirstOrDefaultAsync(cancellationToken);
+            .Include(s => s.IssuedBy)
+            .Include(s => s.PickupPoint)
+            .Include(s => s.Carrier)
+            .Include(s => s.PlannedPlant)
+            .Include(s => s.Residues)
+                .ThenInclude(r => r.LerCode)
+            .FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
+
+        if (so is null) return null;
+
+        var residues = so.Residues
+            .OrderBy(r => r.SortOrder)
+            .Select(r => new ServiceOrderResidueDto(
+                r.Id,
+                r.IdServiceOrder,
+                r.SortOrder,
+                r.IdLERCode,
+                r.LerCode?.Code,
+                r.LerCode?.Description,
+                r.LerCode?.IsDangerous ?? false,
+                r.ProductUse,
+                r.ProductCategory,
+                r.EstimatedWeight,
+                r.MeasureUnit,
+                r.Units))
+            .ToList();
+
+        return new ServiceOrderDetailDto(
+            so.Id,
+            so.ServiceOrderNumber,
+            so.IssuedAt,
+            so.IdIssuedBy,
+            so.IssuedBy != null ? so.IssuedBy.Name : so.IssuedByName,
+            so.IssuedBy != null ? so.IssuedBy.NationalId : so.IssuedByNationalId,
+            so.IssuedBy != null ? so.IssuedBy.CenterCode : so.IssuedByCenterCode,
+            so.Status,
+            so.Priority,
+            so.WasteStream,
+            so.SubStream,
+            so.IdPickupPoint,
+            so.PickupPoint?.Name,
+            so.PlannedPickupStart,
+            so.PlannedPickupEnd,
+            so.PlannedDeliveryStart,
+            so.PlannedDeliveryEnd,
+            so.ContainersJson,
+            so.IdCarrier,
+            so.Carrier?.Name,
+            so.IdPlannedPlant,
+            so.PlannedPlant?.Name,
+            so.WasteMoveReference,
+            so.TicketScalePlanned,
+            so.Version,
+            so.CreatedAt,
+            so.UpdatedAt,
+            so.IdUser,
+            residues);
     }
 }
 

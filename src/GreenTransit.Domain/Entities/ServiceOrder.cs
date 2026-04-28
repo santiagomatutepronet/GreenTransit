@@ -55,4 +55,5 @@ public class ServiceOrder : IAuditableEntity, ITenantEntity
     public BusinessEntity? Carrier { get; set; }
     public BusinessEntity? PlannedPlant { get; set; }
     public LerCode? LerCode { get; set; }
+    public ICollection<ServiceOrderResidue> Residues { get; set; } = [];
 }

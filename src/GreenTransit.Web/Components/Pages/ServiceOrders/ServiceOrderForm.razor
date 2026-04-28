@@ -181,7 +181,7 @@ else
                 }
             </div>
 
-            @* ── Sección 3: Clasificación del residuo ────────────────────── *@
+            @* ── Sección 3: Clasificación y líneas de residuo ────────────── *@
             <div class="accordion-item">
                 <h2 class="accordion-header">
                     <button class="accordion-button @(_sec3Open ? "" : "collapsed")" type="button"
@@ -193,53 +193,98 @@ else
                 {
                     <div class="accordion-collapse collapse show">
                         <div class="accordion-body row g-3">
-                            <div class="col-md-3">
+
+                            @* ── Clasificación a nivel de orden ──────────── *@
+                            <div class="col-md-4">
                                 <label class="form-label">Flujo de residuo</label>
                                 <InputText class="form-control" @bind-Value="_model.WasteStream"
                                            placeholder="RAEE, Envases, etc." />
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <label class="form-label">Sub-flujo</label>
                                 <InputText class="form-control" @bind-Value="_model.SubStream" />
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Código LER</label>
-                                <select class="form-select" @bind="_model.IdLERCode"
-                                        @bind:after="OnLerCodeChanged">
-                                    <option value="">— Sin asignar —</option>
-                                    @foreach (var chapter in _lerChapters)
-                                    {
-                                        <optgroup label="@chapter.Chapter — @chapter.ChapterDescription">
-                                            @foreach (var ler in chapter.SubChapters.SelectMany(sc => sc.Codes))
+
+                            @* ── Líneas de residuo ────────────────────────── *@
+                            <div class="col-12 mt-2">
+                                <label class="form-label fw-semibold">
+                                    Líneas de residuo
+                                    <span class="badge badge-neutral ms-1">@_residueLines.Count</span>
+                                </label>
+                                <div class="table-wrapper mb-2">
+                                    <table class="table table-sm">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width:260px">Código LER</th>
+                                                <th style="width:120px">Peso est. (kg)</th>
+                                                <th style="width:90px">Ud. medida</th>
+                                                <th style="width:80px">Unidades</th>
+                                                <th style="width:40px"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var (line, idx) in _residueLines.Select((x, i) => (x, i)))
                                             {
-                                                <option value="@ler.Id">
-                                                    @ler.Code — @ler.Description
-                                                    @(ler.IsDangerous ? " ⚠️" : "")
-                                                </option>
+                                                <tr>
+                                                    <td>
+                                                        <select class="form-select form-select-sm"
+                                                                value="@(line.IdLERCode?.ToString() ?? "")"
+                                                                @onchange="e => OnResidueLerChanged(line, e.Value?.ToString())">
+                                                            <option value="">— Sin asignar —</option>
+                                                            @foreach (var chapter in _lerChapters)
+                                                            {
+                                                                <optgroup label="@chapter.Chapter — @chapter.ChapterDescription">
+                                                                    @foreach (var ler in chapter.SubChapters.SelectMany(sc => sc.Codes))
+                                                                    {
+                                                                        <option value="@ler.Id">
+                                                                            @ler.Code — @ler.Description
+                                                                            @(ler.IsDangerous ? " ⚠️" : "")
+                                                                        </option>
+                                                                    }
+                                                                </optgroup>
+                                                            }
+                                                        </select>
+                                                        @if (line.IsDangerous)
+                                                        {
+                                                            <small class="text-danger">
+                                                                <i class="bi bi-exclamation-triangle-fill me-1"></i>Peligroso — se requerirá NT/DI
+                                                            </small>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" class="form-control form-control-sm"
+                                                               min="0" step="0.001" placeholder="0,000"
+                                                               value="@line.EstimatedWeight"
+                                                               @onchange="e => line.EstimatedWeight = decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var dv) ? dv : null" />
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" class="form-control form-control-sm"
+                                                               min="0" step="1" placeholder="0"
+                                                               value="@line.MeasureUnit"
+                                                               @onchange="e => line.MeasureUnit = int.TryParse(e.Value?.ToString(), out var mv) ? mv : null" />
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" class="form-control form-control-sm"
+                                                               min="0" step="1" placeholder="0"
+                                                               value="@line.Units"
+                                                               @onchange="e => line.Units = int.TryParse(e.Value?.ToString(), out var uv) ? uv : null" />
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <button type="button" class="btn btn-outline-danger btn-sm"
+                                                                disabled="@(_residueLines.Count <= 1)"
+                                                                @onclick="() => RemoveResidueLine(idx)">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
                                             }
-                                        </optgroup>
-                                    }
-                                </select>
-                                @if (_selectedLerIsDangerous)
-                                {
-                                    <div class="alert alert-warning mt-2 mb-0">
-                                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                                        <strong>Residuo peligroso.</strong> Se requerirá NT/DI en el traslado.
-                                    </div>
-                                }
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Peso estimado (kg)</label>
-                                <InputNumber class="form-control" @bind-Value="_model.EstimatedWeight"
-                                             placeholder="0.000" />
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Unidad medida</label>
-                                <InputNumber class="form-control" @bind-Value="_model.MeasureUnit" />
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Unidades</label>
-                                <InputNumber class="form-control" @bind-Value="_model.Units" />
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <button type="button" class="btn btn-outline-neutral btn-sm"
+                                        @onclick="AddResidueLine">
+                                    <i class="bi bi-plus-lg me-1"></i>Añadir línea de residuo
+                                </button>
                             </div>
 
                             @* ── Tabla dinámica de contenedores ──────────── *@
@@ -276,7 +321,8 @@ else
                                         }
                                     </tbody>
                                     </table>
-                                </div>                                <button type="button" class="btn btn-outline-neutral btn-sm"
+                                </div>
+                                <button type="button" class="btn btn-outline-neutral btn-sm"
                                         @onclick="AddContainer">
                                     <i class="bi bi-plus-lg me-1"></i>Añadir contenedor
                                 </button>
@@ -368,11 +414,10 @@ else
     private bool _sec2Open = true;
     private bool _sec3Open = true;
     private bool _sec4Open = false;
-    private bool _selectedLerIsDangerous = false;
     private string? _serverError;
     private Dictionary<string, List<string>> _validationErrors = new();
 
-    // ── Modelo ────────────────────────────────────────────────────────────────
+    // ── Modelo de cabecera ────────────────────────────────────────────────────
     private sealed class FormModel
     {
         public string    ServiceOrderNumber   { get; set; } = "";
@@ -385,17 +430,11 @@ else
         public string    Priority             { get; set; } = ServiceOrderPriorities.Normal;
         public string?   WasteStream          { get; set; }
         public string?   SubStream            { get; set; }
-        public int?      ProductUse           { get; set; }
-        public int?      ProductCategory      { get; set; }
-        public Guid?     IdLERCode            { get; set; }
         public Guid?     IdPickupPoint        { get; set; }
         public DateTime? PlannedPickupStart   { get; set; }
         public DateTime? PlannedPickupEnd     { get; set; }
         public DateTime? PlannedDeliveryStart { get; set; }
         public DateTime? PlannedDeliveryEnd   { get; set; }
-        public decimal?  EstimatedWeight      { get; set; }
-        public int?      MeasureUnit          { get; set; }
-        public int?      Units                { get; set; }
         public Guid?     IdCarrier            { get; set; }
         public Guid?     IdPlannedPlant       { get; set; }
     }
@@ -406,8 +445,21 @@ else
         public int    Qty  { get; set; } = 1;
     }
 
-    private FormModel    _model      = new();
-    private List<ContainerRow> _containers = [];
+    // ── Modelo de línea de residuo ────────────────────────────────────────────
+    private sealed class ResidueLineModel
+    {
+        public Guid?    IdLERCode       { get; set; }
+        public int?     ProductUse      { get; set; }
+        public int?     ProductCategory { get; set; }
+        public decimal? EstimatedWeight { get; set; }
+        public int?     MeasureUnit     { get; set; }
+        public int?     Units           { get; set; }
+        public bool     IsDangerous     { get; set; }
+    }
+
+    private FormModel          _model        = new();
+    private List<ContainerRow> _containers   = [];
+    private List<ResidueLineModel> _residueLines = [];
 
     // ── Datos de selectores ───────────────────────────────────────────────────
     private IReadOnlyList<EntitySelectorDto> _allEntities = [];
@@ -424,6 +476,10 @@ else
         {
             var detail = await Mediator.Send(new GetServiceOrderByIdQuery(ServiceOrderId!.Value));
             if (detail is not null) LoadFromDetail(detail);
+        }
+        else
+        {
+            _residueLines.Add(new ResidueLineModel());
         }
 
         _loading = false;
@@ -443,21 +499,27 @@ else
             Priority             = d.Priority,
             WasteStream          = d.WasteStream,
             SubStream            = d.SubStream,
-            ProductUse           = d.ProductUse,
-            ProductCategory      = d.ProductCategory,
-            IdLERCode            = d.IdLERCode,
             IdPickupPoint        = d.IdPickupPoint,
             PlannedPickupStart   = d.PlannedPickupStart,
             PlannedPickupEnd     = d.PlannedPickupEnd,
             PlannedDeliveryStart = d.PlannedDeliveryStart,
             PlannedDeliveryEnd   = d.PlannedDeliveryEnd,
-            EstimatedWeight      = d.EstimatedWeight,
-            MeasureUnit          = d.MeasureUnit,
-            Units                = d.Units,
             IdCarrier            = d.IdCarrier,
             IdPlannedPlant       = d.IdPlannedPlant
         };
-        _selectedLerIsDangerous = d.LerCodeIsDangerous;
+
+        _residueLines = d.Residues.Count > 0
+            ? d.Residues.Select(r => new ResidueLineModel
+            {
+                IdLERCode       = r.IdLERCode,
+                ProductUse      = r.ProductUse,
+                ProductCategory = r.ProductCategory,
+                EstimatedWeight = r.EstimatedWeight,
+                MeasureUnit     = r.MeasureUnit,
+                Units           = r.Units,
+                IsDangerous     = r.LerCodeIsDangerous
+            }).ToList()
+            : [new ResidueLineModel()];
 
         if (!string.IsNullOrEmpty(d.ContainersJson))
         {
@@ -475,12 +537,20 @@ else
 
     private void OnPickupPointChanged() { }   // reservado para lógica futura
 
-    private void OnLerCodeChanged()
+    private void OnResidueLerChanged(ResidueLineModel line, string? value)
     {
-        if (!_model.IdLERCode.HasValue) { _selectedLerIsDangerous = false; return; }
+        line.IdLERCode = Guid.TryParse(value, out var id) ? id : null;
+        if (!line.IdLERCode.HasValue) { line.IsDangerous = false; return; }
         var flat = _lerChapters.SelectMany(c => c.SubChapters).SelectMany(sc => sc.Codes);
-        var ler  = flat.FirstOrDefault(l => l.Id == _model.IdLERCode);
-        _selectedLerIsDangerous = ler?.IsDangerous ?? false;
+        var ler  = flat.FirstOrDefault(l => l.Id == line.IdLERCode);
+        line.IsDangerous = ler?.IsDangerous ?? false;
+    }
+
+    private void AddResidueLine()    => _residueLines.Add(new ResidueLineModel());
+    private void RemoveResidueLine(int idx)
+    {
+        if (idx >= 0 && idx < _residueLines.Count && _residueLines.Count > 1)
+            _residueLines.RemoveAt(idx);
     }
 
     private void ClearNumber() => _model.ServiceOrderNumber = "";
@@ -505,36 +575,67 @@ else
             ? JsonSerializer.Serialize(_containers)
             : null;
 
+        var residueInputs = _residueLines
+            .Select((r, i) => new ServiceOrderResidueInput(
+                SortOrder       : i,
+                IdLERCode       : r.IdLERCode,
+                ProductUse      : r.ProductUse,
+                ProductCategory : r.ProductCategory,
+                EstimatedWeight : r.EstimatedWeight,
+                MeasureUnit     : r.MeasureUnit,
+                Units           : r.Units))
+            .ToArray();
+
         try
         {
             if (_isEdit)
             {
                 await Mediator.Send(new UpdateServiceOrderCommand(
-                    ServiceOrderId!.Value,
-                    _model.ServiceOrderNumber, _model.IssuedAt,
-                    _model.IdIssuedBy, _model.IssuedByName, _model.IssuedByNationalId,
-                    _model.IssuedByCenterCode, _model.Status, _model.Priority,
-                    _model.WasteStream, _model.SubStream, _model.ProductUse, _model.ProductCategory,
-                    _model.IdLERCode, _model.IdPickupPoint,
-                    _model.PlannedPickupStart, _model.PlannedPickupEnd,
-                    _model.PlannedDeliveryStart, _model.PlannedDeliveryEnd,
-                    _model.EstimatedWeight, _model.MeasureUnit, _model.Units,
-                    containersJson, _model.IdCarrier, _model.IdPlannedPlant));
+                    Id                   : ServiceOrderId!.Value,
+                    ServiceOrderNumber   : _model.ServiceOrderNumber,
+                    IssuedAt             : _model.IssuedAt,
+                    IdIssuedBy           : _model.IdIssuedBy,
+                    IssuedByName         : _model.IssuedByName,
+                    IssuedByNationalId   : _model.IssuedByNationalId,
+                    IssuedByCenterCode   : _model.IssuedByCenterCode,
+                    Status               : _model.Status,
+                    Priority             : _model.Priority,
+                    WasteStream          : _model.WasteStream,
+                    SubStream            : _model.SubStream,
+                    IdPickupPoint        : _model.IdPickupPoint,
+                    PlannedPickupStart   : _model.PlannedPickupStart,
+                    PlannedPickupEnd     : _model.PlannedPickupEnd,
+                    PlannedDeliveryStart : _model.PlannedDeliveryStart,
+                    PlannedDeliveryEnd   : _model.PlannedDeliveryEnd,
+                    ContainersJson       : containersJson,
+                    IdCarrier            : _model.IdCarrier,
+                    IdPlannedPlant       : _model.IdPlannedPlant,
+                    Residues             : residueInputs));
 
                 Nav.NavigateTo($"/service-orders/{ServiceOrderId!.Value}");
             }
             else
             {
                 var newId = await Mediator.Send(new CreateServiceOrderCommand(
-                    _model.ServiceOrderNumber, _model.IssuedAt,
-                    _model.IdIssuedBy, _model.IssuedByName, _model.IssuedByNationalId,
-                    _model.IssuedByCenterCode, _model.Status, _model.Priority,
-                    _model.WasteStream, _model.SubStream, _model.ProductUse, _model.ProductCategory,
-                    _model.IdLERCode, _model.IdPickupPoint,
-                    _model.PlannedPickupStart, _model.PlannedPickupEnd,
-                    _model.PlannedDeliveryStart, _model.PlannedDeliveryEnd,
-                    _model.EstimatedWeight, _model.MeasureUnit, _model.Units,
-                    containersJson, _model.IdCarrier, _model.IdPlannedPlant));
+                    ServiceOrderNumber   : _model.ServiceOrderNumber,
+                    IssuedAt             : _model.IssuedAt,
+                    IdIssuedBy           : _model.IdIssuedBy,
+                    IssuedByName         : _model.IssuedByName,
+                    IssuedByNationalId   : _model.IssuedByNationalId,
+                    IssuedByCenterCode   : _model.IssuedByCenterCode,
+                    Status               : _model.Status,
+                    Priority             : _model.Priority,
+                    WasteStream          : _model.WasteStream,
+                    SubStream            : _model.SubStream,
+                    IdPickupPoint        : _model.IdPickupPoint,
+                    PlannedPickupStart   : _model.PlannedPickupStart,
+                    PlannedPickupEnd     : _model.PlannedPickupEnd,
+                    PlannedDeliveryStart : _model.PlannedDeliveryStart,
+                    PlannedDeliveryEnd   : _model.PlannedDeliveryEnd,
+                    ContainersJson       : containersJson,
+                    IdCarrier            : _model.IdCarrier,
+                    IdPlannedPlant       : _model.IdPlannedPlant,
+                    Residues             : residueInputs));
 
                 Nav.NavigateTo($"/service-orders/{newId}");
             }

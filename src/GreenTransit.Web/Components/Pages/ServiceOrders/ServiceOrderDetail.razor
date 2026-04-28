@@ -7,6 +7,7 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using System.Linq
 
 @inject IMediator        Mediator
 @inject NavigationManager Nav
@@ -27,6 +28,7 @@ else if (_detail is null)
 else
 {
     var d = _detail;
+    var hasDangerous = d.Residues.Any(r => r.LerCodeIsDangerous);
     @* URL strings to avoid Razor parser issues with $ inside attributes *@
     var editUrl  = "/service-orders/" + d.Id + "/edit";
     var moveUrl  = "/waste-moves/new?serviceOrderId=" + d.Id;
@@ -39,7 +41,7 @@ else
             <div class="d-flex gap-2 mt-1 flex-wrap">
                 <span class="@ServiceOrderStatuses.BadgeCss(d.Status)">@ServiceOrderStatuses.Label(d.Status)</span>
                 <span class="@ServiceOrderPriorities.BadgeCss(d.Priority)">@ServiceOrderPriorities.Label(d.Priority)</span>
-                @if (d.LerCodeIsDangerous)
+                @if (hasDangerous)
                 {
                     <span class="badge badge-danger">
                         <i class="bi bi-exclamation-triangle-fill"></i> Residuo peligroso
@@ -63,13 +65,13 @@ else
         </div>
     </div>
 
-    @if (d.LerCodeIsDangerous)
+    @if (hasDangerous)
     {
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle-fill alert-icon"></i>
             <div class="alert-content">
                 <span class="alert-title">Residuo peligroso</span>
-                El código LER <strong>@d.LerCodeCode</strong> requiere NTI/DI al crear el traslado.
+                Uno o más residuos de esta orden son peligrosos y requerirán NT/DI al crear el traslado.
             </div>
         </div>
     }
@@ -126,18 +128,15 @@ else
             </div>
         </div>
 
-        @* ── Residuo ─────────────────────────────────────────────────────── *@
+        @* ── Clasificación ───────────────────────────────────────────────── *@
         <div class="col-md-6">
             <div class="card h-100">
                 <div class="card-header">
-                    <span class="card-title"><i class="bi bi-recycle card-title-icon"></i>Residuo</span>
+                    <span class="card-title"><i class="bi bi-recycle card-title-icon"></i>Clasificación</span>
                 </div>
                 <div class="card-body">
-                    <DetailRow Label="Flujo"         Value="@d.WasteStream" />
-                    <DetailRow Label="Sub-flujo"     Value="@d.SubStream" />
-                    <DetailRow Label="Código LER"    Value="@(d.LerCodeCode is null ? null : $"{d.LerCodeCode} — {d.LerCodeDescription}")" />
-                    <DetailRow Label="Peso estimado" Value="@(d.EstimatedWeight.HasValue ? $"{d.EstimatedWeight:N3} kg" : null)" />
-                    <DetailRow Label="Unidades"      Value="@d.Units?.ToString()" />
+                    <DetailRow Label="Flujo"     Value="@d.WasteStream" />
+                    <DetailRow Label="Sub-flujo" Value="@d.SubStream" />
                 </div>
             </div>
         </div>
@@ -165,6 +164,65 @@ else
                     <DetailRow Label="Creado el"   Value="@d.CreatedAt.ToString("dd/MM/yyyy HH:mm")" />
                     <DetailRow Label="Actualizado" Value="@d.UpdatedAt.ToString("dd/MM/yyyy HH:mm")" />
                     <DetailRow Label="IdUser"      Value="@d.IdUser.ToString()" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Líneas de residuo ───────────────────────────────────────────── *@
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">
+                        <i class="bi bi-list-ul card-title-icon"></i>Líneas de residuo
+                        <span class="badge badge-neutral ms-2">@d.Residues.Count</span>
+                    </span>
+                </div>
+                <div class="card-body p-0">
+                    @if (d.Residues.Count == 0)
+                    {
+                        <div class="p-3 cell-muted">Sin líneas de residuo definidas.</div>
+                    }
+                    else
+                    {
+                        <div class="table-wrapper">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Código LER</th>
+                                        <th>Descripción LER</th>
+                                        <th class="cell-number">Peso est. (kg)</th>
+                                        <th>Ud. medida</th>
+                                        <th class="cell-number">Unidades</th>
+                                        <th>Peligroso</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var r in d.Residues)
+                                    {
+                                        <tr>
+                                            <td class="cell-muted">@(r.SortOrder + 1)</td>
+                                            <td class="font-semibold">@(r.LerCodeCode ?? "—")</td>
+                                            <td class="cell-muted">@(r.LerCodeDescription ?? "—")</td>
+                                            <td class="cell-number">@(r.EstimatedWeight.HasValue ? $"{r.EstimatedWeight:N3}" : "—")</td>
+                                            <td class="cell-muted">@(r.MeasureUnit?.ToString() ?? "—")</td>
+                                            <td class="cell-number">@(r.Units?.ToString() ?? "—")</td>
+                                            <td>
+                                                @if (r.LerCodeIsDangerous)
+                                                {
+                                                    <span class="badge badge-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i>Sí</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="cell-muted">No</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
                 </div>
             </div>
         </div>

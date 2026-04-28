@@ -204,6 +204,29 @@ public class ServiceOrderConfiguration : IEntityTypeConfiguration<ServiceOrder>
     }
 }
 
+public class ServiceOrderResidueConfiguration : IEntityTypeConfiguration<ServiceOrderResidue>
+{
+    public void Configure(EntityTypeBuilder<ServiceOrderResidue> builder)
+    {
+        builder.ToTable("ServiceOrderResidues");
+        builder.HasKey(e => e.Id);
+
+        builder.Property(e => e.EstimatedWeight).HasColumnType("decimal(18,3)");
+
+        builder.HasOne(e => e.ServiceOrder)
+            .WithMany(s => s.Residues)
+            .HasForeignKey(e => e.IdServiceOrder)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(e => e.LerCode)
+            .WithMany()
+            .HasForeignKey(e => e.IdLERCode)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.IdServiceOrder).HasDatabaseName("IX_ServiceOrderResidues_IdServiceOrder");
+    }
+}
+
 // ── Traslados ─────────────────────────────────────────────────────────────────
 
 public class WasteMoveConfiguration : IEntityTypeConfiguration<WasteMove>
