@@ -1,0 +1,344 @@
+@using GreenTransit.Application.Features.Geography.DTOs
+@using GreenTransit.Application.Features.Geography.Queries
+@using MediatR
+
+@inject IMediator Mediator
+
+@*
+    GeographySelector — selectores geográficos en cascada
+    ─────────────────────────────────────────────────────
+    API pública   : string codes — CountryCode, StateCode, ProvinceCode,
+                                   MunicipalityCode, ZipCode  (= campos del FormModel)
+    Cascade interna con int IDs para navegar la jerarquía.
+    Precarga automática: si se reciben valores iniciales (modo edición)
+    los niveles superiores se restauran sin consultas adicionales.
+*@
+
+<div class="row g-2">
+
+    @* ── País ──────────────────────────────────────────────────────────── *@
+    <div class="col-sm-6 col-lg-3">
+        <label class="form-label form-label-sm mb-1">País</label>
+        @if (_loadingCountries)
+        {
+            <GeoSpinner />
+        }
+        else
+        {
+            <select class="form-select form-select-sm"
+                    value="@(_countryId?.ToString() ?? "")"
+                    @onchange="OnCountryChangedAsync">
+                <option value="">— País —</option>
+                @foreach (var c in _countries)
+                {
+                    <option value="@c.Id">@c.Name (@c.IsoCode)</option>
+                }
+            </select>
+        }
+    </div>
+
+    @* ── Comunidad autónoma ─────────────────────────────────────────────── *@
+    <div class="col-sm-6 col-lg-3">
+        <label class="form-label form-label-sm mb-1">Comunidad autónoma</label>
+        @if (_loadingStates)
+        {
+            <GeoSpinner />
+        }
+        else
+        {
+            <select class="form-select form-select-sm"
+                    disabled="@(_countryId is null)"
+                    value="@(_stateId?.ToString() ?? "")"
+                    @onchange="OnStateChangedAsync">
+                <option value="">— CCAA —</option>
+                @foreach (var s in _states)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        }
+    </div>
+
+    @* ── Provincia ──────────────────────────────────────────────────────── *@
+    <div class="col-sm-6 col-lg-3">
+        <label class="form-label form-label-sm mb-1">Provincia</label>
+        @if (_loadingProvinces)
+        {
+            <GeoSpinner />
+        }
+        else
+        {
+            <select class="form-select form-select-sm"
+                    disabled="@(_stateId is null)"
+                    value="@(ProvinceCode ?? "")"
+                    @onchange="OnProvinceChangedAsync">
+                <option value="">— Provincia —</option>
+                @foreach (var p in _provinces)
+                {
+                    <option value="@p.Code">@p.Name</option>
+                }
+            </select>
+        }
+    </div>
+
+    @* ── Municipio ──────────────────────────────────────────────────────── *@
+    <div class="col-sm-6 col-lg-3">
+        <label class="form-label form-label-sm mb-1">Municipio</label>
+        @if (_loadingMunicipalities)
+        {
+            <GeoSpinner />
+        }
+        else
+        {
+            <select class="form-select form-select-sm"
+                    disabled="@(_provinceId is null)"
+                    value="@(MunicipalityCode ?? "")"
+                    @onchange="OnMunicipalityChangedAsync">
+                <option value="">— Municipio —</option>
+                @foreach (var m in _municipalities)
+                {
+                    <option value="@m.Code">@m.Name</option>
+                }
+            </select>
+        }
+    </div>
+
+    @* ── Código postal ──────────────────────────────────────────────────── *@
+    <div class="col-sm-6 col-lg-3">
+        <label class="form-label form-label-sm mb-1">Código postal</label>
+        @if (_loadingZipCodes)
+        {
+            <GeoSpinner />
+        }
+        else if (_zipCodes.Any())
+        {
+            <select class="form-select form-select-sm"
+                    disabled="@(_municipalityId is null)"
+                    value="@(ZipCode ?? "")"
+                    @onchange="OnZipCodeChanged">
+                <option value="">— CP —</option>
+                @foreach (var z in _zipCodes)
+                {
+                    <option value="@z">@z</option>
+                }
+            </select>
+        }
+        else
+        {
+            <input class="form-control form-control-sm"
+                   placeholder="Código postal"
+                   value="@ZipCode"
+                   @oninput="OnZipCodeChanged" />
+        }
+    </div>
+
+</div>
+
+@code {
+
+    // ── Parámetros públicos — string codes (alineados con FormModel) ──────────
+
+    [Parameter] public string? CountryCode      { get; set; }
+    [Parameter] public EventCallback<string?> CountryCodeChanged      { get; set; }
+
+    [Parameter] public string? StateCode        { get; set; }
+    [Parameter] public EventCallback<string?> StateCodeChanged        { get; set; }
+
+    [Parameter] public string? ProvinceCode     { get; set; }
+    [Parameter] public EventCallback<string?> ProvinceCodeChanged     { get; set; }
+
+    [Parameter] public string? MunicipalityCode { get; set; }
+    [Parameter] public EventCallback<string?> MunicipalityCodeChanged { get; set; }
+
+    [Parameter] public string? ZipCode          { get; set; }
+    [Parameter] public EventCallback<string?> ZipCodeChanged          { get; set; }
+
+    // ── IDs internos para la cascade ──────────────────────────────────────────
+
+    private int? _countryId;
+    private int? _stateId;
+    private int? _provinceId;
+    private int? _municipalityId;
+
+    // ── Listas de datos cargados ──────────────────────────────────────────────
+
+    private IEnumerable<CountryDto>      _countries      = [];
+    private IEnumerable<StateDto>        _states         = [];
+    private IEnumerable<ProvinceDto>     _provinces      = [];
+    private IEnumerable<MunicipalityDto> _municipalities = [];
+    private IEnumerable<string>          _zipCodes       = [];
+
+    // ── Flags de carga ────────────────────────────────────────────────────────
+
+    private bool _loadingCountries      = true;
+    private bool _loadingStates         = false;
+    private bool _loadingProvinces      = false;
+    private bool _loadingMunicipalities = false;
+    private bool _loadingZipCodes       = false;
+
+    // ── Inicialización: precarga desde codes en modo edición ──────────────────
+    // No requiere queries adicionales: busca por code en las listas ya cargadas.
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loadingCountries = true;
+        _countries        = await Mediator.Send(new GetCountriesQuery());
+        _loadingCountries = false;
+
+        if (string.IsNullOrEmpty(CountryCode)) return;
+
+        var country = _countries.FirstOrDefault(c => c.IsoCode == CountryCode);
+        if (country is null) return;
+
+        _countryId = country.Id;
+        await LoadStatesAsync(country.Id);
+
+        if (string.IsNullOrEmpty(StateCode)) return;
+
+        var state = _states.FirstOrDefault(s => s.Code == StateCode);
+        if (state is null) return;
+
+        _stateId = state.Id;
+        await LoadProvincesAsync(state.Id);
+
+        if (string.IsNullOrEmpty(ProvinceCode)) return;
+
+        var province = _provinces.FirstOrDefault(p => p.Code == ProvinceCode);
+        if (province is null) return;
+
+        _provinceId = province.Id;
+        await LoadMunicipalitiesAsync(province.Id);
+
+        if (string.IsNullOrEmpty(MunicipalityCode)) return;
+
+        var muni = _municipalities.FirstOrDefault(m => m.Code == MunicipalityCode);
+        if (muni is null) return;
+
+        _municipalityId = muni.Id;
+        await LoadZipCodesAsync(muni.Id);
+    }
+
+    // ── Manejadores de cambio ─────────────────────────────────────────────────
+
+    private async Task OnCountryChangedAsync(ChangeEventArgs e)
+    {
+        var id = ParseInt(e.Value?.ToString());
+
+        // Limpiar todos los niveles inferiores
+        _stateId = null; _provinceId = null; _municipalityId = null;
+        _states = []; _provinces = []; _municipalities = []; _zipCodes = [];
+        await StateCodeChanged.InvokeAsync(null);
+        await ProvinceCodeChanged.InvokeAsync(null);
+        await MunicipalityCodeChanged.InvokeAsync(null);
+        await ZipCodeChanged.InvokeAsync(null);
+
+        _countryId = id;
+        await CountryCodeChanged.InvokeAsync(
+            id.HasValue ? _countries.FirstOrDefault(c => c.Id == id)?.IsoCode : null);
+
+        if (id.HasValue) await LoadStatesAsync(id.Value);
+    }
+
+    private async Task OnStateChangedAsync(ChangeEventArgs e)
+    {
+        var id = ParseInt(e.Value?.ToString());
+
+        _provinceId = null; _municipalityId = null;
+        _provinces = []; _municipalities = []; _zipCodes = [];
+        await ProvinceCodeChanged.InvokeAsync(null);
+        await MunicipalityCodeChanged.InvokeAsync(null);
+        await ZipCodeChanged.InvokeAsync(null);
+
+        _stateId = id;
+        await StateCodeChanged.InvokeAsync(
+            id.HasValue ? _states.FirstOrDefault(s => s.Id == id)?.Code : null);
+
+        if (id.HasValue) await LoadProvincesAsync(id.Value);
+    }
+
+    private async Task OnProvinceChangedAsync(ChangeEventArgs e)
+    {
+        var code = Nullify(e.Value?.ToString());
+
+        _municipalityId = null;
+        _municipalities = []; _zipCodes = [];
+        await MunicipalityCodeChanged.InvokeAsync(null);
+        await ZipCodeChanged.InvokeAsync(null);
+        await ProvinceCodeChanged.InvokeAsync(code);
+
+        if (code is not null)
+        {
+            var province = _provinces.FirstOrDefault(p => p.Code == code);
+            if (province is not null)
+            {
+                _provinceId = province.Id;
+                await LoadMunicipalitiesAsync(province.Id);
+            }
+        }
+        else
+        {
+            _provinceId = null;
+        }
+    }
+
+    private async Task OnMunicipalityChangedAsync(ChangeEventArgs e)
+    {
+        var code = Nullify(e.Value?.ToString());
+
+        _zipCodes = [];
+        await ZipCodeChanged.InvokeAsync(null);
+        await MunicipalityCodeChanged.InvokeAsync(code);
+
+        if (code is not null)
+        {
+            var muni = _municipalities.FirstOrDefault(m => m.Code == code);
+            if (muni is not null)
+            {
+                _municipalityId = muni.Id;
+                await LoadZipCodesAsync(muni.Id);
+            }
+        }
+        else
+        {
+            _municipalityId = null;
+        }
+    }
+
+    private async Task OnZipCodeChanged(ChangeEventArgs e)
+        => await ZipCodeChanged.InvokeAsync(Nullify(e.Value?.ToString()));
+
+    // ── Carga de niveles ──────────────────────────────────────────────────────
+
+    private async Task LoadStatesAsync(int countryId)
+    {
+        _loadingStates = true;
+        _states        = await Mediator.Send(new GetStatesByCountryQuery(countryId));
+        _loadingStates = false;
+    }
+
+    private async Task LoadProvincesAsync(int stateId)
+    {
+        _loadingProvinces = true;
+        _provinces        = await Mediator.Send(new GetProvincesByStateQuery(stateId));
+        _loadingProvinces = false;
+    }
+
+    private async Task LoadMunicipalitiesAsync(int provinceId)
+    {
+        _loadingMunicipalities = true;
+        _municipalities        = await Mediator.Send(new GetMunicipalitiesByProvinceQuery(provinceId));
+        _loadingMunicipalities = false;
+    }
+
+    private async Task LoadZipCodesAsync(int municipalityId)
+    {
+        _loadingZipCodes = true;
+        _zipCodes        = await Mediator.Send(new GetZipCodesByMunicipalityQuery(municipalityId));
+        _loadingZipCodes = false;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static int?    ParseInt(string? s) => int.TryParse(s, out var v) ? v : null;
+    private static string? Nullify(string? s)  => string.IsNullOrEmpty(s) ? null : s;
+}

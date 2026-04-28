@@ -1,0 +1,388 @@
+@page "/waste-moves/{WasteMoveId:guid}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Application.Features.WasteMoves.Commands
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Detalle Traslado de Residuos</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Traslado no encontrado.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/waste-moves")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    var d       = _detail;
+    var editUrl = "/waste-moves/" + d.Id + "/edit";
+
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1 class="page-title">
+                <i class="bi bi-truck me-2"></i>
+                @(d.WasteMoveReference ?? d.Id.ToString()[..8])
+            </h1>
+            <div class="d-flex gap-2 mt-1 flex-wrap">
+                <WasteMoveStatusStepper Status="@d.ServiceStatus" />
+            </div>
+        </div>
+        <div class="page-header-actions">
+            @if (WasteMoveStatuses.Editable.Contains(d.ServiceStatus ?? ""))
+            {
+                <button class="btn btn-outline btn-sm"
+                        @onclick="() => Nav.NavigateTo(editUrl)">
+                    <i class="bi bi-pencil me-1"></i>Editar
+                </button>
+            }
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick='() => Nav.NavigateTo("/waste-moves")'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-2">
+
+        @* ── Identificación ──────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-info-circle card-header-icon"></i>Identificación
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Referencia"      Value="@(d.WasteMoveReference ?? "—")" />
+                    <DetailRow Label="Estado"          Value="@(WasteMoveStatuses.Label(d.ServiceStatus ?? ""))" />
+                    <DetailRow Label="Fecha solicitud" Value="@(d.RequestDate?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                    <DetailRow Label="SO vinculada"    Value="@(d.ServiceOrderNumber ?? "—")" />
+                    <DetailRow Label="Código LER"      Value="@(d.LerCodeCode != null ? $"{d.LerCodeCode} — {d.LerCodeDescription}" : "—")" />
+                    @if (d.LerCodeIsDangerous)
+                    {
+                        <div class="mt-1">
+                            <span class="badge badge-danger">
+                                <i class="bi bi-exclamation-triangle-fill"></i> Residuo peligroso
+                            </span>
+                        </div>
+                    }
+                    <DetailRow Label="Lote"    Value="@(d.Lot ?? "—")" />
+                    <DetailRow Label="Versión" Value="@d.Version.ToString()" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Entidades ───────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-building card-header-icon"></i>Entidades
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Origen"              Value="@(d.SourceName ?? "—")" />
+                    <DetailRow Label="Destino"             Value="@(d.DestinationName ?? "—")" />
+                    <DetailRow Label="SCRAP"               Value="@(d.ScrapName ?? "—")" />
+                    <DetailRow Label="SCRAP secundario"    Value="@(d.Scrap2Name ?? "—")" />
+                    <DetailRow Label="Operador traslado"   Value="@(d.OperatorTransferName ?? "—")" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Fechas ──────────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-calendar3 card-header-icon"></i>Fechas
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Recogida planif. inicio"  Value="@(d.PlannedPickupStart?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                    <DetailRow Label="Recogida planif. fin"     Value="@(d.PlannedPickupEnd?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                    <DetailRow Label="Entrega planif. inicio"   Value="@(d.PlannedDeliveryStart?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                    <DetailRow Label="Entrega planif. fin"      Value="@(d.PlannedDeliveryEnd?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                    <DetailRow Label="Recogida real inicio"     Value="@(d.ActualPickupStart?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                    <DetailRow Label="Recogida real fin"        Value="@(d.ActualPickupEnd?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                    <DetailRow Label="Entrega real inicio"      Value="@(d.ActualDeliveryStart?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                    <DetailRow Label="Entrega real fin"         Value="@(d.ActualDeliveryEnd?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Documentación ───────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-file-earmark-text card-header-icon"></i>Documentación
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="ID documento"     Value="@(d.DocumentId ?? "—")" />
+                    <DetailRow Label="Estado firma"     Value="@(d.SignatureStatus ?? "—")" />
+                    <DetailRow Label="Creado"           Value="@(d.DateCreateSys?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                    <DetailRow Label="Última modificación" Value="@(d.DateModifiedSys?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    @* ── Líneas de residuos ──────────────────────────────────────────────── *@
+    <div class="card mt-3">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <span>
+                <i class="bi bi-list-ul card-header-icon"></i>
+                Líneas de residuos
+                <span class="badge badge-neutral ms-2">@d.Residues.Count</span>
+            </span>
+        </div>
+        <div class="card-body p-0">
+            @if (d.Residues.Count == 0)
+            {
+                <div class="text-center py-4 cell-muted">Sin líneas de residuos.</div>
+            }
+            else
+            {
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Código LER</th>
+                                <th>Residuo</th>
+                                <th>Peligroso</th>
+                                <th class="cell-number">Peso</th>
+                                <th>Unidad</th>
+                                <th class="cell-number">Uds.</th>
+                                <th class="cell-number">€/kg</th>
+                                <th>Operación destino</th>
+                                <th>Transportista</th>
+                                <th>Fecha entrega</th>
+                                @if (WasteMoveStatuses.Editable.Contains(d.ServiceStatus ?? ""))
+                                {
+                                    <th style="width:50px"></th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in d.Residues)
+                            {
+                                @if (_editingResidueId == r.Id)
+                                {
+                                    <tr class="table-row-editing">
+                                        <td class="cell-muted">
+                                            @if (d.LerCodeCode != null)
+                                            {
+                                                <span title="@d.LerCodeDescription">@d.LerCodeCode</span>
+                                            }
+                                            else
+                                            {
+                                                <span>—</span>
+                                            }
+                                        </td>
+                                        <td colspan="2" class="cell-muted">@(r.ResidueName ?? "—")</td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm"
+                                                   style="width:90px"
+                                                   @bind="_editWeight" />
+                                        </td>
+                                        <td>
+                                            <input class="form-control form-control-sm"
+                                                   style="width:70px"
+                                                   @bind="_editMeasureUnit" />
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm"
+                                                   style="width:70px"
+                                                   @bind="_editUnits" />
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm"
+                                                   style="width:80px"
+                                                   @bind="_editUnitPriceKg" />
+                                        </td>
+                                        <td colspan="2" class="cell-muted">
+                                            @(r.TreatmentOperationCode ?? "—")
+                                        </td>
+                                        <td>
+                                            <input type="date" class="form-control form-control-sm"
+                                                   value="@(_editDateDelivery?.ToString("yyyy-MM-dd") ?? "")"
+                                                   @onchange="e => _editDateDelivery = ParseDate(e.Value?.ToString())" />
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-primary btn-sm btn-icon-only"
+                                                    title="Guardar"
+                                                    @onclick="() => SaveResidueAsync(r.Id)">
+                                                <i class="bi bi-check-lg"></i>
+                                            </button>
+                                            <button class="btn btn-ghost btn-sm btn-icon-only"
+                                                    title="Cancelar"
+                                                    @onclick="CancelEdit">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td class="cell-muted">
+                                            @if (d.LerCodeCode != null)
+                                            {
+                                                <span title="@d.LerCodeDescription">@d.LerCodeCode</span>
+                                                @if (d.LerCodeIsDangerous)
+                                                {
+                                                    <i class="bi bi-exclamation-triangle-fill text-danger ms-1"
+                                                       title="Peligroso"></i>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span>—</span>
+                                            }
+                                        </td>
+                                        <td>@(r.ResidueName ?? "—")</td>
+                                        <td>
+                                            @if (r.IsDangerous)
+                                            {
+                                                <span class="badge badge-danger">
+                                                    <i class="bi bi-exclamation-triangle-fill"></i> Peligroso
+                                                </span>
+                                            }
+                                            else if (r.IsRAEE)
+                                            {
+                                                <span class="badge badge-warning">RAEE</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="cell-muted">No</span>
+                                            }
+                                        </td>
+                                        <td class="cell-number">
+                                            @(r.Weight.HasValue ? $"{r.Weight:N2}" : "—")
+                                        </td>
+                                        <td class="cell-muted">@(r.MeasureUnit ?? "—")</td>
+                                        <td class="cell-number">@(r.Units?.ToString() ?? "—")</td>
+                                        <td class="cell-number">
+                                            @(r.UnitPriceKg.HasValue ? $"{r.UnitPriceKg:N4}" : "—")
+                                        </td>
+                                        <td class="cell-muted">
+                                            @if (!string.IsNullOrEmpty(r.TreatmentOperationCode))
+                                            {
+                                                <span>@r.TreatmentOperationCode</span>
+                                                <span class="ms-1 cell-muted">@r.TreatmentOperationDescription</span>
+                                            }
+                                            else
+                                            {
+                                                @:—
+                                            }
+                                        </td>
+                                        <td class="cell-muted">@(r.CarrierName ?? "—")</td>
+                                        <td class="cell-muted">
+                                            @(r.DateDelivery?.ToString("dd/MM/yyyy") ?? "—")
+                                        </td>
+                                        @if (WasteMoveStatuses.Editable.Contains(d.ServiceStatus ?? ""))
+                                        {
+                                            <td>
+                                                <button class="btn btn-ghost btn-sm btn-icon-only"
+                                                        title="Editar línea"
+                                                        @onclick="() => StartEdit(r)">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_saveError))
+    {
+        <div class="alert alert-danger mt-3">@_saveError</div>
+    }
+}
+
+@code {
+    [Parameter] public Guid WasteMoveId { get; set; }
+
+    private bool                 _loading = true;
+    private WasteMoveDetailDto?  _detail;
+    private string?              _saveError;
+
+    // ── Edición inline de línea ───────────────────────────────────────────────
+    private Guid?     _editingResidueId;
+    private decimal?  _editWeight;
+    private string?   _editMeasureUnit;
+    private int?      _editUnits;
+    private decimal?  _editUnitPriceKg;
+    private DateTime? _editDateDelivery;
+
+    protected override async Task OnInitializedAsync()
+        => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _detail  = await Mediator.Send(new GetWasteMoveByIdQuery(WasteMoveId));
+        _loading = false;
+    }
+
+    private void StartEdit(WasteMoveResidueDto r)
+    {
+        _editingResidueId = r.Id;
+        _editWeight       = r.Weight;
+        _editMeasureUnit  = r.MeasureUnit;
+        _editUnits        = r.Units;
+        _editUnitPriceKg  = r.UnitPriceKg;
+        _editDateDelivery = r.DateDelivery;
+        _saveError        = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingResidueId = null;
+        _saveError        = null;
+    }
+
+    private async Task SaveResidueAsync(Guid residueId)
+    {
+        _saveError = null;
+        try
+        {
+            var cmd = new UpdateWasteMoveResidueCommand(
+                Id                         : residueId,
+                Weight                     : _editWeight,
+                MeasureUnit                : _editMeasureUnit,
+                Units                      : _editUnits,
+                UnitPriceKg                : _editUnitPriceKg,
+                IdTreatmentOperationDestiny: null,
+                DateDelivery               : _editDateDelivery
+            );
+            await Mediator.Send(cmd);
+            _editingResidueId = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    private static DateTime? ParseDate(string? value)
+        => DateTime.TryParse(value, out var dt) ? dt : null;
+}

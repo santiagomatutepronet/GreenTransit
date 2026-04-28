@@ -77,6 +77,9 @@ try
     builder.Services.AddScoped<IUnitOfWork, GreenTransit.Infrastructure.Persistence.UnitOfWork>();
     builder.Services.AddScoped<IUserRepository, GreenTransit.Infrastructure.Persistence.Repositories.UserRepository>();
 
+    // ── Caché en memoria (catálogos geográficos y otros estáticos) ───────────
+    builder.Services.AddMemoryCache();
+
     // ── MediatR: handlers + pipeline behaviors ────────────────────────────────
     // Orden: LoggingBehavior (externo) → ValidationBehavior → handler
     builder.Services.AddMediatR(cfg =>

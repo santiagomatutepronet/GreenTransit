@@ -5,7 +5,16 @@ Adjunto los documentos de referencia de mi proyecto:
 2. README.md → especificaciones del proyecto
 3. Crear_BD_v4_1.sql → script de base de datos con 38 tablas
 4. Mapa_Funcionalidades_GreenTransit.md  → Conjunto de funcionalidades del proyecto
-Lee los cuatro documentos y confirma que entiendes el stack, la arquitectura y el mapa de funcionalidades.
+5. site.css  → Design system oficial de la aplicación (paleta, tipografía, layout, formularios,
+     tablas, botones, estados, componentes Blazor, etc.).
 
+Lee los cuatro documentos y confirma que entiendes el stack, la arquitectura y el mapa de funcionalidades.
+- Asume que site.css es el sistema de estilos único y obligatorio del proyecto.
+- Aplica siempre sus clases y convenciones al generar o modificar código UI.
+- No inventes estilos nuevos ni uses CSS inline salvo que esté justificado.
+- Prioriza coherencia visual, trazabilidad y enfoque B2B regulatorio.
 
 Cada vez que completes un paso, actualiza las líneas de estado del archivo cambiando ⬜ Pendiente ejecutar por ✅ Completado  para que la próxima sesión sepa exactamente dónde dejaste el trabajo.
+
+Pendiente del día anterior:
+Quiero poder añadir varias lineas de resiuso en las ordenes de servicio, no solo una como esta actualmente. Ademas, al seleccionar la orden de servicio para crear el traslado de residuos, que se trasladen todas las lineas de la orden de servicio al traslado de residuos, siguiendo el comportamiento actual

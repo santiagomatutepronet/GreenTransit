@@ -1,0 +1,312 @@
+@page "/waste-moves/{WasteMoveId:guid}/edit"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.WasteMoves.Commands
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Editar Traslado</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Traslado no encontrado.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/waste-moves")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    var detailUrl = "/waste-moves/" + WasteMoveId;
+
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1><i class="bi bi-truck me-2"></i>Editar traslado</h1>
+            <p class="cell-muted">@_detail.WasteMoveReference</p>
+        </div>
+        <div class="page-header-actions">
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick="() => Nav.NavigateTo(detailUrl)">
+                <i class="bi bi-arrow-left me-1"></i>Cancelar
+            </button>
+        </div>
+    </div>
+
+    <EditForm Model="_model" OnValidSubmit="SaveAsync">
+
+        @* ── Entidades ───────────────────────────────────────────────────── *@
+        <div class="form-section">
+            <div class="form-section-title">
+                <i class="bi bi-building form-section-title-icon"></i>
+                Entidades del traslado
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label>
+                        Origen <span class="required">*</span>
+                        <span class="field-help">
+                            Roles: @string.Join(", ", WasteMoveSourceRoles.Valid)
+                        </span>
+                    </label>
+                    <select class="form-control" @bind="_model.IdSource">
+                        <option value="">— Seleccionar —</option>
+                        @foreach (var e in _sourceEntities)
+                        {
+                            <option value="@e.Id">
+                                @e.Name (@EntityRoles.Label(e.EntityRole))
+                            </option>
+                        }
+                    </select>
+                    <FieldMessage Field="IdSource" Errors="_validationErrors" />
+                </div>
+
+                <div class="col-md-4">
+                    <label>
+                        Destino <span class="required">*</span>
+                        <span class="field-help">
+                            Roles: @string.Join(", ", WasteMoveDestinationRoles.Valid)
+                        </span>
+                    </label>
+                    <select class="form-control" @bind="_model.IdDestination">
+                        <option value="">— Seleccionar —</option>
+                        @foreach (var e in _destinationEntities)
+                        {
+                            <option value="@e.Id">
+                                @e.Name (@EntityRoles.Label(e.EntityRole))
+                            </option>
+                        }
+                    </select>
+                    <FieldMessage Field="IdDestination" Errors="_validationErrors" />
+                </div>
+
+                <div class="col-md-4">
+                    <label>SCRAP <span class="required">*</span></label>
+                    <select class="form-control" @bind="_model.IdScrap">
+                        <option value="">— Seleccionar —</option>
+                        @foreach (var e in _scrapEntities)
+                        {
+                            <option value="@e.Id">@e.Name</option>
+                        }
+                    </select>
+                    <FieldMessage Field="IdScrap" Errors="_validationErrors" />
+                </div>
+
+                <div class="col-md-4">
+                    <label>SCRAP secundario (opcional)</label>
+                    <select class="form-control" @bind="_model.IdScrap2">
+                        <option value="">— Ninguno —</option>
+                        @foreach (var e in _scrapEntities)
+                        {
+                            <option value="@e.Id">@e.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        @* ── Fechas planificadas ─────────────────────────────────────────── *@
+        <div class="form-section">
+            <div class="form-section-title">
+                <i class="bi bi-calendar3 form-section-title-icon"></i>
+                Fechas planificadas (opcionales)
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label>Inicio recogida</label>
+                    <input type="datetime-local" class="form-control"
+                           value="@(_model.PlannedPickupStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                           @onchange="e => _model.PlannedPickupStart = ParseDate(e.Value?.ToString())" />
+                </div>
+                <div class="col-md-3">
+                    <label>Fin recogida</label>
+                    <input type="datetime-local" class="form-control"
+                           value="@(_model.PlannedPickupEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                           @onchange="e => _model.PlannedPickupEnd = ParseDate(e.Value?.ToString())" />
+                    <FieldMessage Field="PlannedPickupEnd" Errors="_validationErrors" />
+                </div>
+                <div class="col-md-3">
+                    <label>Inicio entrega</label>
+                    <input type="datetime-local" class="form-control"
+                           value="@(_model.PlannedDeliveryStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                           @onchange="e => _model.PlannedDeliveryStart = ParseDate(e.Value?.ToString())" />
+                    <FieldMessage Field="PlannedDeliveryStart" Errors="_validationErrors" />
+                </div>
+                <div class="col-md-3">
+                    <label>Fin entrega</label>
+                    <input type="datetime-local" class="form-control"
+                           value="@(_model.PlannedDeliveryEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                           @onchange="e => _model.PlannedDeliveryEnd = ParseDate(e.Value?.ToString())" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Errores y acciones ──────────────────────────────────────────── *@
+        @if (_validationErrors.Any())
+        {
+            <div class="alert alert-danger mt-3">
+                <ul class="mb-0">
+                    @foreach (var err in _validationErrors.Values.SelectMany(v => v))
+                    {
+                        <li>@err</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(_serverError))
+        {
+            <div class="alert alert-danger mt-3">@_serverError</div>
+        }
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary" disabled="@_saving">
+                @if (_saving) { <span class="spinner spinner-sm me-1"></span> }
+                <i class="bi bi-floppy me-1"></i>Guardar cambios
+            </button>
+            <button type="button" class="btn btn-outline-neutral"
+                    @onclick="() => Nav.NavigateTo(detailUrl)">
+                Cancelar
+            </button>
+        </div>
+
+    </EditForm>
+}
+
+@code {
+    [Parameter] public Guid WasteMoveId { get; set; }
+
+    private bool                _loading = true;
+    private bool                _saving  = false;
+    private string?             _serverError;
+    private WasteMoveDetailDto? _detail;
+    private Dictionary<string, List<string>> _validationErrors = new();
+
+    private sealed class FormModel
+    {
+        public Guid?     IdSource             { get; set; }
+        public Guid?     IdDestination        { get; set; }
+        public Guid?     IdScrap              { get; set; }
+        public Guid?     IdScrap2             { get; set; }
+        public DateTime? PlannedPickupStart   { get; set; }
+        public DateTime? PlannedPickupEnd     { get; set; }
+        public DateTime? PlannedDeliveryStart { get; set; }
+        public DateTime? PlannedDeliveryEnd   { get; set; }
+    }
+
+    private readonly FormModel _model = new();
+
+    private IReadOnlyList<EntitySelectorDto> _sourceEntities      = [];
+    private IReadOnlyList<EntitySelectorDto> _destinationEntities = [];
+    private IReadOnlyList<EntitySelectorDto> _scrapEntities       = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail = await Mediator.Send(new GetWasteMoveByIdQuery(WasteMoveId));
+
+        if (_detail is not null)
+        {
+            // Validar que el traslado es editable
+            if (!WasteMoveStatuses.Editable.Contains(_detail.ServiceStatus ?? ""))
+            {
+                Nav.NavigateTo("/waste-moves/" + WasteMoveId);
+                return;
+            }
+
+            // Precargar modelo con valores actuales
+            _model.IdSource             = _detail.IdSource;
+            _model.IdDestination        = _detail.IdDestination;
+            _model.IdScrap              = _detail.IdScrap;
+            _model.IdScrap2             = _detail.IdScrap2;
+            _model.PlannedPickupStart   = _detail.PlannedPickupStart;
+            _model.PlannedPickupEnd     = _detail.PlannedPickupEnd;
+            _model.PlannedDeliveryStart = _detail.PlannedDeliveryStart;
+            _model.PlannedDeliveryEnd   = _detail.PlannedDeliveryEnd;
+        }
+
+        var allEntities = await Mediator.Send(new GetEntitiesForSelectorQuery());
+        _sourceEntities      = allEntities.Where(e => WasteMoveSourceRoles.Valid.Contains(e.EntityRole)).ToList();
+        _destinationEntities = allEntities.Where(e => WasteMoveDestinationRoles.Valid.Contains(e.EntityRole)).ToList();
+        _scrapEntities       = allEntities.Where(e => e.EntityRole == EntityRoles.SCRAP).ToList();
+
+        _loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _validationErrors.Clear();
+        _serverError = null;
+
+        if (_model.IdSource is null)
+        {
+            _validationErrors["IdSource"] = ["El origen es obligatorio."];
+            return;
+        }
+        if (_model.IdDestination is null)
+        {
+            _validationErrors["IdDestination"] = ["El destino es obligatorio."];
+            return;
+        }
+        if (_model.IdScrap is null)
+        {
+            _validationErrors["IdScrap"] = ["El SCRAP es obligatorio."];
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var cmd = new UpdateWasteMoveCommand(
+                Id                   : WasteMoveId,
+                IdSource             : _model.IdSource.Value,
+                IdDestination        : _model.IdDestination.Value,
+                IdScrap              : _model.IdScrap.Value,
+                IdScrap2             : _model.IdScrap2,
+                PlannedPickupStart   : _model.PlannedPickupStart,
+                PlannedPickupEnd     : _model.PlannedPickupEnd,
+                PlannedDeliveryStart : _model.PlannedDeliveryStart,
+                PlannedDeliveryEnd   : _model.PlannedDeliveryEnd
+            );
+
+            await Mediator.Send(cmd);
+            Nav.NavigateTo("/waste-moves/" + WasteMoveId);
+        }
+        catch (FluentValidation.ValidationException vex)
+        {
+            foreach (var err in vex.Errors)
+            {
+                var key = err.PropertyName;
+                if (!_validationErrors.ContainsKey(key))
+                    _validationErrors[key] = [];
+                _validationErrors[key].Add(err.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _serverError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static DateTime? ParseDate(string? value)
+        => DateTime.TryParse(value, out var dt) ? dt : null;
+}

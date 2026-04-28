@@ -1,0 +1,52 @@
+@* Diálogo de confirmación modal reutilizable *@
+
+@if (_visible)
+{
+    <div class="modal-backdrop" @onclick="Cancel">
+        <div class="modal modal-sm" @onclick:stopPropagation>
+            <div class="modal-header">
+                <span class="modal-title">
+                    <i class="bi bi-exclamation-triangle-fill" style="color:var(--warning);margin-right:.4rem"></i>@Title
+                </span>
+                <button class="modal-close" @onclick="Cancel" aria-label="Cerrar">
+                    <i class="bi bi-x-lg"></i>
+                </button>            </div>
+            <div class="modal-body">
+                <p style="margin:0">@Message</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-neutral btn-sm" @onclick="Cancel">Cancelar</button>
+                <button class="btn btn-danger btn-sm" @onclick="Confirm">@ConfirmText</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Title       { get; set; } = "Confirmar acción";
+    [Parameter] public string Message     { get; set; } = "¿Está seguro?";
+    [Parameter] public string ConfirmText { get; set; } = "Confirmar";
+
+    private bool _visible;
+    private TaskCompletionSource<bool>? _tcs;
+
+    public Task<bool> ShowAsync()
+    {
+        _tcs     = new TaskCompletionSource<bool>();
+        _visible = true;
+        StateHasChanged();
+        return _tcs.Task;
+    }
+
+    private void Confirm()
+    {
+        _visible = false;
+        _tcs?.TrySetResult(true);
+    }
+
+    private void Cancel()
+    {
+        _visible = false;
+        _tcs?.TrySetResult(false);
+    }
+}

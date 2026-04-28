@@ -22,23 +22,23 @@
 </div>
 
 @* ── Filtros ───────────────────────────────────────────────────────────────── *@
-<div class="filter-bar card mb-3">
-    <div class="card-body d-flex flex-wrap gap-2 align-items-end">
-        <div>
-            <label class="form-label form-label-sm">Búsqueda</label>
-            <input class="form-control form-control-sm" style="min-width:220px"
-                   placeholder="Código, descripción…"
-                   @bind="_searchTerm" @bind:event="oninput" />
-        </div>
-        <div>
-            <label class="form-label form-label-sm">Tipo</label>
-            <select class="form-select form-select-sm" @bind="_filterType">
-                <option value="">— Todos —</option>
-                <option value="Recovery">R — Valorización</option>
-                <option value="Disposal">D — Eliminación</option>
-            </select>
-        </div>
-        <button class="btn btn-link btn-sm" @onclick="ResetFilters">Limpiar</button>
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Búsqueda</label>
+        <input class="form-control"
+               placeholder="Código, descripción…"
+               @bind="_searchTerm" @bind:event="oninput" />
+    </div>
+    <div class="filter-group">
+        <label>Tipo</label>
+        <select class="form-control" @bind="_filterType">
+            <option value="">— Todos —</option>
+            <option value="Recovery">R — Valorización</option>
+            <option value="Disposal">D — Eliminación</option>
+        </select>
+    </div>
+    <div class="filter-actions">
+        <button class="btn btn-ghost btn-sm" @onclick="ResetFilters">Limpiar</button>
     </div>
 </div>
 
@@ -130,8 +130,9 @@ else
                                 </td>
                                 <AuthorizeView Roles="ADMIN">
                                     <td class="text-end">
+                                        @{ var editUrl = $"/treatment-operations/{op.Id}/edit"; }
                                         <button class="btn btn-outline-secondary btn-sm"
-                                                @onclick="() => Nav.NavigateTo($\"/treatment-operations/{op.Id}/edit\")">
+                                                @onclick="() => Nav.NavigateTo(editUrl)">
                                             <i class="bi bi-pencil"></i>
                                         </button>
                                     </td>

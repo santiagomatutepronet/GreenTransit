@@ -1,126 +1,165 @@
 using FluentAssertions;
 using GreenTransit.Application.Features.ServiceOrders.Queries;
+using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using GreenTransit.Tests.Helpers;
 
 namespace GreenTransit.Tests.Application.ServiceOrders;
 
-/// <summary>
-/// Tests del GetServiceOrdersQueryHandler.
-/// Verifican el comportamiento del filtro multi-tenant a través del
-/// HasQueryFilter configurado en AppDbContext.
-/// </summary>
+/// <summary>Tests de GetServiceOrdersQueryHandler — paginación, filtros y aislamiento multi-tenant.</summary>
 public sealed class GetServiceOrdersQueryHandlerTests
 {
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Helper ────────────────────────────────────────────────────────────────
 
-    private static ServiceOrder BuildServiceOrder(Guid ownerId, string number) => new()
+    private static ServiceOrder BuildServiceOrder(
+        Guid ownerId, string number,
+        string status   = ServiceOrderStatuses.Pending,
+        string priority = ServiceOrderPriorities.Normal,
+        DateTime? plannedPickup = null) => new()
     {
-        Id                  = Guid.NewGuid(),
-        OwnerId             = ownerId,
-        ServiceOrderNumber  = number,
-        Status              = "Pending",
-        Priority            = "Normal",
-        IssuedAt            = DateTime.UtcNow,
-        IdUser              = 1,
-        Version             = 1,
-        CreatedAt           = DateTime.UtcNow,
-        UpdatedAt           = DateTime.UtcNow
+        Id                 = Guid.NewGuid(),
+        OwnerId            = ownerId,
+        ServiceOrderNumber = number,
+        Status             = status,
+        Priority           = priority,
+        IssuedAt           = DateTime.UtcNow,
+        PlannedPickupStart = plannedPickup,
+        Version            = 1,
+        IdUser             = 1,
+        CreatedAt          = DateTime.UtcNow,
+        UpdatedAt          = DateTime.UtcNow
     };
 
-    // ── Tests ─────────────────────────────────────────────────────────────────
+    // ── Tests de aislamiento multi-tenant ─────────────────────────────────────
 
     [Fact]
     public async Task Handle_WhenMultipleTenantsExist_ReturnsOnlyCurrentTenantOrders()
     {
-        // Arrange
-        var userService = new FakeCurrentUserService(FakeCurrentUserService.TenantA);
-        await using var ctx = TestDbContextFactory.Create(userService);
+        var user = new FakeCurrentUserService(FakeCurrentUserService.TenantA);
+        await using var ctx = TestDbContextFactory.Create(user);
 
-        // Sembramos órdenes de dos tenants distintos
         ctx.ServiceOrders.AddRange(
             BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-A-001"),
             BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-A-002"),
-            BuildServiceOrder(FakeCurrentUserService.TenantB, "SO-B-001")  // otro tenant
-        );
+            BuildServiceOrder(FakeCurrentUserService.TenantB, "SO-B-001"));
         await ctx.SaveChangesAsync();
 
-        var handler = new GetServiceOrdersQueryHandler(ctx);
+        var result = await new GetServiceOrdersQueryHandler(ctx)
+            .Handle(new GetServiceOrdersQuery(), CancellationToken.None);
 
-        // Act
-        var result = await handler.Handle(new GetServiceOrdersQuery(), CancellationToken.None);
-
-        // Assert — solo las del TenantA deben aparecer
-        result.Should().HaveCount(2);
-        result.Should().AllSatisfy(so =>
-            so.OwnerId.Should().Be(FakeCurrentUserService.TenantA));
-        result.Should().NotContain(so => so.ServiceOrderNumber == "SO-B-001");
+        result.Items.Should().HaveCount(2);
+        result.Items.Should().AllSatisfy(so => so.ServiceOrderNumber.Should().StartWith("SO-A-"));
     }
 
     [Fact]
     public async Task Handle_WhenNoOrders_ReturnsEmptyList()
     {
-        // Arrange
         await using var ctx = TestDbContextFactory.CreateDefault();
-        var handler = new GetServiceOrdersQueryHandler(ctx);
 
-        // Act
-        var result = await handler.Handle(new GetServiceOrdersQuery(), CancellationToken.None);
+        var result = await new GetServiceOrdersQueryHandler(ctx)
+            .Handle(new GetServiceOrdersQuery(), CancellationToken.None);
 
-        // Assert
-        result.Should().NotBeNull();
-        result.Should().BeEmpty();
+        result.Items.Should().BeEmpty();
+        result.TotalCount.Should().Be(0);
     }
 
     [Fact]
-    public async Task Handle_WhenTenantHasOrders_OtherTenantSeesNothing()
+    public async Task Handle_TenantBCannotSeeTenantAOrders()
     {
-        // Arrange — TenantB ve sus propias órdenes, no las de TenantA
-        var tenantAUser = new FakeCurrentUserService(FakeCurrentUserService.TenantA);
-        var tenantBUser = new FakeCurrentUserService(FakeCurrentUserService.TenantB);
-
-        // Usamos la misma BD para probar aislamiento entre tenants
-        var dbName = Guid.NewGuid().ToString();
-
-        await using var ctxA = TestDbContextFactory.Create(tenantAUser);
+        await using var ctxA = TestDbContextFactory.Create(new FakeCurrentUserService(FakeCurrentUserService.TenantA));
         ctxA.ServiceOrders.Add(BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-A-001"));
         await ctxA.SaveChangesAsync();
 
-        // TenantB usa su propio contexto (filtro distinto)
-        await using var ctxB = TestDbContextFactory.Create(tenantBUser);
-        var handlerB = new GetServiceOrdersQueryHandler(ctxB);
+        await using var ctxB = TestDbContextFactory.Create(new FakeCurrentUserService(FakeCurrentUserService.TenantB));
 
-        // Act
-        var result = await handlerB.Handle(new GetServiceOrdersQuery(), CancellationToken.None);
+        var result = await new GetServiceOrdersQueryHandler(ctxB)
+            .Handle(new GetServiceOrdersQuery(), CancellationToken.None);
 
-        // Assert — TenantB no puede ver las órdenes de TenantA
-        result.Should().BeEmpty();
+        result.Items.Should().BeEmpty();
+    }
+
+    // ── Tests de filtros ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Handle_FilterByStatus_ReturnsMatchingOrders()
+    {
+        await using var ctx = TestDbContextFactory.CreateDefault();
+
+        ctx.ServiceOrders.AddRange(
+            BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-001", ServiceOrderStatuses.Pending),
+            BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-002", ServiceOrderStatuses.Scheduled),
+            BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-003", ServiceOrderStatuses.Cancelled));
+        await ctx.SaveChangesAsync();
+
+        var result = await new GetServiceOrdersQueryHandler(ctx)
+            .Handle(new GetServiceOrdersQuery(Status: ServiceOrderStatuses.Pending), CancellationToken.None);
+
+        result.Items.Should().HaveCount(1);
+        result.Items.Single().ServiceOrderNumber.Should().Be("SO-001");
     }
 
     [Fact]
-    public async Task Handle_ReturnsOrdersSortedByIssuedAtDescending()
+    public async Task Handle_FilterBySearchTerm_ReturnsMatchingOrders()
     {
-        // Arrange
-        var userService = new FakeCurrentUserService(FakeCurrentUserService.TenantA);
-        await using var ctx = TestDbContextFactory.Create(userService);
+        await using var ctx = TestDbContextFactory.CreateDefault();
 
-        var earlier = BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-EARLY");
-        var later   = BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-LATE");
-
-        earlier.IssuedAt = DateTime.UtcNow.AddDays(-1);
-        later.IssuedAt   = DateTime.UtcNow;
-
-        ctx.ServiceOrders.AddRange(earlier, later);
+        ctx.ServiceOrders.AddRange(
+            BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-2024-00001"),
+            BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-2024-00002"),
+            BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-2025-00001"));
         await ctx.SaveChangesAsync();
 
-        var handler = new GetServiceOrdersQueryHandler(ctx);
+        var result = await new GetServiceOrdersQueryHandler(ctx)
+            .Handle(new GetServiceOrdersQuery(SearchTerm: "2025"), CancellationToken.None);
 
-        // Act
-        var result = await handler.Handle(new GetServiceOrdersQuery(), CancellationToken.None);
+        result.Items.Should().HaveCount(1);
+        result.Items.Single().ServiceOrderNumber.Should().Be("SO-2025-00001");
+    }
 
-        // Assert — la más reciente debe ir primera
-        result.Should().HaveCount(2);
-        result[0].ServiceOrderNumber.Should().Be("SO-LATE");
-        result[1].ServiceOrderNumber.Should().Be("SO-EARLY");
+    [Fact]
+    public async Task Handle_FilterByPlannedPickupDateRange_ReturnsOrdersInRange()
+    {
+        await using var ctx = TestDbContextFactory.CreateDefault();
+        var today     = DateTime.UtcNow.Date;
+
+        ctx.ServiceOrders.AddRange(
+            BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-PAST",   plannedPickup: today.AddDays(-10)),
+            BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-TODAY",  plannedPickup: today),
+            BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-FUTURE", plannedPickup: today.AddDays(10)));
+        await ctx.SaveChangesAsync();
+
+        var result = await new GetServiceOrdersQueryHandler(ctx).Handle(
+            new GetServiceOrdersQuery(
+                PlannedPickupFrom: today.AddDays(-1),
+                PlannedPickupTo:   today.AddDays(1)),
+            CancellationToken.None);
+
+        result.Items.Should().HaveCount(1);
+        result.Items.Single().ServiceOrderNumber.Should().Be("SO-TODAY");
+    }
+
+    // ── Tests de paginación ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Handle_Pagination_ReturnsCorrectPage()
+    {
+        await using var ctx = TestDbContextFactory.CreateDefault();
+
+        ctx.ServiceOrders.AddRange(
+            Enumerable.Range(1, 25).Select(i =>
+                BuildServiceOrder(FakeCurrentUserService.TenantA, $"SO-{i:000}")));
+        await ctx.SaveChangesAsync();
+
+        var page1 = await new GetServiceOrdersQueryHandler(ctx)
+            .Handle(new GetServiceOrdersQuery(PageNumber: 1, PageSize: 10), CancellationToken.None);
+
+        var page3 = await new GetServiceOrdersQueryHandler(ctx)
+            .Handle(new GetServiceOrdersQuery(PageNumber: 3, PageSize: 10), CancellationToken.None);
+
+        page1.Items.Should().HaveCount(10);
+        page1.TotalCount.Should().Be(25);
+        page1.TotalPages.Should().Be(3);
+        page3.Items.Should().HaveCount(5);
     }
 }
+

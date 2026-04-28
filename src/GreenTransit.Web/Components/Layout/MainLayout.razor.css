@@ -1,25 +1,25 @@
-/* ── Variables de diseño ───────────────────────────────────────────────────── */
+/* ── Variables de diseño (mapeadas a site.css tokens) ─────────────────────── */
 :root {
     --sidebar-width:           240px;
     --sidebar-collapsed-width:  60px;
     --topbar-height:            56px;
     --transition-speed:         0.25s;
 
-    /* Paleta verde/azul GreenTransit */
-    --color-primary:     #1a7a4a;
-    --color-primary-dark:#145f39;
-    --color-accent:      #2196a6;
-    --color-bg:          #f4f6f9;
-    --color-surface:     #ffffff;
-    --color-sidebar-bg:  #1e2d24;
-    --color-sidebar-text:#c8d9cd;
-    --color-sidebar-hover:#2a4033;
-    --color-sidebar-active:#1a7a4a;
-    --color-topbar-bg:   #ffffff;
-    --color-border:      #e0e5e9;
-    --color-text:        #2c3a35;
-    --color-text-muted:  #6b8070;
-    --color-badge-bg:    rgba(255,255,255,0.12);
+    /* Tokens site.css aliased para compatibilidad de componentes heredados */
+    --color-primary:      var(--primary);
+    --color-primary-dark: var(--primary-hover);
+    --color-accent:       var(--secondary);
+    --color-bg:           var(--background);
+    --color-surface:      var(--surface);
+    --color-sidebar-bg:     #1A3628; /* Verde oscuro corporativo GreenTransit  */
+    --color-sidebar-text:   rgba(255,255,255,0.72);
+    --color-sidebar-hover:  #254D38; /* Verde medio — hover                    */
+    --color-sidebar-active: var(--primary);
+    --color-topbar-bg:    var(--surface);
+    --color-border:       var(--border);
+    --color-text:         var(--text-primary);
+    --color-text-muted:   var(--text-muted);
+    --color-badge-bg:     rgba(255,255,255,0.12);
 }
 
 /* ── Dark mode ─────────────────────────────────────────────────────────────── */
@@ -317,7 +317,7 @@
 }
 
 .sidebar {
-    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+    background-image: linear-gradient(180deg, #1E4232 0%, #172E24 100%);
 }
 
 .top-row {

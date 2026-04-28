@@ -1,0 +1,201 @@
+@page "/service-orders/{ServiceOrderId:guid}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.ServiceOrders.Queries
+@using GreenTransit.Application.Features.ServiceOrders.DTOs
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Detalle Orden de Servicio</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Orden de servicio no encontrada.</div>
+    <button class="btn btn-outline-neutral btn-sm" @onclick='() => Nav.NavigateTo("/service-orders")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver
+    </button>
+}
+else
+{
+    var d = _detail;
+    @* URL strings to avoid Razor parser issues with $ inside attributes *@
+    var editUrl  = "/service-orders/" + d.Id + "/edit";
+    var moveUrl  = "/waste-moves/new?serviceOrderId=" + d.Id;
+
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">
+                <i class="bi bi-clipboard2-check me-2"></i>@d.ServiceOrderNumber
+            </h1>
+            <div class="d-flex gap-2 mt-1 flex-wrap">
+                <span class="@ServiceOrderStatuses.BadgeCss(d.Status)">@ServiceOrderStatuses.Label(d.Status)</span>
+                <span class="@ServiceOrderPriorities.BadgeCss(d.Priority)">@ServiceOrderPriorities.Label(d.Priority)</span>
+                @if (d.LerCodeIsDangerous)
+                {
+                    <span class="badge badge-danger">
+                        <i class="bi bi-exclamation-triangle-fill"></i> Residuo peligroso
+                    </span>
+                }
+            </div>
+        </div>
+        <div class="page-header-actions">
+            @if (ServiceOrderStatuses.Editable.Contains(d.Status))
+            {
+                <button class="btn btn-outline btn-sm" @onclick="() => Nav.NavigateTo(editUrl)">
+                    <i class="bi bi-pencil me-1"></i>Editar
+                </button>
+            }
+            <button class="btn btn-primary btn-sm" @onclick="() => Nav.NavigateTo(moveUrl)">
+                <i class="bi bi-truck me-1"></i>Crear Traslado
+            </button>
+            <button class="btn btn-outline-neutral btn-sm" @onclick='() => Nav.NavigateTo("/service-orders")'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    @if (d.LerCodeIsDangerous)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle-fill alert-icon"></i>
+            <div class="alert-content">
+                <span class="alert-title">Residuo peligroso</span>
+                El código LER <strong>@d.LerCodeCode</strong> requiere NTI/DI al crear el traslado.
+            </div>
+        </div>
+    }
+
+    <div class="row g-3 mt-2">
+
+        @* ── Identificación ─────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <span class="card-title"><i class="bi bi-123 card-title-icon"></i>Identificación</span>
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Nº Orden"       Value="@d.ServiceOrderNumber" Mono />
+                    <DetailRow Label="Estado"         Value="@ServiceOrderStatuses.Label(d.Status)" />
+                    <DetailRow Label="Prioridad"      Value="@ServiceOrderPriorities.Label(d.Priority)" />
+                    <DetailRow Label="Fecha emisión"  Value="@d.IssuedAt.ToString("dd/MM/yyyy HH:mm")" />
+                    <DetailRow Label="Versión"        Value="@d.Version.ToString()" />
+                    @if (!string.IsNullOrEmpty(d.WasteMoveReference))
+                    {
+                        <DetailRow Label="Ref. traslado" Value="@d.WasteMoveReference" Mono />
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ── Emisor ──────────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <span class="card-title"><i class="bi bi-person-vcard card-title-icon"></i>Emisor</span>
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Entidad emisora"   Value="@(d.IssuedByName ?? "—")" />
+                    <DetailRow Label="NIF / NationalId"  Value="@d.IssuedByNationalId" />
+                    <DetailRow Label="NIMA / CenterCode" Value="@d.IssuedByCenterCode" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Recogida ────────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <span class="card-title"><i class="bi bi-geo-alt card-title-icon"></i>Recogida</span>
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Punto de recogida"    Value="@(d.PickupPointName ?? "—")" />
+                    <DetailRow Label="Inicio planificado"   Value="@(d.PlannedPickupStart?.ToString("dd/MM/yyyy HH:mm"))" />
+                    <DetailRow Label="Fin planificado"      Value="@(d.PlannedPickupEnd?.ToString("dd/MM/yyyy HH:mm"))" />
+                    <DetailRow Label="Inicio entrega plan." Value="@(d.PlannedDeliveryStart?.ToString("dd/MM/yyyy HH:mm"))" />
+                    <DetailRow Label="Fin entrega plan."    Value="@(d.PlannedDeliveryEnd?.ToString("dd/MM/yyyy HH:mm"))" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Residuo ─────────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <span class="card-title"><i class="bi bi-recycle card-title-icon"></i>Residuo</span>
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Flujo"         Value="@d.WasteStream" />
+                    <DetailRow Label="Sub-flujo"     Value="@d.SubStream" />
+                    <DetailRow Label="Código LER"    Value="@(d.LerCodeCode is null ? null : $"{d.LerCodeCode} — {d.LerCodeDescription}")" />
+                    <DetailRow Label="Peso estimado" Value="@(d.EstimatedWeight.HasValue ? $"{d.EstimatedWeight:N3} kg" : null)" />
+                    <DetailRow Label="Unidades"      Value="@d.Units?.ToString()" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Asignaciones ────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <span class="card-title"><i class="bi bi-truck card-title-icon"></i>Asignaciones</span>
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Transportista"   Value="@d.CarrierName" />
+                    <DetailRow Label="Planta prevista" Value="@d.PlannedPlantName" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Auditoría ───────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <span class="card-title"><i class="bi bi-clock-history card-title-icon"></i>Auditoría</span>
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Creado el"   Value="@d.CreatedAt.ToString("dd/MM/yyyy HH:mm")" />
+                    <DetailRow Label="Actualizado" Value="@d.UpdatedAt.ToString("dd/MM/yyyy HH:mm")" />
+                    <DetailRow Label="IdUser"      Value="@d.IdUser.ToString()" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Contenedores JSON ───────────────────────────────────────────── *@
+        @if (!string.IsNullOrEmpty(d.ContainersJson))
+        {
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-boxes me-2"></i>Contenedores
+                    </div>
+                    <div class="card-body">
+                        <pre class="small mb-0">@d.ContainersJson</pre>
+                    </div>
+                </div>
+            </div>
+        }
+
+    </div>
+}
+
+@code {
+    [Parameter] public Guid ServiceOrderId { get; set; }
+
+    private bool                _loading = true;
+    private ServiceOrderDetailDto? _detail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail  = await Mediator.Send(new GetServiceOrderByIdQuery(ServiceOrderId));
+        _loading = false;
+    }
+}

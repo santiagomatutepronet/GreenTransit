@@ -1,0 +1,277 @@
+@page "/service-orders"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.ServiceOrders.DTOs
+@using GreenTransit.Application.Features.ServiceOrders.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Órdenes de Servicio</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-clipboard2-check-fill me-2"></i>Órdenes de Servicio
+    </h1>
+    <button class="btn btn-primary btn-sm" @onclick='() => Nav.NavigateTo("/service-orders/new")'>
+        <i class="bi bi-plus-lg me-1"></i>Nueva SO
+    </button>
+</div>
+
+@* ── Filtros ────────────────────────────────────────────────────────────────── *@
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Búsqueda</label>
+        <input class="form-control" style="min-width:200px"
+               placeholder="Nº orden, referencia traslado…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+    <div class="filter-group">
+        <label>Estado</label>
+        <select class="form-control" @bind="_filterStatus">
+            <option value="">— Todos —</option>
+            @foreach (var s in ServiceOrderStatuses.All)
+            {
+                <option value="@s">@ServiceOrderStatuses.Label(s)</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Prioridad</label>
+        <select class="form-control" @bind="_filterPriority">
+            <option value="">— Todas —</option>
+            @foreach (var p in ServiceOrderPriorities.All)
+            {
+                <option value="@p">@ServiceOrderPriorities.Label(p)</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Recogida desde</label>
+        <input type="date" class="form-control" @bind="_pickupFrom" @bind:format="yyyy-MM-dd" />
+    </div>
+    <div class="filter-group">
+        <label>hasta</label>
+        <input type="date" class="form-control" @bind="_pickupTo" @bind:format="yyyy-MM-dd" />
+    </div>
+    <div class="filter-actions">
+        <button class="btn btn-primary btn-sm" @onclick="SearchAsync">
+            <i class="bi bi-search me-1"></i>Buscar
+        </button>
+        <button class="btn btn-ghost btn-sm" @onclick="ResetFilters">Limpiar</button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_result is null || _result.Items.Count == 0)
+{
+    <div class="alert alert-info">No se encontraron órdenes de servicio.</div>
+}
+else
+{
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Nº Orden</th>
+                    <th>Estado</th>
+                    <th>Prioridad</th>
+                    <th>Emisión</th>
+                    <th>Recogida planif.</th>
+                    <th>Punto recogida</th>
+                    <th>Flujo</th>
+                    <th class="cell-number">Peso est.</th>
+                    <th style="width:100px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var so in _result.Items)
+                {
+                    <tr>
+                        <td>
+                            <a href="/service-orders/@so.Id" class="font-semibold">
+                                @so.ServiceOrderNumber
+                            </a>
+                            @if (!string.IsNullOrEmpty(so.WasteMoveReference))
+                            {
+                                <br /><span class="text-muted text-xs">@so.WasteMoveReference</span>
+                            }
+                        </td>
+                        <td><span class="@ServiceOrderStatuses.BadgeCss(so.Status)">@ServiceOrderStatuses.Label(so.Status)</span></td>
+                        <td><span class="@ServiceOrderPriorities.BadgeCss(so.Priority)">@ServiceOrderPriorities.Label(so.Priority)</span></td>
+                        <td class="cell-muted">@so.IssuedAt.ToString("dd/MM/yyyy")</td>
+                        <td class="cell-muted">@(so.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "—")</td>
+                        <td class="cell-muted">@(so.PickupPointName ?? "—")</td>
+                        <td>@(so.WasteStream ?? "—")</td>
+                        <td class="cell-number">
+                            @(so.EstimatedWeight.HasValue ? $"{so.EstimatedWeight:N0} kg" : "—")
+                        </td>
+                        <td>
+                            @{
+                                var detailUrl = "/service-orders/" + so.Id;
+                                var editUrl   = "/service-orders/" + so.Id + "/edit";
+                            }
+                            <div class="btn-group">
+                                <button class="btn btn-ghost btn-sm btn-icon-only"
+                                        title="Ver detalle"
+                                        @onclick="() => Nav.NavigateTo(detailUrl)">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                @if (ServiceOrderStatuses.Editable.Contains(so.Status))
+                                {
+                                    <button class="btn btn-ghost btn-sm btn-icon-only"
+                                            title="Editar"
+                                            @onclick="() => Nav.NavigateTo(editUrl)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                }
+                                <button class="btn btn-ghost btn-sm btn-icon-only"
+                                        title="Duplicar"
+                                        @onclick="() => DuplicateAsync(so.Id)">
+                                    <i class="bi bi-copy"></i>
+                                </button>
+                                @if (so.Status != ServiceOrderStatuses.Cancelled)
+                                {
+                                    <button class="btn btn-outline-danger btn-sm btn-icon-only"
+                                            title="Cancelar"
+                                            @onclick="() => ConfirmCancelAsync(so)">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @* ── Paginación ──────────────────────────────────────────────────── *@
+        @if (_result.TotalPages > 1)
+        {
+            <div class="pagination">
+                <span class="pagination-info">
+                    @((_page - 1) * PageSize + 1)–@(Math.Min(_page * PageSize, _result.TotalCount))
+                    de @_result.TotalCount resultados
+                </span>
+                <button class="pagination-btn" disabled="@(!_result.HasPrevious)"
+                        @onclick="() => GoPageAsync(_page - 1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                @for (var i = 1; i <= _result.TotalPages; i++)
+                {
+                    var pg = i;
+                    <button class="pagination-btn @(pg == _page ? "active" : "")"
+                            @onclick="() => GoPageAsync(pg)">@pg</button>
+                }
+                <button class="pagination-btn" disabled="@(!_result.HasNext)"
+                        @onclick="() => GoPageAsync(_page + 1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger mt-3">@_errorMessage</div>
+}
+
+<ConfirmDialog @ref="_confirmDialog"
+               Title="Cancelar Orden de Servicio"
+               Message="@_confirmMessage"
+               ConfirmText="Sí, cancelar" />
+
+@code {
+    private const int PageSize = 20;
+
+    private bool   _loading = true;
+    private int    _page    = 1;
+    private string _search         = "";
+    private string _filterStatus   = "";
+    private string _filterPriority = "";
+    private DateTime? _pickupFrom;
+    private DateTime? _pickupTo;
+    private string? _errorMessage;
+
+    private GreenTransit.Application.Common.Models.PaginatedResult<ServiceOrderDto>? _result;
+    private ConfirmDialog _confirmDialog = default!;
+    private string _confirmMessage = "";
+    private Guid   _cancelTargetId;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task SearchAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task GoPageAsync(int page)
+    {
+        _page = page;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            _result = await Mediator.Send(new GetServiceOrdersQuery(
+                Status:            string.IsNullOrEmpty(_filterStatus)   ? null : _filterStatus,
+                Priority:          string.IsNullOrEmpty(_filterPriority) ? null : _filterPriority,
+                SearchTerm:        string.IsNullOrEmpty(_search)         ? null : _search,
+                PlannedPickupFrom: _pickupFrom,
+                PlannedPickupTo:   _pickupTo,
+                PageNumber:        _page,
+                PageSize:          PageSize));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void ResetFilters()
+    {
+        _search = ""; _filterStatus = ""; _filterPriority = "";
+        _pickupFrom = null; _pickupTo = null; _page = 1;
+        _ = LoadAsync();
+    }
+
+    private async Task DuplicateAsync(Guid id)
+    {
+        try
+        {
+            var newId = await Mediator.Send(
+                new GreenTransit.Application.Features.ServiceOrders.Commands
+                    .DuplicateServiceOrderCommand(id));
+            Nav.NavigateTo($"/service-orders/{newId}/edit");
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+
+    private async Task ConfirmCancelAsync(ServiceOrderDto so)
+    {
+        _cancelTargetId = so.Id;
+        _confirmMessage = $"¿Cancelar la orden «{so.ServiceOrderNumber}»? Esta acción no se puede deshacer.";
+        var confirmed = await _confirmDialog.ShowAsync();
+        if (!confirmed) return;
+
+        try
+        {
+            await Mediator.Send(
+                new GreenTransit.Application.Features.ServiceOrders.Commands
+                    .CancelServiceOrderCommand(_cancelTargetId, "Cancelada por el usuario"));
+            await LoadAsync();
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+}

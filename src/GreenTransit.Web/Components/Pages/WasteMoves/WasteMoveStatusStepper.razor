@@ -1,0 +1,55 @@
+@using GreenTransit.Domain.Constants
+
+@*
+    WasteMoveStatusStepper — barra visual del estado actual de un Traslado.
+    Muestra los pasos del ciclo lineal (SOLICITADO → CLASIFICADO).
+    Los estados INCIDENCIA y CANCELADO se muestran como badge aparte.
+*@
+
+<div class="waste-move-stepper">
+    @{
+        var isSpecial = Status is WasteMoveStatuses.Incidencia or WasteMoveStatuses.Cancelado;
+        var stepIndex = WasteMoveStatuses.StepperOrder
+            .Select((s, i) => (s, i))
+            .FirstOrDefault(x => x.s == (Status ?? "")).i;
+    }
+
+    @if (isSpecial)
+    {
+        <span class="@WasteMoveStatuses.BadgeCss(Status!)">@WasteMoveStatuses.Label(Status!)</span>
+    }
+    else
+    {
+        <div class="stepper">
+            @for (var i = 0; i < WasteMoveStatuses.StepperOrder.Count; i++)
+            {
+                var step      = WasteMoveStatuses.StepperOrder[i];
+                var completed = i < stepIndex;
+                var active    = i == stepIndex;
+
+                var itemClass = completed ? "stepper-item completed"
+                              : active    ? "stepper-item active"
+                                          : "stepper-item";
+
+                <div class="@itemClass">
+                    <div class="stepper-circle">
+                        @if (completed)
+                        {
+                            <i class="bi bi-check-lg" style="font-size:.65rem"></i>
+                        }
+                        else
+                        {
+                            <span>@(i + 1)</span>
+                        }
+                    </div>
+                    <span class="stepper-label">@WasteMoveStatuses.Label(step)</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Estado actual del traslado (p.ej. "SOLICITADO").</summary>
+    [Parameter, EditorRequired] public string? Status { get; set; }
+}

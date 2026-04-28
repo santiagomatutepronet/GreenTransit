@@ -1,0 +1,573 @@
+@page "/waste-moves/new"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.WasteMoves.Commands
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.ServiceOrders.DTOs
+@using GreenTransit.Application.Features.ServiceOrders.Queries
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Features.Residues.DTOs
+@using GreenTransit.Application.Features.Residues.Queries
+@using GreenTransit.Application.Common.Models
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Nuevo Traslado de Residuos</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1><i class="bi bi-truck me-2"></i>Nuevo Traslado de Residuos</h1>
+        <p>Agrupa una o varias Órdenes de Servicio. Define residuo y cantidad por cada línea.</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else
+{
+    <EditForm Model="_formModel" OnValidSubmit="SaveAsync">
+
+        @* ── 1. Órdenes de Servicio ──────────────────────────────────────── *@
+        <div class="form-section">
+            <div class="form-section-title">
+                <i class="bi bi-clipboard2-check form-section-title-icon"></i>
+                Órdenes de Servicio a agrupar
+            </div>
+
+            @if (_eligibleSOs.Count == 0)
+            {
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill alert-icon"></i>
+                    <div class="alert-content">
+                        No hay Órdenes de Servicio disponibles (Pendiente/Planificada sin traslado asignado).
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="table-wrapper mb-3">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th style="width:40px"></th>
+                                <th>Nº Orden</th>
+                                <th>Estado</th>
+                                <th>Código LER</th>
+                                <th class="cell-number">Peso est.</th>
+                                <th>Unid. medida</th>
+                                <th>Recogida planif.</th>
+                                <th>Punto recogida</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var so in _eligibleSOs)
+                            {
+                                var isSelected = _lines.Any(l => l.SoId == so.Id);
+                                <tr class="@(isSelected ? "selected" : "")"
+                                    style="cursor:pointer"
+                                    @onclick="async () => await ToggleSoAsync(so)">
+                                    <td @onclick:stopPropagation>
+                                        <input type="checkbox" checked="@isSelected"
+                                               @onchange="async () => await ToggleSoAsync(so)" />
+                                    </td>
+                                    <td class="font-semibold">@so.ServiceOrderNumber</td>
+                                    <td>
+                                        <span class="@ServiceOrderStatuses.BadgeCss(so.Status)">
+                                            @ServiceOrderStatuses.Label(so.Status)
+                                        </span>
+                                    </td>
+                                    <td class="cell-muted">
+                                        @if (so.LerCodeCode != null)
+                                        {
+                                            <span title="@so.LerCodeDescription">
+                                                @so.LerCodeCode
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span>—</span>
+                                        }
+                                    </td>
+                                    <td class="cell-number">
+                                        @(so.EstimatedWeight.HasValue ? $"{so.EstimatedWeight:N0} kg" : "—")
+                                    </td>
+                                    <td class="cell-muted">@(so.MeasureUnit?.ToString() ?? "—")</td>
+                                    <td class="cell-muted">
+                                        @(so.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "—")
+                                    </td>
+                                    <td class="cell-muted">@(so.PickupPointName ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (_lines.Count == 0)
+                {
+                    <div class="field-error">Selecciona al menos una Orden de Servicio.</div>
+                }
+            }
+        </div>
+
+        @* ── 2. Líneas de residuos (una sección por SO seleccionada) ─────── *@
+        @if (_lines.Count > 0)
+        {
+            <div class="form-section">
+                <div class="form-section-title">
+                    <i class="bi bi-list-ul form-section-title-icon"></i>
+                    Líneas de residuos
+                    <span class="badge badge-neutral ms-2">@_lines.Count</span>
+                </div>
+                <p class="cell-muted mb-3">
+                    Para cada línea, selecciona el residuo concreto y ajusta la cantidad.
+                    Los residuos disponibles están filtrados por el código LER de la SO.
+                </p>
+
+                @foreach (var line in _lines)
+                {
+                    <div class="card mb-3">
+                        <div class="card-header d-flex align-items-center gap-3">
+                            <span class="font-semibold">@line.SoNumber</span>
+                            @if (line.LerCodeCode != null)
+                            {
+                                <span class="cell-muted" title="@line.LerCodeDescription">
+                                    <i class="bi bi-tag me-1"></i>@line.LerCodeCode
+                                </span>
+                            }
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+
+                                @* Selector de residuo *@
+                                <div class="col-md-5">
+                                    <label>Residuo</label>
+                                    @if (line.LoadingResidues)
+                                    {
+                                        <div class="d-flex align-items-center gap-2 mt-1">
+                                            <div class="spinner spinner-sm"></div>
+                                            <span class="cell-muted">Cargando residuos…</span>
+                                        </div>
+                                    }
+                                    else if (line.AvailableResidues.Count == 0)
+                                    {
+                                        <div class="alert alert-info py-1 px-2 mt-1">
+                                            No hay residuos con el código LER
+                                            <strong>@(line.LerCodeCode ?? "—")</strong>.
+                                            Puedes continuar sin asignar residuo.
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <select class="form-control"
+                                                value="@(line.IdResidue?.ToString() ?? "")"
+                                                @onchange="e => OnResidueChanged(line, e.Value?.ToString())">
+                                            <option value="">— Sin especificar —</option>
+                                            @foreach (var r in line.AvailableResidues)
+                                            {
+                                                <option value="@r.Id">
+                                                    @r.Name
+                                                    @(r.IsDangerous ? " ⚠️ Peligroso" : "")
+                                                    @(r.IsRAEE ? " ♻️ RAEE" : "")
+                                                </option>
+                                            }
+                                        </select>
+                                    }
+                                </div>
+
+                                @* Peso *@
+                                <div class="col-md-2">
+                                    <label>Peso (kg)</label>
+                                    <input type="number" class="form-control"
+                                           min="0" step="0.001"
+                                           placeholder="0,000"
+                                           value="@line.Weight"
+                                           @onchange="e => line.Weight = ParseDecimal(e.Value?.ToString())" />
+                                </div>
+
+                                @* Unidad de medida *@
+                                <div class="col-md-2">
+                                    <label>Unidad medida</label>
+                                    <input class="form-control"
+                                           placeholder="kg, t, ud…"
+                                           @bind="line.MeasureUnit" />
+                                </div>
+
+                                @* Unidades *@
+                                <div class="col-md-2">
+                                    <label>Unidades</label>
+                                    <input type="number" class="form-control"
+                                           min="0" step="1"
+                                           placeholder="0"
+                                           value="@line.Units"
+                                           @onchange="e => line.Units = ParseInt(e.Value?.ToString())" />
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @* ── 3. Entidades implicadas ─────────────────────────────────────── *@
+        <div class="form-section">
+            <div class="form-section-title">
+                <i class="bi bi-building form-section-title-icon"></i>
+                Entidades del traslado
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label>
+                        Origen <span class="required">*</span>
+                        <span class="field-help">Roles: @string.Join(", ", WasteMoveSourceRoles.Valid)</span>
+                    </label>
+                    <select class="form-control" @bind="_formModel.IdSource">
+                        <option value="">— Seleccionar —</option>
+                        @foreach (var e in _sourceEntities)
+                        {
+                            <option value="@e.Id">@e.Name (@EntityRoles.Label(e.EntityRole))</option>
+                        }
+                    </select>
+                    <FieldMessage Field="IdSource" Errors="_validationErrors" />
+                </div>
+
+                <div class="col-md-4">
+                    <label>
+                        Destino <span class="required">*</span>
+                        <span class="field-help">Roles: @string.Join(", ", WasteMoveDestinationRoles.Valid)</span>
+                    </label>
+                    <select class="form-control" @bind="_formModel.IdDestination">
+                        <option value="">— Seleccionar —</option>
+                        @foreach (var e in _destinationEntities)
+                        {
+                            <option value="@e.Id">@e.Name (@EntityRoles.Label(e.EntityRole))</option>
+                        }
+                    </select>
+                    <FieldMessage Field="IdDestination" Errors="_validationErrors" />
+                </div>
+
+                <div class="col-md-4">
+                    <label>SCRAP <span class="required">*</span></label>
+                    <select class="form-control" @bind="_formModel.IdScrap">
+                        <option value="">— Seleccionar —</option>
+                        @foreach (var e in _scrapEntities)
+                        {
+                            <option value="@e.Id">@e.Name</option>
+                        }
+                    </select>
+                    <FieldMessage Field="IdScrap" Errors="_validationErrors" />
+                </div>
+
+                <div class="col-md-4">
+                    <label>SCRAP secundario (opcional)</label>
+                    <select class="form-control" @bind="_formModel.IdScrap2">
+                        <option value="">— Ninguno —</option>
+                        @foreach (var e in _scrapEntities)
+                        {
+                            <option value="@e.Id">@e.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        @* ── 4. Fechas planificadas ──────────────────────────────────────── *@
+        <div class="form-section">
+            <div class="form-section-title">
+                <i class="bi bi-calendar3 form-section-title-icon"></i>
+                Fechas planificadas (opcionales)
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label>Inicio recogida</label>
+                    <input type="datetime-local" class="form-control"
+                           value="@(_formModel.PlannedPickupStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                           @onchange="e => _formModel.PlannedPickupStart = ParseDate(e.Value?.ToString())" />
+                </div>
+                <div class="col-md-3">
+                    <label>Fin recogida</label>
+                    <input type="datetime-local" class="form-control"
+                           value="@(_formModel.PlannedPickupEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                           @onchange="e => _formModel.PlannedPickupEnd = ParseDate(e.Value?.ToString())" />
+                    <FieldMessage Field="PlannedPickupEnd" Errors="_validationErrors" />
+                </div>
+                <div class="col-md-3">
+                    <label>Inicio entrega</label>
+                    <input type="datetime-local" class="form-control"
+                           value="@(_formModel.PlannedDeliveryStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                           @onchange="e => _formModel.PlannedDeliveryStart = ParseDate(e.Value?.ToString())" />
+                    <FieldMessage Field="PlannedDeliveryStart" Errors="_validationErrors" />
+                </div>
+                <div class="col-md-3">
+                    <label>Fin entrega</label>
+                    <input type="datetime-local" class="form-control"
+                           value="@(_formModel.PlannedDeliveryEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                           @onchange="e => _formModel.PlannedDeliveryEnd = ParseDate(e.Value?.ToString())" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Errores y acciones ──────────────────────────────────────────── *@
+        @if (_validationErrors.Any())
+        {
+            <div class="alert alert-danger mt-3">
+                <ul class="mb-0">
+                    @foreach (var err in _validationErrors.Values.SelectMany(v => v))
+                    {
+                        <li>@err</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(_serverError))
+        {
+            <div class="alert alert-danger mt-3">@_serverError</div>
+        }
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary" disabled="@_saving">
+                @if (_saving) { <span class="spinner spinner-sm me-1"></span> }
+                <i class="bi bi-truck me-1"></i>Crear Traslado
+            </button>
+            <button type="button" class="btn btn-outline-neutral"
+                    @onclick='() => Nav.NavigateTo("/waste-moves")'>
+                Cancelar
+            </button>
+        </div>
+
+    </EditForm>
+}
+
+@code {
+    private bool    _loading = true;
+    private bool    _saving  = false;
+    private string? _serverError;
+    private Dictionary<string, List<string>> _validationErrors = new();
+
+    // ── Modelo de cabecera del formulario ─────────────────────────────────────
+    private sealed class HeaderModel
+    {
+        public Guid?     IdSource             { get; set; }
+        public Guid?     IdDestination        { get; set; }
+        public Guid?     IdScrap              { get; set; }
+        public Guid?     IdScrap2             { get; set; }
+        public DateTime? PlannedPickupStart   { get; set; }
+        public DateTime? PlannedPickupEnd     { get; set; }
+        public DateTime? PlannedDeliveryStart { get; set; }
+        public DateTime? PlannedDeliveryEnd   { get; set; }
+    }
+
+    // ── Modelo de línea de residuo ────────────────────────────────────────────
+    private sealed class LineModel
+    {
+        public Guid     SoId             { get; init; }
+        public string   SoNumber         { get; init; } = "";
+        public Guid?    IdLerCode        { get; init; }
+        public string?  LerCodeCode      { get; init; }
+        public string?  LerCodeDescription { get; init; }
+        public bool     LoadingResidues  { get; set; } = true;
+        public List<ResidueDto> AvailableResidues { get; set; } = [];
+
+        public Guid?    IdResidue   { get; set; }
+        public decimal? Weight      { get; set; }
+        public string?  MeasureUnit { get; set; }
+        public int?     Units       { get; set; }
+    }
+
+    private readonly HeaderModel _formModel = new();
+    private readonly List<LineModel> _lines = [];
+
+    // Caché de residuos por LER code para no recargar si ya se cargaron
+    private readonly Dictionary<Guid, List<ResidueDto>> _residueCache = new();
+
+    private IReadOnlyList<ServiceOrderDto>   _eligibleSOs         = [];
+    private IReadOnlyList<EntitySelectorDto> _sourceEntities      = [];
+    private IReadOnlyList<EntitySelectorDto> _destinationEntities = [];
+    private IReadOnlyList<EntitySelectorDto> _scrapEntities       = [];
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        var allSOs = await Mediator.Send(new GetServiceOrdersQuery(PageSize: 500));
+        _eligibleSOs = allSOs.Items
+            .Where(s => s.Status is ServiceOrderStatuses.Pending
+                                 or ServiceOrderStatuses.Scheduled
+                      && string.IsNullOrEmpty(s.WasteMoveReference))
+            .ToList();
+
+        var allEntities = await Mediator.Send(new GetEntitiesForSelectorQuery());
+        _sourceEntities      = allEntities.Where(e => WasteMoveSourceRoles.Valid.Contains(e.EntityRole)).ToList();
+        _destinationEntities = allEntities.Where(e => WasteMoveDestinationRoles.Valid.Contains(e.EntityRole)).ToList();
+        _scrapEntities       = allEntities.Where(e => e.EntityRole == EntityRoles.SCRAP).ToList();
+
+        _loading = false;
+    }
+
+    // ── Eventos ───────────────────────────────────────────────────────────────
+
+    private async Task ToggleSoAsync(ServiceOrderDto so)
+    {
+        var existing = _lines.FirstOrDefault(l => l.SoId == so.Id);
+        if (existing is not null)
+        {
+            _lines.Remove(existing);
+            return;
+        }
+
+        // Crear línea con datos por defecto de la SO
+        var line = new LineModel
+        {
+            SoId               = so.Id,
+            SoNumber           = so.ServiceOrderNumber,
+            IdLerCode          = so.IdLERCode,
+            LerCodeCode        = so.LerCodeCode,
+            LerCodeDescription = so.LerCodeDescription,
+            LoadingResidues    = true,
+            Weight             = so.EstimatedWeight,
+            MeasureUnit        = so.MeasureUnit?.ToString(),
+            Units              = null
+        };
+        _lines.Add(line);
+
+        // Cargar residuos para el LER de esta SO
+        await LoadResiduesForLineAsync(line);
+    }
+
+    private async Task LoadResiduesForLineAsync(LineModel line)
+    {
+        line.LoadingResidues = true;
+        StateHasChanged();
+
+        if (line.IdLerCode.HasValue)
+        {
+            if (!_residueCache.TryGetValue(line.IdLerCode.Value, out var cached))
+            {
+                var result = await Mediator.Send(new GetResiduesQuery(
+                    IdLERCode: line.IdLerCode.Value,
+                    PageSize : 200
+                ));
+                cached = result.Items.ToList();
+                _residueCache[line.IdLerCode.Value] = cached;
+            }
+            line.AvailableResidues = cached;
+        }
+        else
+        {
+            line.AvailableResidues = [];
+        }
+
+        line.LoadingResidues = false;
+        StateHasChanged();
+    }
+
+    private void OnResidueChanged(LineModel line, string? value)
+    {
+        line.IdResidue = Guid.TryParse(value, out var id) ? id : null;
+
+        // Precargar medida del residuo seleccionado si el usuario no ha tocado el campo
+        if (line.IdResidue.HasValue)
+        {
+            var residue = line.AvailableResidues.FirstOrDefault(r => r.Id == line.IdResidue.Value);
+            if (residue is not null && string.IsNullOrEmpty(line.MeasureUnit))
+                line.MeasureUnit = residue.LerCode; // fallback — no hay DefaultMeasureUnit en ResidueDto
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _validationErrors.Clear();
+        _serverError = null;
+
+        if (_lines.Count == 0)
+        {
+            _validationErrors["ServiceOrderIds"] = ["Selecciona al menos una Orden de Servicio."];
+            return;
+        }
+        if (_formModel.IdSource is null)
+        {
+            _validationErrors["IdSource"] = ["El origen es obligatorio."];
+            return;
+        }
+        if (_formModel.IdDestination is null)
+        {
+            _validationErrors["IdDestination"] = ["El destino es obligatorio."];
+            return;
+        }
+        if (_formModel.IdScrap is null)
+        {
+            _validationErrors["IdScrap"] = ["El SCRAP es obligatorio."];
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var soIds = _lines.Select(l => l.SoId).Distinct().ToArray();
+            var lineInputs = _lines.Select(l => new WasteMoveLineInput(
+                IdResidue   : l.IdResidue,
+                Weight      : l.Weight,
+                MeasureUnit : l.MeasureUnit,
+                Units       : l.Units
+            )).ToArray();
+
+            var cmd = new CreateWasteMoveCommand(
+                ServiceOrderIds      : soIds,
+                IdSource             : _formModel.IdSource.Value,
+                IdDestination        : _formModel.IdDestination.Value,
+                IdScrap              : _formModel.IdScrap.Value,
+                IdScrap2             : _formModel.IdScrap2,
+                PlannedPickupStart   : _formModel.PlannedPickupStart,
+                PlannedPickupEnd     : _formModel.PlannedPickupEnd,
+                PlannedDeliveryStart : _formModel.PlannedDeliveryStart,
+                PlannedDeliveryEnd   : _formModel.PlannedDeliveryEnd,
+                Lines                : lineInputs
+            );
+
+            var newId = await Mediator.Send(cmd);
+            Nav.NavigateTo($"/waste-moves/{newId}");
+        }
+        catch (FluentValidation.ValidationException vex)
+        {
+            foreach (var err in vex.Errors)
+            {
+                var key = err.PropertyName;
+                if (!_validationErrors.ContainsKey(key))
+                    _validationErrors[key] = [];
+                _validationErrors[key].Add(err.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _serverError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Helpers de parsing ────────────────────────────────────────────────────
+
+    private static DateTime? ParseDate(string? value)
+        => DateTime.TryParse(value, out var dt) ? dt : null;
+
+    private static decimal? ParseDecimal(string? value)
+        => decimal.TryParse(value, System.Globalization.NumberStyles.Any,
+               System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+
+    private static int? ParseInt(string? value)
+        => int.TryParse(value, out var i) ? i : null;
+}

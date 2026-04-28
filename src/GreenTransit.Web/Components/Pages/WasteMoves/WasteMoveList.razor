@@ -1,0 +1,245 @@
+@page "/waste-moves"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Common.Models
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Traslados de Residuos</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1><i class="bi bi-truck me-2"></i>Traslados de Residuos</h1>
+        <p>Gestión del ciclo de vida de traslados, desde SOLICITADO hasta CLASIFICADO.</p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-primary btn-sm"
+                @onclick='() => Nav.NavigateTo("/waste-moves/new")'>
+            <i class="bi bi-plus-lg me-1"></i>Nuevo Traslado
+        </button>
+    </div>
+</div>
+
+@* ── Panel de filtros ──────────────────────────────────────────────────────── *@
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Referencia</label>
+        <input class="form-control"
+               placeholder="WM-2026-…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+    <div class="filter-group">
+        <label>Estado</label>
+        <select class="form-control" @bind="_filterStatus">
+            <option value="">— Todos —</option>
+            @foreach (var s in WasteMoveStatuses.All)
+            {
+                <option value="@s">@WasteMoveStatuses.Label(s)</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Origen</label>
+        <select class="form-control" @bind="_filterSource">
+            <option value="">— Todos —</option>
+            @foreach (var e in _sourceEntities)
+            {
+                <option value="@e.Id">@e.Name</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Destino</label>
+        <select class="form-control" @bind="_filterDestination">
+            <option value="">— Todos —</option>
+            @foreach (var e in _destinationEntities)
+            {
+                <option value="@e.Id">@e.Name</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Recogida desde</label>
+        <input type="date" class="form-control"
+               @bind="_dateFrom" @bind:format="yyyy-MM-dd" />
+    </div>
+    <div class="filter-group">
+        <label>hasta</label>
+        <input type="date" class="form-control"
+               @bind="_dateTo" @bind:format="yyyy-MM-dd" />
+    </div>
+    <div class="filter-actions">
+        <button class="btn btn-primary btn-sm" @onclick="SearchAsync">
+            <i class="bi bi-search me-1"></i>Buscar
+        </button>
+        <button class="btn btn-ghost btn-sm" @onclick="ResetFilters">Limpiar</button>
+    </div>
+</div>
+
+@* ── Tabla ─────────────────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_result is null || _result.Items.Count == 0)
+{
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle alert-icon"></i>
+        <div class="alert-content">No se encontraron traslados con los filtros aplicados.</div>
+    </div>
+}
+else
+{
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Referencia</th>
+                    <th style="min-width:320px">Estado</th>
+                    <th>Origen</th>
+                    <th>Destino</th>
+                    <th>Recogida planif.</th>
+                    <th class="cell-number">Líneas</th>
+                    <th style="width:80px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var wm in _result.Items)
+                {
+                    var detailUrl = "/waste-moves/" + wm.Id;
+                    var editUrl   = "/waste-moves/" + wm.Id + "/edit";
+
+                    <tr>
+                        <td>
+                            <a href="@detailUrl" class="font-semibold">
+                                @(wm.WasteMoveReference ?? wm.Id.ToString()[..8])
+                            </a>
+                        </td>
+                        <td>
+                            <WasteMoveStatusStepper Status="@wm.ServiceStatus" />
+                        </td>
+                        <td class="cell-muted">@(wm.SourceName ?? "—")</td>
+                        <td class="cell-muted">@(wm.DestinationName ?? "—")</td>
+                        <td class="cell-muted">
+                            @(wm.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "—")
+                        </td>
+                        <td class="cell-number">@wm.ResidueCount</td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-ghost btn-sm btn-icon-only"
+                                        title="Ver detalle"
+                                        @onclick="() => Nav.NavigateTo(detailUrl)">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                @if (wm.ServiceStatus == WasteMoveStatuses.Solicitado)
+                                {
+                                    <button class="btn btn-ghost btn-sm btn-icon-only"
+                                            title="Editar"
+                                            @onclick="() => Nav.NavigateTo(editUrl)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (_result.TotalPages > 1)
+        {
+            <div class="pagination">
+                <span class="pagination-info">
+                    @((_page - 1) * PageSize + 1)–@(Math.Min(_page * PageSize, _result.TotalCount))
+                    de @_result.TotalCount resultados
+                </span>
+                <button class="pagination-btn" disabled="@(!_result.HasPrevious)"
+                        @onclick="() => GoPageAsync(_page - 1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                @for (var i = 1; i <= _result.TotalPages; i++)
+                {
+                    var pg = i;
+                    <button class="pagination-btn @(pg == _page ? "active" : "")"
+                            @onclick="() => GoPageAsync(pg)">@pg</button>
+                }
+                <button class="pagination-btn" disabled="@(!_result.HasNext)"
+                        @onclick="() => GoPageAsync(_page + 1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private const int PageSize = 20;
+
+    private bool   _loading = true;
+    private int    _page    = 1;
+    private string _search             = "";
+    private string _filterStatus       = "";
+    private Guid?  _filterSource;
+    private Guid?  _filterDestination;
+    private DateTime? _dateFrom;
+    private DateTime? _dateTo;
+
+    private PaginatedResult<WasteMoveDto>? _result;
+    private IReadOnlyList<EntitySelectorDto> _sourceEntities      = [];
+    private IReadOnlyList<EntitySelectorDto> _destinationEntities = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargar entidades para los selectores de filtro
+        var all = await Mediator.Send(new GetEntitiesForSelectorQuery());
+        _sourceEntities      = all.Where(e => WasteMoveSourceRoles.Valid.Contains(e.EntityRole)).ToList();
+        _destinationEntities = all.Where(e => WasteMoveDestinationRoles.Valid.Contains(e.EntityRole)).ToList();
+
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        _result  = await Mediator.Send(new GetWasteMovesQuery(
+            ServiceStatus : string.IsNullOrWhiteSpace(_filterStatus) ? null : _filterStatus,
+            IdSource      : _filterSource,
+            IdDestination : _filterDestination,
+            DateFrom      : _dateFrom,
+            DateTo        : _dateTo,
+            SearchTerm    : string.IsNullOrWhiteSpace(_search) ? null : _search,
+            PageNumber    : _page,
+            PageSize      : PageSize
+        ));
+        _loading = false;
+    }
+
+    private async Task GoPageAsync(int pg)
+    {
+        _page = pg;
+        await SearchAsync();
+    }
+
+    private async Task ResetFilters()
+    {
+        _search            = "";
+        _filterStatus      = "";
+        _filterSource      = null;
+        _filterDestination = null;
+        _dateFrom          = null;
+        _dateTo            = null;
+        _page              = 1;
+        await SearchAsync();
+    }
+}

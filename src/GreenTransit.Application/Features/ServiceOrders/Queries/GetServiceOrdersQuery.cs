@@ -1,36 +1,92 @@
 using GreenTransit.Application.Common.Interfaces;
-using GreenTransit.Domain.Entities;
+using GreenTransit.Application.Common.Models;
+using GreenTransit.Application.Features.ServiceOrders.DTOs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ServiceOrders.Queries;
 
-// ── Query ─────────────────────────────────────────────────────────────────────
-/// <summary>
-/// Devuelve todas las ServiceOrders visibles para el tenant activo.
-/// El filtro multi-tenant se aplica automáticamente a través de
-/// HasQueryFilter en AppDbContext (basado en ICurrentUserService.OwnerId).
-/// </summary>
-public sealed record GetServiceOrdersQuery : IRequest<IReadOnlyList<ServiceOrder>>;
+// ── GetServiceOrdersQuery — lista paginada con filtros ────────────────────────
 
-// ── Handler ───────────────────────────────────────────────────────────────────
+public sealed record GetServiceOrdersQuery(
+    string?   Status            = null,
+    string?   Priority          = null,
+    Guid?     IdIssuedBy        = null,
+    Guid?     IdPickupPoint     = null,
+    Guid?     IdLERCode         = null,
+    DateTime? PlannedPickupFrom = null,
+    DateTime? PlannedPickupTo   = null,
+    string?   SearchTerm        = null,
+    int       PageNumber        = 1,
+    int       PageSize          = 20
+) : IRequest<PaginatedResult<ServiceOrderDto>>;
+
 public sealed class GetServiceOrdersQueryHandler
-    : IRequestHandler<GetServiceOrdersQuery, IReadOnlyList<ServiceOrder>>
+    : IRequestHandler<GetServiceOrdersQuery, PaginatedResult<ServiceOrderDto>>
 {
     private readonly IApplicationDbContext _context;
 
     public GetServiceOrdersQueryHandler(IApplicationDbContext context)
-    {
-        _context = context;
-    }
+        => _context = context;
 
-    public async Task<IReadOnlyList<ServiceOrder>> Handle(
-        GetServiceOrdersQuery request,
-        CancellationToken cancellationToken)
+    public async Task<PaginatedResult<ServiceOrderDto>> Handle(
+        GetServiceOrdersQuery request, CancellationToken cancellationToken)
     {
-        return await _context.ServiceOrders
-            .AsNoTracking()
-            .OrderByDescending(so => so.IssuedAt)
+        var q = _context.ServiceOrders.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(request.Status))
+            q = q.Where(s => s.Status == request.Status);
+
+        if (!string.IsNullOrWhiteSpace(request.Priority))
+            q = q.Where(s => s.Priority == request.Priority);
+
+        if (request.IdIssuedBy.HasValue)
+            q = q.Where(s => s.IdIssuedBy == request.IdIssuedBy);
+
+        if (request.IdPickupPoint.HasValue)
+            q = q.Where(s => s.IdPickupPoint == request.IdPickupPoint);
+
+        if (request.IdLERCode.HasValue)
+            q = q.Where(s => s.IdLERCode == request.IdLERCode);
+
+        if (request.PlannedPickupFrom.HasValue)
+            q = q.Where(s => s.PlannedPickupStart >= request.PlannedPickupFrom);
+
+        if (request.PlannedPickupTo.HasValue)
+            q = q.Where(s => s.PlannedPickupStart <= request.PlannedPickupTo);
+
+        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        {
+            var term = request.SearchTerm.ToLower();
+            q = q.Where(s => s.ServiceOrderNumber.ToLower().Contains(term)
+                           || (s.WasteMoveReference != null && s.WasteMoveReference.ToLower().Contains(term)));
+        }
+
+        var total = await q.CountAsync(cancellationToken);
+
+        var items = await q
+            .OrderByDescending(s => s.IssuedAt)
+            .Skip((request.PageNumber - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(s => new ServiceOrderDto(
+                s.Id,
+                s.ServiceOrderNumber,
+                s.Status,
+                s.Priority,
+                s.IssuedAt,
+                s.PlannedPickupStart,
+                s.IdPickupPoint,
+                s.PickupPoint != null ? s.PickupPoint.Name : null,
+                s.WasteStream,
+                s.EstimatedWeight,
+                s.MeasureUnit,
+                s.WasteMoveReference,
+                s.IdLERCode,
+                s.LerCode != null ? s.LerCode.Code : null,
+                s.LerCode != null ? s.LerCode.Description : null))
             .ToListAsync(cancellationToken);
+
+        return PaginatedResult<ServiceOrderDto>.Create(items, total, request.PageNumber, request.PageSize);
     }
 }
+

@@ -1,0 +1,557 @@
+@page "/service-orders/new"
+@page "/service-orders/{ServiceOrderId:guid}/edit"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using FluentValidation
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Features.ServiceOrders.Commands
+@using GreenTransit.Application.Features.ServiceOrders.DTOs
+@using GreenTransit.Application.Features.ServiceOrders.Queries
+@using GreenTransit.Application.Features.LerCodes.DTOs
+@using GreenTransit.Application.Features.LerCodes.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Text.Json
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>@(_isEdit ? "Editar Orden de Servicio" : "Nueva Orden de Servicio")</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-clipboard2-check me-2"></i>
+        @(_isEdit ? "Editar Orden de Servicio" : "Nueva Orden de Servicio")
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="SaveAsync">
+        <div class="accordion" id="soAccordion">
+
+            @* ── Sección 1: Identificación ───────────────────────────────── *@
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button @(_sec1Open ? "" : "collapsed")" type="button"
+                            @onclick='() => _sec1Open = !_sec1Open'>
+                        <i class="bi bi-123 me-2"></i>Identificación
+                    </button>
+                </h2>
+                @if (_sec1Open)
+                {
+                    <div class="accordion-collapse collapse show">
+                        <div class="accordion-body row g-3">
+                            <div class="col-md-5">
+                                <label class="form-label">Nº Orden de Servicio</label>
+                                <div class="input-group">
+                                    <InputText class="form-control" @bind-Value="_model.ServiceOrderNumber"
+                                               placeholder="Vacío = generar automáticamente" />
+                                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                                            @onclick="ClearNumber" title="Generar automáticamente">
+                                        <i class="bi bi-magic"></i>
+                                    </button>
+                                </div>
+                                <FieldMessage Field="ServiceOrderNumber" Errors="_validationErrors" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Fecha de emisión <span class="text-danger">*</span></label>
+                                <input type="datetime-local" class="form-control"
+                                       value="@_model.IssuedAt.ToString("yyyy-MM-ddTHH:mm")"
+                                       @onchange="e => _model.IssuedAt = DateTime.Parse(e.Value?.ToString() ?? DateTime.UtcNow.ToString())" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Estado <span class="text-danger">*</span></label>
+                                <InputSelect class="form-select" @bind-Value="_model.Status">
+                                    @foreach (var s in ServiceOrderStatuses.All)
+                                    {
+                                        <option value="@s">@ServiceOrderStatuses.Label(s)</option>
+                                    }
+                                </InputSelect>
+                                <FieldMessage Field="Status" Errors="_validationErrors" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Prioridad <span class="text-danger">*</span></label>
+                                <InputSelect class="form-select" @bind-Value="_model.Priority">
+                                    @foreach (var p in ServiceOrderPriorities.All)
+                                    {
+                                        <option value="@p">@ServiceOrderPriorities.Label(p)</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* ── Sección 2: Emisor y punto de recogida ───────────────────── *@
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button @(_sec2Open ? "" : "collapsed")" type="button"
+                            @onclick='() => _sec2Open = !_sec2Open'>
+                        <i class="bi bi-building me-2"></i>Emisor y punto de recogida
+                    </button>
+                </h2>
+                @if (_sec2Open)
+                {
+                    <div class="accordion-collapse collapse show">
+                        <div class="accordion-body row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Emisor (Entidad)</label>
+                                <select class="form-select" @bind="_model.IdIssuedBy">
+                                    <option value="">— Sin asignar —</option>
+                                    @foreach (var e in _allEntities)
+                                    {
+                                        <option value="@e.Id">
+                                            @e.Name — @EntityRoles.Label(e.EntityRole)
+                                            @(e.NationalId is null ? "" : $" ({e.NationalId})")
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Nombre emisor (texto libre)</label>
+                                <InputText class="form-control" @bind-Value="_model.IssuedByName"
+                                           placeholder="Si no está en el listado" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">NIF / NIMA emisor</label>
+                                <InputText class="form-control" @bind-Value="_model.IssuedByNationalId" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Punto de recogida</label>
+                                <select class="form-select" @bind="_model.IdPickupPoint"
+                                        @bind:after="OnPickupPointChanged">
+                                    <option value="">— Sin asignar —</option>
+                                    @foreach (var e in _allEntities)
+                                    {
+                                        <option value="@e.Id">
+                                            @e.Name — @EntityRoles.Label(e.EntityRole)
+                                            @(e.NationalId is null ? "" : $" ({e.NationalId})")
+                                        </option>
+                                    }
+                                </select>
+                                <FieldMessage Field="IdPickupPoint" Errors="_validationErrors" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Fechas planificadas de recogida</label>
+                                <div class="d-flex gap-2">
+                                    <div class="flex-fill">
+                                        <label class="form-label form-label-sm">Inicio</label>
+                                        <input type="datetime-local" class="form-control"
+                                               value="@(_model.PlannedPickupStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                                               @onchange="e => _model.PlannedPickupStart = ParseDate(e.Value?.ToString())" />
+                                    </div>
+                                    <div class="flex-fill">
+                                        <label class="form-label form-label-sm">Fin</label>
+                                        <input type="datetime-local" class="form-control"
+                                               value="@(_model.PlannedPickupEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                                               @onchange="e => _model.PlannedPickupEnd = ParseDate(e.Value?.ToString())" />
+                                        <FieldMessage Field="PlannedPickupEnd" Errors="_validationErrors" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Fechas planificadas de entrega</label>
+                                <div class="d-flex gap-2">
+                                    <div class="flex-fill">
+                                        <label class="form-label form-label-sm">Inicio</label>
+                                        <input type="datetime-local" class="form-control"
+                                               value="@(_model.PlannedDeliveryStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                                               @onchange="e => _model.PlannedDeliveryStart = ParseDate(e.Value?.ToString())" />
+                                        <FieldMessage Field="PlannedDeliveryStart" Errors="_validationErrors" />
+                                    </div>
+                                    <div class="flex-fill">
+                                        <label class="form-label form-label-sm">Fin</label>
+                                        <input type="datetime-local" class="form-control"
+                                               value="@(_model.PlannedDeliveryEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                                               @onchange="e => _model.PlannedDeliveryEnd = ParseDate(e.Value?.ToString())" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* ── Sección 3: Clasificación del residuo ────────────────────── *@
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button @(_sec3Open ? "" : "collapsed")" type="button"
+                            @onclick='() => _sec3Open = !_sec3Open'>
+                        <i class="bi bi-recycle me-2"></i>Clasificación del residuo
+                    </button>
+                </h2>
+                @if (_sec3Open)
+                {
+                    <div class="accordion-collapse collapse show">
+                        <div class="accordion-body row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Flujo de residuo</label>
+                                <InputText class="form-control" @bind-Value="_model.WasteStream"
+                                           placeholder="RAEE, Envases, etc." />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Sub-flujo</label>
+                                <InputText class="form-control" @bind-Value="_model.SubStream" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Código LER</label>
+                                <select class="form-select" @bind="_model.IdLERCode"
+                                        @bind:after="OnLerCodeChanged">
+                                    <option value="">— Sin asignar —</option>
+                                    @foreach (var chapter in _lerChapters)
+                                    {
+                                        <optgroup label="@chapter.Chapter — @chapter.ChapterDescription">
+                                            @foreach (var ler in chapter.SubChapters.SelectMany(sc => sc.Codes))
+                                            {
+                                                <option value="@ler.Id">
+                                                    @ler.Code — @ler.Description
+                                                    @(ler.IsDangerous ? " ⚠️" : "")
+                                                </option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                                @if (_selectedLerIsDangerous)
+                                {
+                                    <div class="alert alert-warning mt-2 mb-0">
+                                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                        <strong>Residuo peligroso.</strong> Se requerirá NT/DI en el traslado.
+                                    </div>
+                                }
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Peso estimado (kg)</label>
+                                <InputNumber class="form-control" @bind-Value="_model.EstimatedWeight"
+                                             placeholder="0.000" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Unidad medida</label>
+                                <InputNumber class="form-control" @bind-Value="_model.MeasureUnit" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Unidades</label>
+                                <InputNumber class="form-control" @bind-Value="_model.Units" />
+                            </div>
+
+                            @* ── Tabla dinámica de contenedores ──────────── *@
+                            <div class="col-12">
+                                <label class="form-label">Contenedores</label>
+                                <div class="table-wrapper mb-2">
+                                    <table class="table table-sm">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th style="width:100px">Cantidad</th>
+                                            <th style="width:40px"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var (c, idx) in _containers.Select((x, i) => (x, i)))
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <input class="form-control form-control-sm"
+                                                           @bind="c.Type" placeholder="Tipo contenedor" />
+                                                </td>
+                                                <td>
+                                                    <input type="number" class="form-control form-control-sm"
+                                                           @bind="c.Qty" min="1" />
+                                                </td>
+                                                <td class="text-center">
+                                                    <button type="button" class="btn btn-outline-danger btn-sm"
+                                                            @onclick="() => RemoveContainer(idx)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                    </table>
+                                </div>                                <button type="button" class="btn btn-outline-neutral btn-sm"
+                                        @onclick="AddContainer">
+                                    <i class="bi bi-plus-lg me-1"></i>Añadir contenedor
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* ── Sección 4: Asignaciones previstas ───────────────────────── *@
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button @(_sec4Open ? "" : "collapsed")" type="button"
+                            @onclick='() => _sec4Open = !_sec4Open'>
+                        <i class="bi bi-truck me-2"></i>Asignaciones previstas
+                    </button>
+                </h2>
+                @if (_sec4Open)
+                {
+                    <div class="accordion-collapse collapse show">
+                        <div class="accordion-body row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Transportista previsto</label>
+                                <select class="form-select" @bind="_model.IdCarrier">
+                                    <option value="">— Sin asignar —</option>
+                                    @foreach (var e in _allEntities)
+                                    {
+                                        <option value="@e.Id">
+                                            @e.Name — @EntityRoles.Label(e.EntityRole)
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Planta de destino prevista</label>
+                                <select class="form-select" @bind="_model.IdPlannedPlant">
+                                    <option value="">— Sin asignar —</option>
+                                    @foreach (var e in _allEntities)
+                                    {
+                                        <option value="@e.Id">
+                                            @e.Name — @EntityRoles.Label(e.EntityRole)
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+        </div>
+
+        @* ── Errores y acciones ──────────────────────────────────────────────── *@
+        @if (_validationErrors.Any())
+        {
+            <div class="alert alert-danger mt-3">
+                <ul class="mb-0">
+                    @foreach (var err in _validationErrors.Values.SelectMany(v => v))
+                    {
+                        <li>@err</li>
+                    }
+                </ul>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(_serverError))
+        {
+            <div class="alert alert-danger mt-3">@_serverError</div>
+        }
+
+        <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary" disabled="@_saving">
+                @if (_saving) { <span class="spinner spinner-sm me-1"></span> }
+                <i class="bi bi-floppy me-1"></i>Guardar
+            </button>
+            <button type="button" class="btn btn-outline-neutral" @onclick="Cancel">
+                Cancelar
+            </button>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter] public Guid? ServiceOrderId { get; set; }
+
+    private bool _isEdit => ServiceOrderId.HasValue;
+    private bool _loading = true;
+    private bool _saving  = false;
+    private bool _sec1Open = true;
+    private bool _sec2Open = true;
+    private bool _sec3Open = true;
+    private bool _sec4Open = false;
+    private bool _selectedLerIsDangerous = false;
+    private string? _serverError;
+    private Dictionary<string, List<string>> _validationErrors = new();
+
+    // ── Modelo ────────────────────────────────────────────────────────────────
+    private sealed class FormModel
+    {
+        public string    ServiceOrderNumber   { get; set; } = "";
+        public DateTime  IssuedAt             { get; set; } = DateTime.UtcNow;
+        public Guid?     IdIssuedBy           { get; set; }
+        public string?   IssuedByName         { get; set; }
+        public string?   IssuedByNationalId   { get; set; }
+        public string?   IssuedByCenterCode   { get; set; }
+        public string    Status               { get; set; } = ServiceOrderStatuses.Pending;
+        public string    Priority             { get; set; } = ServiceOrderPriorities.Normal;
+        public string?   WasteStream          { get; set; }
+        public string?   SubStream            { get; set; }
+        public int?      ProductUse           { get; set; }
+        public int?      ProductCategory      { get; set; }
+        public Guid?     IdLERCode            { get; set; }
+        public Guid?     IdPickupPoint        { get; set; }
+        public DateTime? PlannedPickupStart   { get; set; }
+        public DateTime? PlannedPickupEnd     { get; set; }
+        public DateTime? PlannedDeliveryStart { get; set; }
+        public DateTime? PlannedDeliveryEnd   { get; set; }
+        public decimal?  EstimatedWeight      { get; set; }
+        public int?      MeasureUnit          { get; set; }
+        public int?      Units                { get; set; }
+        public Guid?     IdCarrier            { get; set; }
+        public Guid?     IdPlannedPlant       { get; set; }
+    }
+
+    private sealed class ContainerRow
+    {
+        public string Type { get; set; } = "";
+        public int    Qty  { get; set; } = 1;
+    }
+
+    private FormModel    _model      = new();
+    private List<ContainerRow> _containers = [];
+
+    // ── Datos de selectores ───────────────────────────────────────────────────
+    private IReadOnlyList<EntitySelectorDto> _allEntities = [];
+    private List<LerChapterDto>              _lerChapters = [];
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        // Carga secuencial: el DbContext de Blazor Server no soporta operaciones concurrentes.
+        _allEntities = await Mediator.Send(new GetEntitiesForSelectorQuery());
+        _lerChapters = await Mediator.Send(new GetLerCodesQuery());
+
+        if (_isEdit)
+        {
+            var detail = await Mediator.Send(new GetServiceOrderByIdQuery(ServiceOrderId!.Value));
+            if (detail is not null) LoadFromDetail(detail);
+        }
+
+        _loading = false;
+    }
+
+    private void LoadFromDetail(ServiceOrderDetailDto d)
+    {
+        _model = new FormModel
+        {
+            ServiceOrderNumber   = d.ServiceOrderNumber,
+            IssuedAt             = d.IssuedAt,
+            IdIssuedBy           = d.IdIssuedBy,
+            IssuedByName         = d.IssuedByName,
+            IssuedByNationalId   = d.IssuedByNationalId,
+            IssuedByCenterCode   = d.IssuedByCenterCode,
+            Status               = d.Status,
+            Priority             = d.Priority,
+            WasteStream          = d.WasteStream,
+            SubStream            = d.SubStream,
+            ProductUse           = d.ProductUse,
+            ProductCategory      = d.ProductCategory,
+            IdLERCode            = d.IdLERCode,
+            IdPickupPoint        = d.IdPickupPoint,
+            PlannedPickupStart   = d.PlannedPickupStart,
+            PlannedPickupEnd     = d.PlannedPickupEnd,
+            PlannedDeliveryStart = d.PlannedDeliveryStart,
+            PlannedDeliveryEnd   = d.PlannedDeliveryEnd,
+            EstimatedWeight      = d.EstimatedWeight,
+            MeasureUnit          = d.MeasureUnit,
+            Units                = d.Units,
+            IdCarrier            = d.IdCarrier,
+            IdPlannedPlant       = d.IdPlannedPlant
+        };
+        _selectedLerIsDangerous = d.LerCodeIsDangerous;
+
+        if (!string.IsNullOrEmpty(d.ContainersJson))
+        {
+            try
+            {
+                var list = JsonSerializer.Deserialize<List<ContainerRow>>(d.ContainersJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                _containers = list ?? [];
+            }
+            catch { _containers = []; }
+        }
+    }
+
+    // ── Eventos ───────────────────────────────────────────────────────────────
+
+    private void OnPickupPointChanged() { }   // reservado para lógica futura
+
+    private void OnLerCodeChanged()
+    {
+        if (!_model.IdLERCode.HasValue) { _selectedLerIsDangerous = false; return; }
+        var flat = _lerChapters.SelectMany(c => c.SubChapters).SelectMany(sc => sc.Codes);
+        var ler  = flat.FirstOrDefault(l => l.Id == _model.IdLERCode);
+        _selectedLerIsDangerous = ler?.IsDangerous ?? false;
+    }
+
+    private void ClearNumber() => _model.ServiceOrderNumber = "";
+
+    private void AddContainer()    => _containers.Add(new ContainerRow());
+    private void RemoveContainer(int idx)
+    {
+        if (idx >= 0 && idx < _containers.Count) _containers.RemoveAt(idx);
+    }
+
+    private static DateTime? ParseDate(string? s)
+        => DateTime.TryParse(s, out var d) ? d : null;
+
+    // ── Guardar ───────────────────────────────────────────────────────────────
+    private async Task SaveAsync()
+    {
+        _validationErrors = new();
+        _serverError      = null;
+        _saving           = true;
+
+        var containersJson = _containers.Count > 0
+            ? JsonSerializer.Serialize(_containers)
+            : null;
+
+        try
+        {
+            if (_isEdit)
+            {
+                await Mediator.Send(new UpdateServiceOrderCommand(
+                    ServiceOrderId!.Value,
+                    _model.ServiceOrderNumber, _model.IssuedAt,
+                    _model.IdIssuedBy, _model.IssuedByName, _model.IssuedByNationalId,
+                    _model.IssuedByCenterCode, _model.Status, _model.Priority,
+                    _model.WasteStream, _model.SubStream, _model.ProductUse, _model.ProductCategory,
+                    _model.IdLERCode, _model.IdPickupPoint,
+                    _model.PlannedPickupStart, _model.PlannedPickupEnd,
+                    _model.PlannedDeliveryStart, _model.PlannedDeliveryEnd,
+                    _model.EstimatedWeight, _model.MeasureUnit, _model.Units,
+                    containersJson, _model.IdCarrier, _model.IdPlannedPlant));
+
+                Nav.NavigateTo($"/service-orders/{ServiceOrderId!.Value}");
+            }
+            else
+            {
+                var newId = await Mediator.Send(new CreateServiceOrderCommand(
+                    _model.ServiceOrderNumber, _model.IssuedAt,
+                    _model.IdIssuedBy, _model.IssuedByName, _model.IssuedByNationalId,
+                    _model.IssuedByCenterCode, _model.Status, _model.Priority,
+                    _model.WasteStream, _model.SubStream, _model.ProductUse, _model.ProductCategory,
+                    _model.IdLERCode, _model.IdPickupPoint,
+                    _model.PlannedPickupStart, _model.PlannedPickupEnd,
+                    _model.PlannedDeliveryStart, _model.PlannedDeliveryEnd,
+                    _model.EstimatedWeight, _model.MeasureUnit, _model.Units,
+                    containersJson, _model.IdCarrier, _model.IdPlannedPlant));
+
+                Nav.NavigateTo($"/service-orders/{newId}");
+            }
+        }
+        catch (ValidationException ex)
+        {
+            foreach (var err in ex.Errors)
+            {
+                if (!_validationErrors.ContainsKey(err.PropertyName))
+                    _validationErrors[err.PropertyName] = [];
+                _validationErrors[err.PropertyName].Add(err.ErrorMessage);
+            }
+        }
+        catch (InvalidOperationException ex) { _serverError = ex.Message; }
+        catch (Exception ex)                 { _serverError = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => Nav.NavigateTo("/service-orders");
+}

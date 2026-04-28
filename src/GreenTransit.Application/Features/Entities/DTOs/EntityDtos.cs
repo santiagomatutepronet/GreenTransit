@@ -12,6 +12,14 @@ public sealed record EntityDto(
     string? LinkedUserLogin
 );
 
+/// <summary>DTO ligero para selectores de entidad en formularios.</summary>
+public sealed record EntitySelectorDto(
+    Guid    Id,
+    string  Name,
+    string  EntityRole,
+    string? NationalId
+);
+
 /// <summary>DTO de detalle con todos los campos de la entidad.</summary>
 public sealed record EntityDetailDto(
     Guid    Id,

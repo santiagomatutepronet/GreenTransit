@@ -1,20 +1,402 @@
-html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+/* app.css — Blazor-specific overrides + Bootstrap → site.css alignment layer */
+
+/* ── Blazor validation states ──────────────────────────────────────────────── */
+.valid.modified:not([type=checkbox]) {
+    border-color: var(--success, #1B6B3A);
 }
 
-a, .btn-link {
-    color: #006bb7;
+.invalid {
+    border-color: var(--danger, #AE2020);
 }
 
-.btn-primary {
-    color: #fff;
-    background-color: #1b6ec2;
-    border-color: #1861ac;
+.validation-message {
+    font-size: var(--text-xs);
+    color: var(--danger);
+    margin-top: var(--space-1);
+    font-weight: 500;
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+/* Blazor error boundary */
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi44MzcgMjY3LjM4NyA4OS43OTIxIDI2Ny4zODcgODcuMzAwNSAyNjYuMTE2IDg2LjA1NDcgMjYzLjU3NiA4Ni4wNTQ3WiIgZmlsbD0iI0ZGRTV+MCIgZmlsbC1ydWxlPSJldmVub2RkIi8+PC9nPjwvc3ZnPg==) no-repeat 1rem/1.8rem, #b32121;
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
 }
+
+.blazor-error-boundary::after {
+    content: "Se ha producido un error.";
+}
+
+
+/* ============================================================
+   Bootstrap → site.css alignment layer
+   Estos overrides garantizan que las clases Bootstrap existentes
+   en los componentes Razor usen los tokens de site.css.
+   ============================================================ */
+
+/* ── Tipografía ─────────────────────────────────────────────────────────────── */
+.fw-semibold { font-weight: 600 !important; }
+.fw-bold     { font-weight: 700 !important; }
+.small       { font-size: var(--text-xs) !important; }
+
+/* ── Spinner (Bootstrap → site.css) ────────────────────────────────────────── */
+@keyframes gt-spin { to { transform: rotate(360deg); } }
+
+.spinner-border {
+    display: inline-block;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: gt-spin 0.65s linear infinite;
+    vertical-align: -0.125em;
+}
+
+.spinner-border-sm {
+    width: 0.875rem;
+    height: 0.875rem;
+    border-width: 2px;
+}
+
+/* ── Form labels ───────────────────────────────────────────────────────────── */
+.form-label {
+    display: block;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-1);
+}
+
+.form-label-sm {
+    font-size: var(--text-xs);
+}
+
+/* ── Form select (Bootstrap form-select → site.css select) ─────────────────── */
+.form-select,
+.form-select-sm {
+    display: block;
+    width: 100%;
+    padding: var(--space-2) var(--space-8) var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    font-family: var(--font-body);
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234A5568' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--space-3) center;
+    transition: border-color var(--transition), box-shadow var(--transition);
+    cursor: pointer;
+}
+
+.form-select:hover:not(:disabled), .form-select-sm:hover:not(:disabled) {
+    border-color: var(--border-strong);
+}
+
+.form-select:focus, .form-select-sm:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px rgba(27, 107, 58, 0.12);
+}
+
+.form-select:disabled, .form-select-sm:disabled {
+    background-color: var(--surface-alt);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+    /* Evita que el shorthand `background` de site.css resetee background-repeat a `repeat`,
+       lo que causaría que la flecha SVG se repita en mosaico sobre el campo deshabilitado. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23A0ADB8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--space-3) center;
+    background-size: 16px 12px;
+}
+
+.form-control-sm {
+    font-size: var(--text-xs);
+    padding: var(--space-1) var(--space-2);
+}
+
+/* ── Badges (Bootstrap → site.css semánticos) ──────────────────────────────── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: var(--radius-lg);
+    line-height: 1.6;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+}
+
+.badge.bg-success  { background: var(--success-bg)  !important; color: var(--primary)    !important; }
+.badge.bg-danger   { background: var(--danger-bg)   !important; color: var(--danger)     !important; }
+.badge.bg-secondary { background: #F3F4F6           !important; color: #4B5563           !important; }
+.badge.bg-warning  { background: var(--warning-bg)  !important; color: var(--warning)    !important; }
+.badge.bg-info     { background: var(--info-bg)     !important; color: var(--secondary)  !important; }
+.badge.text-dark   { color: var(--text-primary)     !important; }
+
+/* ── Botones Bootstrap no presentes en site.css ────────────────────────────── */
+.btn-outline-primary {
+    background: transparent;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+}
+.btn-outline-primary:hover {
+    background: var(--primary-light);
+    color: var(--primary-hover);
+    text-decoration: none;
+}
+
+.btn-outline-secondary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+.btn-outline-secondary:hover {
+    background: var(--surface-alt);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.btn-outline-success {
+    background: transparent;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+}
+.btn-outline-success:hover {
+    background: var(--primary-light);
+    color: var(--primary-hover);
+    text-decoration: none;
+}
+
+.btn-outline-info {
+    background: transparent;
+    border: 1px solid var(--secondary);
+    color: var(--secondary);
+}
+.btn-outline-info:hover {
+    background: var(--secondary-light);
+    color: var(--secondary-hover);
+    text-decoration: none;
+}
+
+.btn-secondary {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+.btn-secondary:hover {
+    background: var(--border);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.btn-link {
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    padding: var(--space-2) var(--space-3);
+    font-weight: 400;
+}
+.btn-link:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+/* btn-xs (Bootstrap 3 legacy) */
+.btn-xs {
+    padding: 2px 8px;
+    font-size: var(--text-xs);
+}
+
+/* ── Colores de texto (Bootstrap) ───────────────────────────────────────────── */
+.text-success { color: var(--primary)   !important; }
+.text-danger  { color: var(--danger)    !important; }
+.text-warning { color: var(--warning)   !important; }
+.text-info    { color: var(--secondary) !important; }
+
+/* ── Acordeón Bootstrap → site.css form-section ────────────────────────────── */
+.accordion {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.accordion-item {
+    background: var(--surface);
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-md) !important;
+    overflow: hidden;
+}
+
+.accordion-button {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--surface);
+    padding: var(--space-4) var(--space-5);
+    border: none;
+    cursor: pointer;
+}
+
+.accordion-button:not(.collapsed) {
+    color: var(--primary);
+    background: var(--primary-light);
+    box-shadow: none;
+    border-bottom: 1px solid var(--border);
+}
+
+.accordion-button.collapsed {
+    border-bottom: none;
+}
+
+.accordion-button::after {
+    display: none; /* Ocultar chevron nativo de Bootstrap */
+}
+
+.accordion-button:focus {
+    box-shadow: none;
+    border-color: var(--border-focus);
+}
+
+.accordion-body {
+    padding: var(--space-5);
+    background: var(--surface);
+}
+
+/* ── Nav tabs Bootstrap → site.css tabs ────────────────────────────────────── */
+.nav-tabs {
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+}
+
+.nav-tabs .nav-item {
+    display: contents;
+}
+
+.nav-tabs .nav-link {
+    padding: var(--space-3) var(--space-5);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    white-space: nowrap;
+    border-radius: 0;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.nav-tabs .nav-link:hover {
+    color: var(--text-primary);
+    border-bottom-color: var(--border-strong);
+    background: transparent;
+    text-decoration: none;
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+    background: transparent;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+}
+
+/* ── Tabla modificadores Bootstrap ─────────────────────────────────────────── */
+.table-hover tbody tr:hover { background: var(--primary-light); }
+.table-light               { background: var(--surface-alt) !important; color: var(--text-secondary); }
+.table-sm td,
+.table-sm th               { padding: var(--space-2) var(--space-3); }
+.table-bordered            { border: 1px solid var(--border); }
+.table-bordered td,
+.table-bordered th         { border: 1px solid var(--border); }
+.align-middle td,
+.align-middle th           { vertical-align: middle; }
+.table-responsive          { width: 100%; overflow-x: auto; }
+
+/* ── Modal Bootstrap → site.css ────────────────────────────────────────────── */
+.modal-content {
+    border-radius: var(--radius-lg) !important;
+    border: none !important;
+    box-shadow: var(--shadow-lg);
+}
+.modal-header {
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+.modal-body    { padding: var(--space-5); }
+.modal-footer  {
+    padding: var(--space-4) var(--space-5);
+    border-top: 1px solid var(--border);
+    background: var(--surface-alt);
+    justify-content: flex-end;
+}
+.modal-title { font-size: var(--text-base); font-weight: 600; color: var(--text-primary); margin: 0; }
+.btn-close { border: none; background: transparent; cursor: pointer; opacity: 0.5; font-size: 1rem; }
+.btn-close:hover { opacity: 1; }
+
+/* ── Utilidades Bootstrap no cubiertas ─────────────────────────────────────── */
+.flex-fill { flex: 1 1 auto; min-width: 0; }
+.justify-content-between { justify-content: space-between !important; }
+.justify-content-center  { justify-content: center !important; }
+.align-items-end         { align-items: flex-end !important; }
+.align-items-center      { align-items: center !important; }
+.float-end               { float: right !important; }
+.ms-auto                 { margin-left: auto !important; }
+.me-1                    { margin-right: 0.25rem !important; }
+.me-2                    { margin-right: 0.5rem !important; }
+.ms-1                    { margin-left: 0.25rem !important; }
+.ms-2                    { margin-left: 0.5rem !important; }
+.py-1                    { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+.py-2                    { padding-top: 0.5rem !important;  padding-bottom: 0.5rem !important; }
+.py-5                    { padding-top: 3rem !important;    padding-bottom: 3rem !important; }
+.px-1                    { padding-left: 0.25rem !important; padding-right: 0.25rem !important; }
+.px-2                    { padding-left: 0.5rem !important;  padding-right: 0.5rem !important; }
+.py-0                    { padding-top: 0 !important; padding-bottom: 0 !important; }
+.p-0                     { padding: 0 !important; }
+.mt-1                    { margin-top: 0.25rem !important; }
+.mt-2                    { margin-top: 0.5rem !important; }
+.mt-3                    { margin-top: 0.75rem !important; }
+.mb-0                    { margin-bottom: 0 !important; }
+.mb-1                    { margin-bottom: 0.25rem !important; }
+.mb-2                    { margin-bottom: 0.5rem !important; }
+.mb-3                    { margin-bottom: 0.75rem !important; }
+.gap-2                   { gap: 0.5rem !important; }
+.gap-4                   { gap: 1rem !important; }
+.border-info             { border-color: var(--secondary) !important; }
+.bg-info.bg-opacity-10   { background: var(--info-bg) !important; }
+.text-info               { color: var(--secondary) !important; }
+.h-100                   { height: 100% !important; }
+.fw-bold                 { font-weight: 700 !important; }
+.font-monospace          { font-family: var(--font-mono) !important; }
+.text-uppercase          { text-transform: uppercase; letter-spacing: 0.05em; }
+.text-decoration-none    { text-decoration: none !important; }
+.text-end                { text-align: right !important; }
 
 .content {
     padding-top: 1.1rem;

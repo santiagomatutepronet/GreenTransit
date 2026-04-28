@@ -59,7 +59,7 @@ else
                                 <option value="">— Seleccionar —</option>
                                 @foreach (var r in EntityRoles.All)
                                 {
-                                    <option value="@r">@r</option>
+                                    <option value="@r">@EntityRoles.Label(r)</option>
                                 }
                             </InputSelect>
                             <FieldMessage Field="EntityRole" Errors="_validationErrors" />
@@ -117,33 +117,17 @@ else
                         { <small class="text-muted ms-2">(Coordenadas obligatorias para este rol)</small> }
                     </div>
                     <div class="card-body row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label">País</label>
-                            <InputText class="form-control" @bind-Value="_model.CountryCode"
-                                       placeholder="Código país" />
+                        <div class="col-12">
+                            <GeographySelector
+                                @bind-CountryCode="_model.CountryCode"
+                                @bind-StateCode="_model.StateCode"
+                                @bind-ProvinceCode="_model.ProvinceCode"
+                                @bind-MunicipalityCode="_model.MunicipalityCode"
+                                @bind-ZipCode="_model.ZipCode" />
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">CCAA</label>
-                            <InputText class="form-control" @bind-Value="_model.StateCode" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Provincia</label>
-                            <InputText class="form-control" @bind-Value="_model.ProvinceCode" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Municipio</label>
-                            <InputText class="form-control" @bind-Value="_model.MunicipalityCode" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Código postal</label>
-                            <InputText class="form-control" @bind-Value="_model.ZipCode" />
-                        </div>
-                        <div class="col-md-8">
+                        <div class="col-md-12">
                             <label class="form-label">Dirección</label>
                             <InputText class="form-control" @bind-Value="_model.Address" />
-                        </div>
-                        <div class="col-md-2">
-                            @* Placeholder para GeographySelector (B-3) *@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">

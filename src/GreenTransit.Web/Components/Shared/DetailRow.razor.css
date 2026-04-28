@@ -1,6 +1,6 @@
 .detail-row {
-    padding: 6px 0;
-    border-bottom: 1px solid #f0f0f0;
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border);
 }
 
 .detail-row:last-child {
@@ -9,16 +9,16 @@
 
 .detail-label {
     display: block;
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #6c757d;
+    color: var(--text-muted);
     margin-bottom: 2px;
 }
 
 .detail-value {
-    font-size: 0.9rem;
-    color: #212529;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
     word-break: break-word;
 }

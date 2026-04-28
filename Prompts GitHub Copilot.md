@@ -19,12 +19,12 @@
 | A-4 | Infraestructura | Layout Blazor: Sidebar + Topbar + NavMenu | 🔴 | ✅ |
 | B-1 | Maestros | Gestión de Entidades (Ecosistema): CQRS + UI | 🟠 | ✅ |
 | B-2 | Maestros | Catálogos: LER + Residuos + Operaciones R/D | 🟠 | ✅ |
-| B-3 | Maestros | Catálogos Geográficos: selectores en cascada | 🟠 | ⬜ |
+| B-3 | Maestros | Catálogos Geográficos: selectores en cascada | 🟠 | ✅ |
 | C-1 | Economía | Formalización de Acuerdos (Agreements) | 🟡 | ⬜ |
 | C-2 | Economía | Liquidación Económica (Settlements) | 🟡 | ⬜ |
 | C-3 | Economía | Objetivos y Cuotas de Mercado (MarketShares) | 🟡 | ⬜ |
-| D-1 | Operaciones | Órdenes de Servicio (ServiceOrders): CQRS + UI | 🔴 | ⬜ |
-| D-2 | Operaciones | Traslados (WasteMoves): creación — estado SOLICITADO | 🔴 | ⬜ |
+| D-1 | Operaciones | Órdenes de Servicio (ServiceOrders): CQRS + UI | 🔴 | ✅ |
+| D-2 | Operaciones | Traslados (WasteMoves): creación — estado SOLICITADO | 🔴 | ✅ |
 | D-3 | Operaciones | Planificación Logística — estado PLANIFICADO + DUM | 🔴 | ⬜ |
 | D-4 | Operaciones | Ejecución de Recogida — estado RECOGIDO + emisiones | 🔴 | ⬜ |
 | D-5 | Operaciones | Entrada en CAC — estado EN CAC | 🟠 | ⬜ |
@@ -501,7 +501,7 @@ Queries:
 
 **2. `GetWasteMoveByIdQuery`**: devuelve `WasteMoveDetailDto` con todos los campos del `WasteMove` + lista de `WasteMoveResidueDto` + nombres de entidades relacionadas + estado actual + `ServiceOrderNumber` de la SO vinculada.
 
-**3. `GetWasteMovesByServiceOrderQuery(Guid serviceOrderId)`**: lista todos los `WasteMoves` vinculados a una SO concreta.
+**3. `GetWasteMovesByServiceOrderQuery(Guid serviceOrderId)`**: lista los `WasteMoves` vinculados a una SO concreta.
 
 Commands:
 
@@ -512,7 +512,7 @@ Commands:
 - `IdScrap` (FK BusinessEntity)
 - `IdScrap2?` (FK BusinessEntity, opcional)
 - `PlannedPickupStart?`, `PlannedPickupEnd?`, `PlannedDeliveryStart?`, `PlannedDeliveryEnd?`
-El handler genera `WasteMoveReference` automáticamente (formato `WM-{AÑO}-{SECUENCIA:00000}`), crea las líneas `WasteMoveResidues` automáticamente heredando `IdResidue`, `Weight`, `MeasureUnit`, `Units` y `IdTreatmentOperationDestiny` de los residuos de las SOs origen, establece `ServiceStatus = "SOLICITADO"` y actualiza `WasteMoves.ServiceOrderId` con la primera SO del array.
+El handler genera `WasteMoveReference` automáticamente (formato `WM-{AÑO}-{SECUENCIA:00000}`), crea las líneas `WasteMoveResidues` automáticamente heredando `IdResidue`, `Weight`, `MeasureUnit`, `Units` y `IdTreatmentOperationDestiny` de los residuos de la SOs origen, establece `ServiceStatus = "SOLICITADO"` y actualiza `WasteMoves.ServiceOrderId` con la SO del array.
 
 **5. `UpdateWasteMoveResidueCommand`**: permite editar campos de una línea individual: `Weight`, `MeasureUnit`, `Units`, `UnitPriceKg`, `IdTreatmentOperationDestiny`, `DateDelivery`. Solo si el `WasteMove` padre está en estado `SOLICITADO`.
 
@@ -520,15 +520,15 @@ Validators:
 - `IdSource.EntityRole` debe estar en `{Source, CAC, PublicEntity, Producer}`
 - `IdDestination.EntityRole` debe estar en `{Destination, Plant, CAC}`
 - Si algún `Residue` vinculado tiene `IsDangerous = true` o `IsRAEE = true`, `IdTreatmentOperationDestiny` obligatorio en esa línea
-- `IdScrap` debe coincidir con el `IdScrap` de las SOs origen
+- `IdScrap` debe coincidir con el `IdScrap` de la SOs origen
 
 **CAPA WEB — `GreenTransit.Web/Components/Pages/WasteMoves/`**
 
 **6. `WasteMoveList.razor`**: tabla con componente `WasteMoveStatusStepper` embebido en cada fila mostrando visualmente el estado actual del traslado (crea este componente según se describe en D-3). Filtros avanzados en panel lateral colapsable.
 
 **7. `WasteMoveForm.razor`**: formulario de creación con:
-- Selector múltiple de SOs (checkboxes, solo muestra SOs en estado `Pending`/`Scheduled` del `OwnerId` activo)
-- Al seleccionar SOs, la tabla de líneas de residuos se autocompleta desde los residuos de las SOs seleccionadas (las líneas son editables)
+- Selector SO (checkboxes, solo muestra SOs en estado `Pending`/`Scheduled` del `OwnerId` activo)
+- Al seleccionar una SO, la tabla de líneas de residuos se autocompleta desde los residuos de la SO seleccionada (las líneas son editables)
 - Selector de origen filtrado por `EntityRole ∈ {Source, CAC, PublicEntity, Producer}`
 - Selector de destino filtrado por `EntityRole ∈ {Destination, Plant, CAC}`
 - Campos de fechas planificadas opcionales

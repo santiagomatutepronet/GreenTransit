@@ -53,6 +53,13 @@ public interface IApplicationDbContext
     DbSet<DumZone> DumZones { get; }
     DbSet<DumRestrictionRule> DumRestrictionRules { get; }
 
+    // ── Geografía ─────────────────────────────────────────────────────────────
+    DbSet<Country>              Countries              { get; }
+    DbSet<TerritoryState>       TerritoryStates        { get; }
+    DbSet<Province>             Provinces              { get; }
+    DbSet<Municipality>         Municipalities         { get; }
+    DbSet<MunicipalityZipCode>  MunicipalityZipCodes   { get; }
+
     // ── Seguridad ─────────────────────────────────────────────────────────────
     DbSet<AppUser>     AppUsers     { get; }
     DbSet<UserProfile> UserProfiles { get; }

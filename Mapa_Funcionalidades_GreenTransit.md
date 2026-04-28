@@ -15,7 +15,7 @@ Todas las funcionalidades deben respetar las convenciones del modelo v4.1:
 - **Auditoría**: `CreatedAt` / `UpdatedAt` (UTC) en tablas nuevas; `DateCreateSys` / `DateModifiedSys` en tablas legacy (`WasteMoves`, `EntryPlants`, `EntryCACs`, `TreatmentPlants`).
 - **Versionado e integridad**: `Version` + `Hash` en tablas clave (Agreements, Settlements, ServiceOrders, WasteMoves, Incidents, Residues...).
 - **Discriminadores**:
-  - `Entities.EntityRole` → `Source | Destination | Carrier | OperatorTransfer | SCRAP | Producer | Plant | CAC | PublicEntity | Coordinator | Other`.
+  - `Entities.EntityRole` → `Producer | OperatorTransfer | SCRAP | PublicEntity | Carrier | CAC | Plant | Coordinator | Other`. ⚠️ Los roles `Source` y `Destination` han sido eliminados: cualquier tipo de entidad puede actuar como origen o destino de un traslado según el contexto; el sistema filtra los selectores por `EntityRole` permitido en cada campo.
   - `Residues.ResidueType` → `Waste | Product | ProductSpec`.
   - `TreatmentOperations.Code` → `R1–R13` (valorización) / `D1–D15` (eliminación) — Directiva 2008/98/CE, Ley 7/2022.
 
@@ -73,7 +73,7 @@ Reglas de transición (claves):
 
 ### 1.1. Gestión de Entidades (Ecosistema)
 
-- **Lógica**: CRUD centralizado de **todos** los actores del ecosistema. El campo `EntityRole` es el filtro crítico que determina dónde puede aparecer la entidad (un `Source` no puede seleccionarse como `Destination`, etc.). Una misma entidad puede tener varios registros si desempeña distintos roles. **Al crear una entidad, el sistema genera automáticamente un usuario vinculado** con el perfil correspondiente a su `EntityRole`, permitiendo que la nueva entidad acceda al sistema desde el primer momento.
+- **Lógica**: CRUD centralizado de **todos** los actores del ecosistema. El campo `EntityRole` es el filtro crítico que determina dónde puede aparecer la entidad en cada selector (p. ej. solo entidades con `EntityRole ∈ {Producer, CAC, PublicEntity, OperatorTransfer}` pueden ser origen de un traslado). Una misma entidad puede tener varios registros si desempeña distintos roles. **Al crear una entidad, el sistema genera automáticamente un usuario vinculado** con el perfil correspondiente a su `EntityRole`, permitiendo que la nueva entidad acceda al sistema desde el primer momento.
 - **Entidades**: `Entities`, `Users`, `Profiles`.
 - **Campos clave**:
   - Identificación: `Id`, `Name`, `NationalId` (NIF/CIF/VAT), `CenterCode` (NIMA), `EntityRole`.
@@ -111,7 +111,7 @@ Reglas de transición (claves):
   | `PublicEntity` | `PUBLIC_ENT` | Revisión de acuerdos, liquidaciones, reporting municipal |
   | `Coordinator` | `COORDINATOR` | Lectura transversal del ámbito de los acuerdos |
   | `OperatorTransfer` | `CARRIER` | Mismo perfil que transportista (gestiona movimientos) |
-  | `Source` / `Destination` / `Other` | *(no se crea usuario automáticamente)* | Son puntos logísticos, no actores con sesión. El admin puede crear usuario manualmente si procede |
+  | `Other` | *(no se crea usuario automáticamente)* | Entidad auxiliar sin sesión propia. El admin puede crear usuario manualmente si procede |
 
   - **Comportamiento del flujo**:
     1. El formulario de alta de entidad muestra una sección colapsable "Acceso al sistema" que se activa automáticamente cuando el `EntityRole` tiene perfil mapeado.
@@ -234,7 +234,7 @@ Reglas de transición (claves):
   - Identificación: `ServiceOrderNumber` (único), `IssuedAt`, `Status`, `Priority` (default `Normal`).
   - Emisor: `IdIssuedBy` → `Entities` (+ `IssuedByName`/`NationalId`/`CenterCode` de respaldo).
   - Clasificación del residuo: `WasteStream`, `SubStream`, `ProductUse`, `ProductCategory`, `IdLERCode` → `LERCodes`.
-  - **Punto de recogida (v4)**: `IdPickupPoint` → `Entities` (CAC / ayuntamiento / industria). ⚠️ Sustituye a los campos `Point_*` de v1.
+  - **Punto de recogida (v4)**: `IdPickupPoint` → `Entities` (con `EntityRole ∈ {CAC, PublicEntity, Producer, OperatorTransfer}`). ⚠️ Sustituye a los campos `Point_*` de v1.
   - Ventanas planificadas: `PlannedPickupStart`, `PlannedPickupEnd`, `PlannedDeliveryStart`, `PlannedDeliveryEnd`.
   - Estimación: `EstimatedWeight`, `MeasureUnit`, `Units`, `ContainersJson`.
   - Asignaciones previstas: `IdCarrier` → `Entities` (Carrier), `IdPlannedPlant` → `Entities` (Plant).
@@ -263,8 +263,8 @@ Reglas de transición (claves):
   - Cantidades: `Weight`, `MeasureUnit`, `Units`, `unitPriceKg`, `DateDelivery`.
   - Destino de tratamiento previsto: `IdTreatmentOperationDestiny` → `TreatmentOperations`.
 - **Validaciones**:
-  - `IdSource` debe tener `EntityRole ∈ {Source, CAC, PublicEntity, Producer}`.
-  - `IdDestination` debe tener `EntityRole ∈ {Destination, Plant, CAC}`.
+  - `IdSource` debe tener `EntityRole ∈ {Producer, CAC, PublicEntity, OperatorTransfer}`.
+  - `IdDestination` debe tener `EntityRole ∈ {Plant, CAC, SCRAP}`.
   - Si `Residues.IsDangerous = 1` o `IsRAEE = 1`, obligar `IdTreatmentOperationDestiny`.
   - Heredar `IdScrap` y `IdLERCode` desde la `ServiceOrder` origen.
 - **Funciones**: agrupación multi-SO, consolidación de cargas, preview del DI/NT a generar.

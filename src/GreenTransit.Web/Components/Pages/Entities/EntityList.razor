@@ -23,42 +23,41 @@
 </div>
 
 @* ── Barra de filtros ──────────────────────────────────────────────────────── *@
-<div class="filter-bar card mb-3">
-    <div class="card-body d-flex flex-wrap gap-2 align-items-end">
-        <div>
-            <label class="form-label form-label-sm">Búsqueda</label>
-            <input class="form-control form-control-sm" style="min-width:200px"
-                   placeholder="Nombre, NIF, NIMA…"
-                   @bind="_searchTerm" @bind:event="oninput"
-                   @onkeyup="@(async e => { if (e.Key == "Enter") await LoadAsync(); })" />
-        </div>
-        <div>
-            <label class="form-label form-label-sm">Rol</label>
-            <select class="form-select form-select-sm" @bind="_filterRole">
-                <option value="">— Todos —</option>
-                @foreach (var r in EntityRoles.All)
-                {
-                    <option value="@r">@r</option>
-                }
-            </select>
-        </div>
-        <div>
-            <label class="form-label form-label-sm">Estado</label>
-            <select class="form-select form-select-sm" @bind="_filterActive">
-                <option value="">— Todos —</option>
-                <option value="true">Activo</option>
-                <option value="false">Inactivo</option>
-            </select>
-        </div>
-        <div>
-            <label class="form-label form-label-sm">Provincia</label>
-            <input class="form-control form-control-sm" style="width:120px"
-                   placeholder="Código…" @bind="_filterProvince" />
-        </div>
-        <button class="btn btn-outline-secondary btn-sm" @onclick="ApplyFilters">
-            <i class="bi bi-search me-1"></i>Filtrar
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Búsqueda</label>
+        <input class="form-control"
+               placeholder="Nombre, NIF, NIMA…"
+               @bind="_searchTerm" @bind:event="oninput"
+               @onkeyup="@(async e => { if (e.Key == "Enter") await LoadAsync(); })" />
+    </div>
+    <div class="filter-group">
+        <label>Rol</label>
+        <select class="form-control" @bind="_filterRole">
+            <option value="">— Todos —</option>
+            @foreach (var r in EntityRoles.All)
+            {
+                <option value="@r">@r</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Estado</label>
+        <select class="form-control" @bind="_filterActive">
+            <option value="">— Todos —</option>
+            <option value="true">Activo</option>
+            <option value="false">Inactivo</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Provincia</label>
+        <input class="form-control" placeholder="Código…" @bind="_filterProvince" />
+    </div>
+    <div class="filter-actions">
+        <button class="btn btn-primary btn-sm" @onclick="ApplyFilters">
+            <i class="bi bi-search me-1"></i>Buscar
         </button>
-        <button class="btn btn-link btn-sm" @onclick="ResetFilters">Limpiar</button>
+        <button class="btn btn-ghost btn-sm" @onclick="ResetFilters">Limpiar</button>
     </div>
 </div>
 
