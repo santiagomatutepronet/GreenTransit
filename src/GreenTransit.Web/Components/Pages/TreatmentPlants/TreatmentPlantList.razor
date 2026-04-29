@@ -1,0 +1,268 @@
+@page "/treatment-plants"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.TreatmentPlants.DTOs
+@using GreenTransit.Application.Features.TreatmentPlants.Queries
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Clasificación y Tratamiento</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-recycle me-2"></i>Clasificación y Tratamiento Final
+        </h1>
+    </div>
+</div>
+
+@* ── Panel: Nuevo tratamiento ─────────────────────────────────────────────── *@
+<div class="card mb-3 border-success">
+    <div class="card-header bg-success-subtle">
+        <h6 class="mb-0 text-success">
+            <i class="bi bi-plus-circle me-2"></i>Nuevo tratamiento
+        </h6>
+    </div>
+    <div class="card-body">
+        @if (_loadingDisponibles)
+        {
+            <div class="text-muted small">
+                <span class="spinner-border spinner-border-sm me-1"></span>
+                Cargando traslados disponibles…
+            </div>
+        }
+        else if (_disponibles.Count == 0)
+        {
+            <div class="text-muted small">
+                <i class="bi bi-info-circle me-1"></i>
+                No hay traslados en estado <strong>EN PLANTA</strong> pendientes de clasificación.
+            </div>
+        }
+        else
+        {
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-8">
+                    <label class="form-label form-label-sm fw-semibold">
+                        Traslado disponible para clasificar
+                    </label>
+                    <select class="form-select" @bind="_selectedWasteMoveId">
+                        <option value="">— Seleccionar traslado —</option>
+                        @foreach (var wm in _disponibles)
+                        {
+                            <option value="@wm.Id">
+                                @wm.WasteMoveReference
+                                @if (!string.IsNullOrEmpty(wm.SourceName))
+                                {
+                                    <text> — @wm.SourceName</text>
+                                }
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
+                    <button class="btn btn-success w-100"
+                            disabled="@(_selectedWasteMoveId == Guid.Empty)"
+                            @onclick="GoToForm">
+                        <i class="bi bi-recycle me-1"></i>Registrar tratamiento
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-4">
+                <label class="form-label form-label-sm">Referencia traslado</label>
+                <input class="form-control form-control-sm"
+                       @bind="_filterRef" @bind:event="oninput"
+                       placeholder="WM-2024-…" />
+            </div>
+            <div class="col-12 col-md-2">
+                <label class="form-label form-label-sm">Fecha desde</label>
+                <InputDate TValue="DateTime?" class="form-control form-control-sm"
+                           @bind-Value="_filterFrom" />
+            </div>
+            <div class="col-12 col-md-2">
+                <label class="form-label form-label-sm">Fecha hasta</label>
+                <InputDate TValue="DateTime?" class="form-control form-control-sm"
+                           @bind-Value="_filterTo" />
+            </div>
+            <div class="col-12 col-md-2">
+                <button class="btn btn-primary btn-sm w-100" @onclick="LoadAsync">
+                    <i class="bi bi-search me-1"></i>Buscar
+                </button>
+            </div>
+            <div class="col-12 col-md-2">
+                <button class="btn btn-outline-secondary btn-sm w-100" @onclick="ClearFilters">
+                    <i class="bi bi-x-circle me-1"></i>Limpiar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Tabla ────────────────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="text-center py-4">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_result is null || _result.TotalCount == 0)
+{
+    <div class="alert alert-info">No se encontraron registros de tratamiento.</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-hover table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Referencia traslado</th>
+                        <th>Ticket</th>
+                        <th>Fecha tratamiento</th>
+                        <th>Operación R/D</th>
+                        <th>Líneas</th>
+                        <th>Incidencia</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _result.Items)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@(item.WasteMoveReference ?? "—")</td>
+                            <td>@(item.TicketScale ?? "—")</td>
+                            <td>@(item.PlantTreatmentDate?.ToString("dd/MM/yyyy") ?? "—")</td>
+                            <td>
+                                @if (item.TreatmentOperationCode is not null)
+                                {
+                                    <span class="badge @(item.TreatmentOperationType == "Recovery" ? "bg-success" : "bg-warning text-dark")">
+                                        @item.TreatmentOperationCode
+                                    </span>
+                                    <span class="ms-1 text-muted small">@item.TreatmentOperationDescription</span>
+                                }
+                                else { <text>—</text> }
+                            </td>
+                            <td>@item.ResidueLineCount</td>
+                            <td>
+                                @if (item.HasIncident)
+                                {
+                                    <span class="badge bg-danger">
+                                        <i class="bi bi-exclamation-triangle-fill me-1"></i>Incidencia
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success-subtle text-success">OK</span>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn btn-outline-primary btn-sm"
+                                        @onclick='() => Nav.NavigateTo("/treatment-plants/" + item.Id)'>
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @* ── Paginación ──────────────────────────────────────────────────────── *@
+    @if (_result.TotalCount > _pageSize)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <small class="text-muted">
+                @((_page - 1) * _pageSize + 1)–@(Math.Min(_page * _pageSize, _result.TotalCount))
+                de @_result.TotalCount registros
+            </small>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary"
+                        disabled="@(_page == 1)"
+                        @onclick="PrevPage">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <button class="btn btn-outline-secondary"
+                        disabled="@(_page * _pageSize >= _result.TotalCount)"
+                        @onclick="NextPage">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private GetTreatmentPlantsResult? _result;
+    private bool _loading             = true;
+    private bool _loadingDisponibles  = true;
+
+    private string?   _filterRef;
+    private DateTime? _filterFrom;
+    private DateTime? _filterTo;
+    private int       _page     = 1;
+    private const int _pageSize = 20;
+
+    private List<WasteMoveDto> _disponibles         = [];
+    private Guid               _selectedWasteMoveId = Guid.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        await LoadDisponiblesAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _result  = await Mediator.Send(new GetTreatmentPlantsQuery(
+            WasteMoveReference:     _filterRef,
+            PlantTreatmentDateFrom: _filterFrom,
+            PlantTreatmentDateTo:   _filterTo,
+            Page:                   _page,
+            PageSize:               _pageSize));
+        _loading = false;
+    }
+
+    private async Task LoadDisponiblesAsync()
+    {
+        _loadingDisponibles = true;
+        var res = await Mediator.Send(new GetWasteMovesQuery(
+            ServiceStatus: WasteMoveStatuses.EnPlanta,
+            PageSize: 200));
+        _disponibles        = res.Items.ToList();
+        _loadingDisponibles = false;
+    }
+
+    private void GoToForm()
+    {
+        if (_selectedWasteMoveId != Guid.Empty)
+            Nav.NavigateTo($"/waste-moves/{_selectedWasteMoveId}/treatment-plant");
+    }
+
+    private void ClearFilters()
+    {
+        _filterRef  = null;
+        _filterFrom = null;
+        _filterTo   = null;
+        _page       = 1;
+        _ = LoadAsync();
+    }
+
+    private async Task PrevPage() { _page--; await LoadAsync(); }
+    private async Task NextPage() { _page++; await LoadAsync(); }
+}

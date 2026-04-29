@@ -142,6 +142,11 @@ else
                                         @onclick="() => Nav.NavigateTo(detailUrl)">
                                     <i class="bi bi-eye"></i>
                                 </button>
+                                <button class="btn btn-ghost btn-sm btn-icon-only"
+                                        title="Vista 360º"
+                                        @onclick='() => Nav.NavigateTo("/waste-moves/" + wm.Id + "/timeline")'>
+                                    <i class="bi bi-diagram-3"></i>
+                                </button>
                                 @if (wm.ServiceStatus == WasteMoveStatuses.Solicitado)
                                 {
                                     <button class="btn btn-ghost btn-sm btn-icon-only"

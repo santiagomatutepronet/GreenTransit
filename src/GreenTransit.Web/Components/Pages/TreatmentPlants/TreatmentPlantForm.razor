@@ -1,0 +1,615 @@
+@page "/waste-moves/{WasteMoveId:guid}/treatment-plant"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.TreatmentPlants.Commands
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Application.Features.Residues.DTOs
+@using GreenTransit.Application.Features.Residues.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Tratamiento Final — Clasificación</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_wasteMove is null)
+{
+    <div class="alert alert-warning">Traslado no encontrado.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/treatment-plants")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1 class="page-title">
+                <i class="bi bi-recycle me-2"></i>
+                Tratamiento — @(_wasteMove.WasteMoveReference ?? WasteMoveId.ToString()[..8])
+            </h1>
+            <div class="mt-1">
+                <WasteMoveStatusStepper Status="@_wasteMove.ServiceStatus" />
+            </div>
+        </div>
+        <div class="page-header-actions">
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    @if (_wasteMove.ServiceStatus != WasteMoveStatuses.EnPlanta)
+    {
+        <div class="alert alert-warning">
+            Este traslado no puede registrar un tratamiento porque está en estado
+            <strong>@WasteMoveStatuses.Label(_wasteMove.ServiceStatus ?? "")</strong>.
+            Se requiere estado <strong>EN PLANTA</strong>.
+        </div>
+    }
+    else
+    {
+        <EditForm Model="_model" OnSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            @if (!string.IsNullOrEmpty(_globalError))
+            {
+                <div class="alert alert-danger mb-3">
+                    <i class="bi bi-x-circle me-1"></i>@_globalError
+                </div>
+            }
+
+            @* ── Cabecera ─────────────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clipboard2-data me-2"></i>Datos del tratamiento
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-semibold">Fecha de tratamiento *</label>
+                            <InputDate TValue="DateTime"
+                                       class="form-control"
+                                       @bind-Value="_model.PlantTreatmentDate"
+                                       Type="InputDateType.DateTimeLocal" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-semibold">Nº Ticket báscula</label>
+                            <input class="form-control"
+                                   @bind="_model.TicketScale"
+                                   placeholder="TIC-2024-0001" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-semibold">Operación R/D *</label>
+                            <TreatmentOperationSelect Value="_model.IdTreatmentOperation"
+                                                      ValueChanged="v => { _model.IdTreatmentOperation = v; }"
+                                                      Placeholder="— Seleccionar operación —" />
+                            @if (_submitted && _model.IdTreatmentOperation == Guid.Empty)
+                            {
+                                <div class="text-danger small mt-1">La operación R/D es obligatoria.</div>
+                            }
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="form-label fw-semibold">Tipo contenedor</label>
+                            <InputSelect TValue="string?" class="form-select"
+                                         @bind-Value="_model.TypeContainer">
+                                <option value="">— Seleccionar —</option>
+                                <option value="Bigbag">Big Bag</option>
+                                <option value="Contenedor">Contenedor</option>
+                                <option value="Palet">Palé</option>
+                                <option value="Granel">Granel</option>
+                                <option value="Otro">Otro</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="form-label fw-semibold">Precio contenedor (€)</label>
+                            <InputNumber TValue="decimal?" class="form-control"
+                                         @bind-Value="_model.PriceContainer"
+                                         placeholder="0.00" />
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="form-label fw-semibold">Peso inapropiado (kg)</label>
+                            <InputNumber TValue="decimal?" class="form-control"
+                                         @bind-Value="_model.ImproperWeight"
+                                         placeholder="0.00"
+                                         @oninput="() => RecalcAllBalances()" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Métricas de calidad ──────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-graph-up me-2"></i>Métricas de calidad
+                    </h5>
+                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                            @onclick="AddMetric">
+                        <i class="bi bi-plus me-1"></i>Añadir métrica
+                    </button>
+                </div>
+                <div class="card-body">
+                    @if (_metrics.Count == 0)
+                    {
+                        <p class="text-muted small mb-0">Sin métricas. Pulsa «Añadir métrica».</p>
+                    }
+                    else
+                    {
+                        @foreach (var (metric, idx) in _metrics.Select((m, i) => (m, i)))
+                        {
+                            <div class="row g-2 mb-2">
+                                <div class="col-5">
+                                    <input class="form-control form-control-sm"
+                                           placeholder="Clave (ej. % contaminantes)"
+                                           @bind="metric.Key" />
+                                </div>
+                                <div class="col-5">
+                                    <input class="form-control form-control-sm"
+                                           placeholder="Valor"
+                                           @bind="metric.Value" />
+                                </div>
+                                <div class="col-2">
+                                    <button type="button"
+                                            class="btn btn-outline-danger btn-sm w-100"
+                                            @onclick="() => RemoveMetric(idx)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* ── Tabla de líneas ──────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-ul me-2"></i>Líneas de clasificación
+                    </h5>
+                    <button type="button" class="btn btn-outline-success btn-sm"
+                            @onclick="AddLine">
+                        <i class="bi bi-plus me-1"></i>Añadir línea
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    @if (_lines.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">
+                            Pulsa «Añadir línea» para registrar residuos.
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var (line, idx) in _lines.Select((l, i) => (l, i)))
+                        {
+                            var balance   = CalcBalance(line);
+                            var balanceOk = balance.ok;
+                            var pct       = balance.pct;
+
+                            <div class="border-bottom p-3 @(balanceOk ? "" : "bg-danger-subtle")">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="fw-semibold text-muted small">LÍNEA @(idx + 1)</span>
+                                    <button type="button"
+                                            class="btn btn-outline-danger btn-sm"
+                                            @onclick="() => RemoveLine(idx)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+
+                                @* ── Residuo entrada ─────────────────────────── *@
+                                <div class="row g-2 mb-2">
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label form-label-sm fw-semibold">Residuo entrada *</label>
+                                        <select class="form-select form-select-sm"
+                                                value="@line.IdResidue.ToString()"
+                                                @onchange="e => OnResidueChange(line, e)">
+                                            <option value="">— Seleccionar —</option>
+                                            @foreach (var r in _residues)
+                                            {
+                                                <option value="@r.Id">@r.Name</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="col-6 col-md-2">
+                                        <label class="form-label form-label-sm fw-bold text-primary">
+                                            Peso TOTAL (kg) *
+                                        </label>
+                                        <input type="number" step="0.01" min="0"
+                                               class="form-control form-control-sm fw-bold"
+                                               value="@line.WeightTotal"
+                                               @oninput="e => { line.WeightTotal = ParseDecimal(e); RecalcAllBalances(); }"
+                                               placeholder="0.00" />
+                                    </div>
+                                    <div class="col-6 col-md-2">
+                                        <label class="form-label form-label-sm">Unidad medida *</label>
+                                        <InputSelect TValue="string" class="form-select form-select-sm"
+                                                     @bind-Value="line.MeasureUnit">
+                                            <option value="kg">kg</option>
+                                            <option value="t">t</option>
+                                            <option value="ud">ud</option>
+                                        </InputSelect>
+                                    </div>
+                                    <div class="col-6 col-md-2">
+                                        <label class="form-label form-label-sm">Uds.</label>
+                                        <InputNumber TValue="int?" class="form-control form-control-sm"
+                                                     @bind-Value="line.Units" />
+                                    </div>
+                                    <div class="col-6 col-md-2">
+                                        <label class="form-label form-label-sm">Categoría</label>
+                                        <input class="form-control form-control-sm"
+                                               @bind="line.Category"
+                                               placeholder="RAEE, envases…" />
+                                    </div>
+                                </div>
+
+                                @* ── Tres fracciones ─────────────────────────── *@
+                                <div class="row g-2 mb-3">
+                                    @* Reutilizado *@
+                                    <div class="col-12 col-md-4">
+                                        <div class="card border-success h-100">
+                                            <div class="card-header py-1 bg-success-subtle">
+                                                <span class="small fw-semibold text-success">
+                                                    ♻️ Reutilizado
+                                                </span>
+                                            </div>
+                                            <div class="card-body py-2 px-2">
+                                                <div class="mb-1">
+                                                    <label class="form-label form-label-sm mb-0">Peso (kg)</label>
+                                                    <input type="number" step="0.01" min="0"
+                                                           class="form-control form-control-sm"
+                                                           value="@line.WeightReused"
+                                                           @oninput="e => { line.WeightReused = ParseDecimalNullable(e); RecalcAllBalances(); }"
+                                                           placeholder="0.00" />
+                                                </div>
+                                                <div>
+                                                    <label class="form-label form-label-sm mb-0">Residuo destino</label>
+                                                    <select class="form-select form-select-sm"
+                                                            value="@(line.IdResidueReused?.ToString() ?? "")"
+                                                            @onchange="e => line.IdResidueReused = ParseGuidNullable(e)">
+                                                        <option value="">— Opcional —</option>
+                                                        @foreach (var r in _residues)
+                                                        {
+                                                            <option value="@r.Id">@r.Name</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    @* Valorizado *@
+                                    <div class="col-12 col-md-4">
+                                        <div class="card border-primary h-100">
+                                            <div class="card-header py-1 bg-primary-subtle">
+                                                <span class="small fw-semibold text-primary">
+                                                    ⚡ Valorizado
+                                                </span>
+                                            </div>
+                                            <div class="card-body py-2 px-2">
+                                                <div class="mb-1">
+                                                    <label class="form-label form-label-sm mb-0">Peso (kg)</label>
+                                                    <input type="number" step="0.01" min="0"
+                                                           class="form-control form-control-sm"
+                                                           value="@line.WeightValued"
+                                                           @oninput="e => { line.WeightValued = ParseDecimalNullable(e); RecalcAllBalances(); }"
+                                                           placeholder="0.00" />
+                                                </div>
+                                                <div>
+                                                    <label class="form-label form-label-sm mb-0">Residuo destino</label>
+                                                    <select class="form-select form-select-sm"
+                                                            value="@(line.IdResidueValued?.ToString() ?? "")"
+                                                            @onchange="e => line.IdResidueValued = ParseGuidNullable(e)">
+                                                        <option value="">— Opcional —</option>
+                                                        @foreach (var r in _residues)
+                                                        {
+                                                            <option value="@r.Id">@r.Name</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    @* Rechazo *@
+                                    <div class="col-12 col-md-4">
+                                        <div class="card border-danger h-100">
+                                            <div class="card-header py-1 bg-danger-subtle">
+                                                <span class="small fw-semibold text-danger">
+                                                    🗑️ Rechazo
+                                                </span>
+                                            </div>
+                                            <div class="card-body py-2 px-2">
+                                                <div class="mb-1">
+                                                    <label class="form-label form-label-sm mb-0">Peso (kg)</label>
+                                                    <input type="number" step="0.01" min="0"
+                                                           class="form-control form-control-sm"
+                                                           value="@line.WeightRemove"
+                                                           @oninput="e => { line.WeightRemove = ParseDecimalNullable(e); RecalcAllBalances(); }"
+                                                           placeholder="0.00" />
+                                                </div>
+                                                <div>
+                                                    <label class="form-label form-label-sm mb-0">Residuo destino</label>
+                                                    <select class="form-select form-select-sm"
+                                                            value="@(line.IdResidueRemove?.ToString() ?? "")"
+                                                            @onchange="e => line.IdResidueRemove = ParseGuidNullable(e)">
+                                                        <option value="">— Opcional —</option>
+                                                        @foreach (var r in _residues)
+                                                        {
+                                                            <option value="@r.Id">@r.Name</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @* ── Barra de balance ─────────────────────────── *@
+                                <div>
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small class="fw-semibold">Balance de masas</small>
+                                        <small class="@(balanceOk ? "text-success" : "text-danger") fw-bold">
+                                            @if (balanceOk)
+                                            {
+                                                <text><i class="bi bi-check-circle-fill me-1"></i>OK (@(pct.ToString("F1")))%</text>
+                                            }
+                                            else
+                                            {
+                                                <text><i class="bi bi-exclamation-triangle-fill me-1"></i>Descuadre (@(pct.ToString("F1")))%</text>
+                                            }
+                                        </small>
+                                    </div>
+                                    <div class="progress" style="height:8px">
+                                        <div class="progress-bar @(balanceOk ? "bg-success" : "bg-danger")"
+                                             style="width:@(Math.Min(pct, 100m).ToString("F0"))%"
+                                             role="progressbar">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* ── Botón de submit ──────────────────────────────────────── *@
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="btn btn-outline-secondary"
+                        @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                    Cancelar
+                </button>
+                <button type="submit"
+                        class="btn btn-success"
+                        disabled="@(!_allBalancesOk || _submitting)">
+                    @if (_submitting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    <i class="bi bi-check2-circle me-1"></i>Confirmar tratamiento
+                </button>
+            </div>
+        </EditForm>
+    }
+}
+
+@code {
+    [Parameter] public Guid WasteMoveId { get; set; }
+
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private bool    _loading    = true;
+    private bool    _submitting = false;
+    private bool    _submitted  = false;
+    private string? _globalError;
+    private bool    _allBalancesOk = false;
+
+    private WasteMoveDetailDto?     _wasteMove;
+    private List<ResidueDto>         _residues = [];
+
+    // ── Modelo del formulario ─────────────────────────────────────────────────
+    private TreatmentFormModel _model = new();
+
+    private sealed class TreatmentFormModel
+    {
+        public DateTime PlantTreatmentDate   { get; set; } = DateTime.Now;
+        public Guid?    IdTreatmentOperation  { get; set; }
+        public string?  TicketScale          { get; set; }
+        public decimal? ImproperWeight       { get; set; }
+        public string?  TypeContainer        { get; set; }
+        public decimal? PriceContainer       { get; set; }
+    }
+
+    // ── Métricas de calidad (pares clave/valor) ───────────────────────────────
+    private List<MetricEntry> _metrics = [];
+
+    private sealed class MetricEntry
+    {
+        public string Key   { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+
+    // ── Líneas de clasificación ───────────────────────────────────────────────
+    private List<TreatmentLineModel> _lines = [];
+
+    private sealed class TreatmentLineModel
+    {
+        public Guid     IdResidue       { get; set; }
+        public string?  Category        { get; set; }
+        public decimal  WeightTotal     { get; set; }
+        public string   MeasureUnit     { get; set; } = "kg";
+        public int?     Units           { get; set; }
+        public decimal? PriceWeight     { get; set; }
+        public decimal? PriceUnit       { get; set; }
+        // Reutilizado
+        public Guid?    IdResidueReused  { get; set; }
+        public decimal? WeightReused     { get; set; }
+        public string?  MeasureUnitReused { get; set; }
+        public int?     UnitsReused      { get; set; }
+        // Valorizado
+        public Guid?    IdResidueValued  { get; set; }
+        public decimal? WeightValued     { get; set; }
+        public string?  MeasureUnitValued { get; set; }
+        public int?     UnitsValued      { get; set; }
+        // Rechazo
+        public Guid?    IdResidueRemove  { get; set; }
+        public decimal? WeightRemove     { get; set; }
+        public string?  MeasureUnitRemove { get; set; }
+        public int?     UnitsRemove      { get; set; }
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        _wasteMove = await Mediator.Send(new GetWasteMoveByIdQuery(WasteMoveId));
+        var resResult = await Mediator.Send(new GetResiduesQuery(PageSize: 500));
+        _residues  = resResult.Items.ToList();
+        _loading   = false;
+    }
+
+    // ── Balance ───────────────────────────────────────────────────────────────
+    private (bool ok, decimal pct) CalcBalance(TreatmentLineModel line)
+    {
+        var sum   = (line.WeightReused  ?? 0m)
+                  + (line.WeightValued  ?? 0m)
+                  + (line.WeightRemove  ?? 0m)
+                  + (_model.ImproperWeight ?? 0m);
+        var total = line.WeightTotal;
+        if (total == 0) return (true, 0m);
+
+        var diff      = Math.Abs(total - sum);
+        var threshold = total * 0.01m;
+        var pct       = sum / total * 100m;
+        return (diff <= threshold, pct);
+    }
+
+    private void RecalcAllBalances()
+    {
+        _allBalancesOk = _lines.Count > 0 && _lines.All(l => CalcBalance(l).ok);
+    }
+
+    // ── Líneas ────────────────────────────────────────────────────────────────
+    private void AddLine()
+    {
+        _lines.Add(new TreatmentLineModel());
+        RecalcAllBalances();
+    }
+
+    private void RemoveLine(int idx)
+    {
+        _lines.RemoveAt(idx);
+        RecalcAllBalances();
+    }
+
+    // ── Métricas ──────────────────────────────────────────────────────────────
+    private void AddMetric()     => _metrics.Add(new MetricEntry());
+    private void RemoveMetric(int idx) => _metrics.RemoveAt(idx);
+
+    private string? BuildMetricsJson()
+    {
+        var valid = _metrics.Where(m => !string.IsNullOrWhiteSpace(m.Key)).ToList();
+        if (valid.Count == 0) return null;
+        var dict = valid.ToDictionary(m => m.Key.Trim(), m => m.Value.Trim());
+        return System.Text.Json.JsonSerializer.Serialize(dict);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static decimal ParseDecimal(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+        => decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0m;
+
+    private static decimal? ParseDecimalNullable(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+        => decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+
+    private static Guid? ParseGuidNullable(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+        => Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+
+    private static void OnResidueChange(TreatmentLineModel line,
+        Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var g))
+            line.IdResidue = g;
+    }
+
+    // ── Submit ────────────────────────────────────────────────────────────────
+    private async Task HandleSubmit()
+    {
+        _submitted = true;
+        _globalError = null;
+
+        if (_model.IdTreatmentOperation is null || _model.IdTreatmentOperation == Guid.Empty)
+        {
+            _globalError = "Selecciona una operación de tratamiento R/D.";
+            return;
+        }
+        if (_lines.Count == 0)
+        {
+            _globalError = "Añade al menos una línea de residuo.";
+            return;
+        }
+        if (!_allBalancesOk)
+        {
+            _globalError = "Una o más líneas tienen descuadre de balance de masas. Corrígelas antes de confirmar.";
+            return;
+        }
+
+        _submitting = true;
+        try
+        {
+            var lineInputs = _lines.Select(l => new CreateTreatmentPlantLineInput(
+                l.IdResidue,
+                l.Category,
+                l.WeightTotal,
+                l.MeasureUnit,
+                l.Units,
+                l.PriceWeight,
+                l.PriceUnit,
+                l.IdResidueReused,
+                l.WeightReused,
+                l.MeasureUnitReused,
+                l.UnitsReused,
+                l.IdResidueValued,
+                l.WeightValued,
+                l.MeasureUnitValued,
+                l.UnitsValued,
+                l.IdResidueRemove,
+                l.WeightRemove,
+                l.MeasureUnitRemove,
+                l.UnitsRemove)).ToArray();
+
+            var result = await Mediator.Send(new CreateTreatmentPlantCommand(
+                WasteMoveId:         WasteMoveId,
+                PlantTreatmentDate:  _model.PlantTreatmentDate,
+                IdTreatmentOperation: _model.IdTreatmentOperation!.Value,
+                TicketScale:         _model.TicketScale,
+                ServiceOrderId:      null,
+                ImproperWeight:      _model.ImproperWeight,
+                QualityMetricsJson:  BuildMetricsJson(),
+                TypeContainer:       _model.TypeContainer,
+                PriceContainer:      _model.PriceContainer,
+                Lines:               lineInputs));
+
+            Nav.NavigateTo($"/treatment-plants/{result.TreatmentPlantId}");
+        }
+        catch (Exception ex)
+        {
+            _globalError = ex.Message;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}

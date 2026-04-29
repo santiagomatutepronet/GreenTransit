@@ -6,7 +6,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Blazor-ApexCharts" Version="3.0.0-beta9" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.7" />
+    <PackageReference Include="QuestPDF" Version="2025.4.3" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
     <PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />

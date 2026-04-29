@@ -27,8 +27,71 @@
     content: "Se ha producido un error.";
 }
 
+/* ── Skeleton loaders (dashboard) ─────────────────────────────────────────── */
+@keyframes skeleton-loading {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
 
-/* ============================================================
+.skeleton {
+    background: linear-gradient(90deg, #e8e8e8 25%, #d0d0d0 50%, #e8e8e8 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.4s ease-in-out infinite;
+    border-radius: .375rem;
+    display: block;
+}
+
+.skeleton-text {
+    height: .875rem;
+    border-radius: .25rem;
+}
+
+/* ── KPI cards (dashboard) ────────────────────────────────────────────────── */
+.kpi-card {
+    border-left: 4px solid transparent;
+    transition: box-shadow .15s ease;
+}
+
+.kpi-card:hover {
+    box-shadow: 0 .25rem .75rem rgba(0,0,0,.1);
+}
+
+.kpi-label {
+    font-size: .75rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #6c757d;
+    font-weight: 600;
+}
+
+.kpi-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #212529;
+}
+
+.kpi-icon {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: .5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.kpi-icon--green  { background: #d1e7dd; color: #198754; }
+.kpi-icon--blue   { background: #cfe2ff; color: #0d6efd; }
+.kpi-icon--teal   { background: #d2f4ea; color: #20c997; }
+.kpi-icon--red    { background: #f8d7da; color: #dc3545; }
+
+/* ── Extra small button ───────────────────────────────────────────────────── */
+.btn-xs {
+    padding: .1rem .35rem;
+    font-size: .75rem;
+    border-radius: .25rem;
+}
    Bootstrap → site.css alignment layer
    Estos overrides garantizan que las clases Bootstrap existentes
    en los componentes Razor usen los tokens de site.css.

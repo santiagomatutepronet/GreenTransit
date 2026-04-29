@@ -72,6 +72,10 @@ else
                     <i class="bi bi-pencil me-1"></i>Editar
                 </button>
             }
+            <button class="btn btn-outline-info btn-sm"
+                    @onclick='() => Nav.NavigateTo("/waste-moves/" + d.Id + "/timeline")'>
+                <i class="bi bi-diagram-3 me-1"></i>Vista 360º
+            </button>
             <button class="btn btn-outline-neutral btn-sm"
                     @onclick='() => Nav.NavigateTo("/waste-moves")'>
                 <i class="bi bi-arrow-left me-1"></i>Volver

@@ -1,0 +1,317 @@
+@page "/treatment-plants/{Id:guid}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.TreatmentPlants.DTOs
+@using GreenTransit.Application.Features.TreatmentPlants.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Detalle Tratamiento</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Registro de tratamiento no encontrado.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/treatment-plants")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1 class="page-title">
+                <i class="bi bi-recycle me-2"></i>
+                Tratamiento — @(_detail.TicketScale ?? Id.ToString()[..8])
+            </h1>
+            <div class="mt-1">
+                <span class="badge bg-success fs-6">
+                    <i class="bi bi-check2-circle me-1"></i>CLASIFICADO
+                </span>
+            </div>
+        </div>
+        <div class="page-header-actions">
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick='() => Nav.NavigateTo("/treatment-plants")'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+            @if (_detail.IdWasteMove.HasValue)
+            {
+                <button class="btn btn-outline-primary btn-sm"
+                        @onclick='() => Nav.NavigateTo("/waste-moves/" + _detail.IdWasteMove)'>
+                    <i class="bi bi-arrow-right-circle me-1"></i>Ver traslado
+                </button>
+            }
+        </div>
+    </div>
+
+    @* ── Incidencia asociada ──────────────────────────────────────────────── *@
+    @if (_detail.IncidentId.HasValue)
+    {
+        <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+            <div>
+                <strong>Incidencia vinculada a este tratamiento.</strong>
+                Consulta el módulo de incidencias para detalle.
+                <span class="ms-2 text-muted small">ID: @_detail.IncidentId</span>
+            </div>
+        </div>
+    }
+
+    @* ── KPIs ─────────────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="card text-center border-success">
+                <div class="card-body py-2">
+                    <div class="fs-4 fw-bold text-success">@(_detail.RecyclingRate.ToString("F1"))%</div>
+                    <div class="small text-muted">
+                        <i class="bi bi-recycle me-1"></i>Tasa reciclaje
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center border-primary">
+                <div class="card-body py-2">
+                    <div class="fs-4 fw-bold text-primary">@(_detail.ValorizationRate.ToString("F1"))%</div>
+                    <div class="small text-muted">
+                        <i class="bi bi-lightning me-1"></i>Tasa valorización
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center border-danger">
+                <div class="card-body py-2">
+                    <div class="fs-4 fw-bold text-danger">@(_detail.RejectionRate.ToString("F1"))%</div>
+                    <div class="small text-muted">
+                        <i class="bi bi-trash me-1"></i>% Rechazo
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center">
+                <div class="card-body py-2">
+                    <div class="fs-4 fw-bold">@(_detail.TotalWeightIn.ToString("F2")) kg</div>
+                    <div class="small text-muted">
+                        <i class="bi bi-box-seam me-1"></i>Total entrada
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Operación R/D ────────────────────────────────────────────────────── *@
+    <div class="card mb-3">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-clipboard2-check me-2"></i>Operación de tratamiento aplicada
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-12 col-md-3">
+                    <span class="badge fs-5 @(_detail.TreatmentOperationType == "Recovery" ? "bg-success" : "bg-warning text-dark")">
+                        @(_detail.TreatmentOperationCode ?? "—")
+                    </span>
+                </div>
+                <div class="col-12 col-md-9">
+                    <p class="mb-1 fw-semibold">@(_detail.TreatmentOperationDescription ?? "—")</p>
+                    <div class="d-flex gap-2 flex-wrap">
+                        @if (_detail.IsRecycling)
+                        {
+                            <span class="badge bg-success-subtle text-success">
+                                <i class="bi bi-recycle me-1"></i>Reciclaje
+                            </span>
+                        }
+                        @if (_detail.IsEnergyRecovery)
+                        {
+                            <span class="badge bg-warning-subtle text-warning">
+                                <i class="bi bi-lightning me-1"></i>Recuperación energética
+                            </span>
+                        }
+                        @if (_detail.IsPreparationForReuse)
+                        {
+                            <span class="badge bg-info-subtle text-info">
+                                <i class="bi bi-arrow-repeat me-1"></i>Preparación reutilización
+                            </span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Cabecera ─────────────────────────────────────────────────────────── *@
+    <div class="card mb-3">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Datos generales</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-6 col-md-3">
+                    <div class="text-muted small">Referencia traslado</div>
+                    <div class="fw-semibold">@(_detail.WasteMoveReference ?? "—")</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="text-muted small">Ticket báscula</div>
+                    <div class="fw-semibold">@(_detail.TicketScale ?? "—")</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="text-muted small">Fecha tratamiento</div>
+                    <div class="fw-semibold">@(_detail.PlantTreatmentDate?.ToString("dd/MM/yyyy HH:mm") ?? "—")</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="text-muted small">Peso inapropiado</div>
+                    <div class="fw-semibold">@(_detail.ImproperWeight?.ToString("F2") ?? "0.00") kg</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="text-muted small">Tipo contenedor</div>
+                    <div class="fw-semibold">@(_detail.TypeContainer ?? "—")</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="text-muted small">Precio contenedor</div>
+                    <div class="fw-semibold">@(_detail.PriceContainer?.ToString("F2") ?? "—") €</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="text-muted small">Creado</div>
+                    <div class="fw-semibold">@(_detail.DateCreateSys?.ToString("dd/MM/yyyy HH:mm") ?? "—")</div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_detail.QualityMetricsJson))
+            {
+                <div class="mt-3">
+                    <div class="text-muted small mb-1">Métricas de calidad</div>
+                    @try
+                    {
+                        var metrics = System.Text.Json.JsonSerializer
+                            .Deserialize<Dictionary<string, string>>(_detail.QualityMetricsJson);
+                        if (metrics is not null)
+                        {
+                            <table class="table table-sm table-bordered w-auto">
+                                @foreach (var kv in metrics)
+                                {
+                                    <tr>
+                                        <td class="text-muted small">@kv.Key</td>
+                                        <td class="fw-semibold">@kv.Value</td>
+                                    </tr>
+                                }
+                            </table>
+                        }
+                    }
+                    catch { <span class="text-muted small">@_detail.QualityMetricsJson</span> }
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Líneas de residuo ────────────────────────────────────────────────── *@
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul me-2"></i>
+                Líneas de clasificación (@_detail.Residues.Count)
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Residuo</th>
+                        <th class="text-end">Total (kg)</th>
+                        <th class="text-end text-success">♻️ Reutilizado</th>
+                        <th class="text-end text-primary">⚡ Valorizado</th>
+                        <th class="text-end text-danger">🗑️ Rechazo</th>
+                        <th class="text-center">Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _detail.Residues)
+                    {
+                        <tr class="@(r.BalanceOk ? "" : "table-danger")">
+                            <td>
+                                <div class="fw-semibold">@(r.ResidueName ?? r.IdResidue?.ToString()[..8])</div>
+                                @if (!string.IsNullOrEmpty(r.Category))
+                                {
+                                    <small class="text-muted">@r.Category</small>
+                                }
+                            </td>
+                            <td class="text-end fw-bold">@(r.WeightTotal?.ToString("F2") ?? "—")</td>
+                            <td class="text-end text-success">
+                                @(r.WeightReused?.ToString("F2") ?? "0.00")
+                                @if (r.ResidueReusedName is not null)
+                                {
+                                    <div class="text-muted" style="font-size:0.7rem">→ @r.ResidueReusedName</div>
+                                }
+                            </td>
+                            <td class="text-end text-primary">
+                                @(r.WeightValued?.ToString("F2") ?? "0.00")
+                                @if (r.ResidueValuedName is not null)
+                                {
+                                    <div class="text-muted" style="font-size:0.7rem">→ @r.ResidueValuedName</div>
+                                }
+                            </td>
+                            <td class="text-end text-danger">
+                                @(r.WeightRemove?.ToString("F2") ?? "0.00")
+                                @if (r.ResidueRemoveName is not null)
+                                {
+                                    <div class="text-muted" style="font-size:0.7rem">→ @r.ResidueRemoveName</div>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @if (r.BalanceOk)
+                                {
+                                    <span class="badge bg-success-subtle text-success">
+                                        <i class="bi bi-check-circle-fill me-1"></i>OK
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">
+                                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                        @r.BalanceDiff.ToString("F2") kg
+                                    </span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td>TOTAL</td>
+                        <td class="text-end">@_detail.TotalWeightIn.ToString("F2")</td>
+                        <td class="text-end text-success">@_detail.TotalWeightReused.ToString("F2")</td>
+                        <td class="text-end text-primary">@_detail.TotalWeightValued.ToString("F2")</td>
+                        <td class="text-end text-danger">@_detail.TotalWeightRemove.ToString("F2")</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private TreatmentPlantDetailDto? _detail;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail  = await Mediator.Send(new GetTreatmentPlantByIdQuery(Id));
+        _loading = false;
+    }
+}

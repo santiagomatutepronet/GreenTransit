@@ -1,0 +1,45 @@
+@*
+    TimelineStepCard — Card vertical para cada paso del ciclo de vida del traslado.
+    Si Empty=true se muestra en gris indicando que el paso aún no ha ocurrido.
+    Optional=true añade una nota visual "(opcional)".
+*@
+
+<div class="timeline-step-card @(Empty ? "timeline-step-empty" : "") mb-3">
+    <div class="card @(Empty ? "border-0 bg-light" : "")">
+        <div class="card-header d-flex align-items-center gap-2 py-2
+                    @(Empty ? "bg-light text-muted" : $"bg-{Color}-subtle")">
+            <i class="bi @Icon fs-5 @(Empty ? "text-muted" : $"text-{Color}")"></i>
+            <div class="flex-grow-1">
+                <span class="fw-semibold @(Empty ? "text-muted" : "")">@Title</span>
+                @if (Optional)
+                {
+                    <span class="text-muted small ms-2">(opcional)</span>
+                }
+            </div>
+            @if (!Empty && Date.HasValue)
+            {
+                <span class="text-muted small">@Date.Value.ToString("dd/MM/yyyy")</span>
+            }
+            @if (Empty)
+            {
+                <span class="badge bg-light text-muted border">Pendiente</span>
+            }
+        </div>
+        @if (!Empty)
+        {
+            <div class="card-body py-2 px-3">
+                @ChildContent
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string  Icon         { get; set; } = "bi-circle";
+    [Parameter] public string  Title        { get; set; } = string.Empty;
+    [Parameter] public string  Color        { get; set; } = "primary";
+    [Parameter] public DateTime? Date       { get; set; }
+    [Parameter] public bool    Empty        { get; set; } = false;
+    [Parameter] public bool    Optional     { get; set; } = false;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

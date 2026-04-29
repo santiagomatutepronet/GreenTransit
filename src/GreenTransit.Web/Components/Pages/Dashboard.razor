@@ -1,33 +1,604 @@
 @page "/dashboard"
 @attribute [Authorize]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using ApexCharts
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Dashboard.DTOs
+@using GreenTransit.Application.Features.Dashboard.Queries
+@using MediatR
 @using Microsoft.AspNetCore.Authorization
-@inject ILogger<Dashboard> Logger
+@using Microsoft.JSInterop
+@using System.Globalization
+@using System.Text.Json
 
-<PageTitle>Dashboard</PageTitle>
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject ILogger<Dashboard>  Logger
+@inject IJSRuntime          JS
 
-<div class="page-header">
+<PageTitle>Dashboard — GreenTransit</PageTitle>
+
+@* ── Cabecera ──────────────────────────────────────────────────────────────── *@
+<div class="page-header mb-4">
     <div class="page-header-info">
-        <h1>Dashboard</h1>
-        <p>Vista general de la actividad del ecosistema.</p>
+        <h1 class="page-title">
+            <i class="bi bi-speedometer2 me-2"></i>Dashboard operativo
+        </h1>
+        <p class="text-muted mb-0">
+            Vista 360° del ecosistema · @DateTime.Now.ToString("MMMM yyyy", new CultureInfo("es-ES"))
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
     </div>
 </div>
 
+@if (_loading)
+{
+    @* ── Skeleton loaders ──────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-3">
+        @for (int i = 0; i < 4; i++)
+        {
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="skeleton skeleton-text mb-2" style="height:1rem;width:60%"></div>
+                        <div class="skeleton skeleton-text" style="height:2rem;width:40%"></div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <div class="skeleton" style="height:260px"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <div class="skeleton" style="height:260px"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (_summary is not null)
+{
+    var s = _summary;
+
+    @* ── Fila 1: KPI cards ────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-3">
+
+        @* Kg recogidos *@
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="kpi-icon kpi-icon--green">
+                        <i class="bi bi-truck fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="kpi-label">Kg recogidos (mes)</div>
+                        <div class="kpi-value">@FormatKg(s.KgCollectedThisMonth)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Kg tratados *@
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="kpi-icon kpi-icon--blue">
+                        <i class="bi bi-arrow-repeat fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="kpi-label">Kg tratados (mes)</div>
+                        <div class="kpi-value">@FormatKg(s.KgTreatedThisMonth)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Tasa de reciclaje *@
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="kpi-icon kpi-icon--teal">
+                        <i class="bi bi-recycle fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="kpi-label">Tasa reciclaje</div>
+                        <div class="kpi-value">@s.RecyclingRatePercent.ToString("N1")%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Huella CO₂ *@
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="kpi-icon kpi-icon--@(Co2Trend > 0 ? "red" : "green")">
+                        <i class="bi bi-cloud-haze2 fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="kpi-label">CO₂ transport (mes)</div>
+                        <div class="kpi-value d-flex align-items-baseline gap-1">
+                            @FormatKg(s.TotalCO2ThisMonth)
+                            <small class="fs-6">kgCO₂e</small>
+                            @if (Co2Trend != 0)
+                            {
+                                <span class="fs-6 @(Co2Trend > 0 ? "text-danger" : "text-success")">
+                                    @(Co2Trend > 0 ? "↑" : "↓") @Math.Abs(Co2Trend).ToString("N0")%
+                                </span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    @* ── Fila 2: Embudo traslados + Tasas de tratamiento ─────────────────── *@
+    <div class="row g-3 mb-3">
+
+        @* Embudo de traslados — barras horizontales *@
+        <div class="col-12 col-lg-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-bar-chart-steps me-2"></i>Traslados por estado
+                </div>
+                <div class="card-body p-2">
+                    @if (_statusItems.Count > 0)
+                    {
+                        <ApexChart TItem="StatusItem"
+                                   Options="_statusChartOptions"
+                                   Height="240">
+                            <ApexPointSeries TItem="StatusItem"
+                                             Items="_statusItems"
+                                             Name="Traslados"
+                                             XValue="@(e => e.Label)"
+                                             YValue="@(e => (decimal)e.Count)"
+                                             SeriesType="SeriesType.Bar" />
+                        </ApexChart>
+                    }
+                    else
+                    {
+                        <div class="text-center py-4 text-muted">
+                            <i class="bi bi-inbox fs-3 d-block mb-1"></i>Sin traslados registrados
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* Tasas de tratamiento — dona *@
+        <div class="col-12 col-lg-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-pie-chart me-2"></i>Tasas de tratamiento (mes)
+                </div>
+                <div class="card-body p-2">
+                    @if (_rateItems.Any(r => r.Value > 0))
+                    {
+                        <ApexChart TItem="RateItem"
+                                   Options="_donutChartOptions"
+                                   Height="240">
+                            <ApexPointSeries TItem="RateItem"
+                                             Items="_rateItems"
+                                             Name="Fracción (%)"
+                                             XValue="@(e => e.Label)"
+                                             YValue="@(e => (decimal)e.Value)"
+                                             SeriesType="SeriesType.Donut" />
+                        </ApexChart>
+                    }
+                    else
+                    {
+                        <div class="text-center py-4 text-muted">
+                            <i class="bi bi-inbox fs-3 d-block mb-1"></i>Sin datos de tratamiento
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    @* ── Fila 3: Kg últimos 6 meses + Incidencias ────────────────────────── *@
+    <div class="row g-3 mb-3">
+
+        @* Kg recogidos vs tratados — últimos 6 meses *@
+        <div class="col-12 col-lg-8">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-bar-chart-line me-2"></i>Kg recogidos vs tratados (6 meses)
+                </div>
+                <div class="card-body p-2">
+                    <ApexChart TItem="MonthlyKgDto"
+                               Options="_monthlyChartOptions"
+                               Height="240">
+                        <ApexPointSeries TItem="MonthlyKgDto"
+                                         Items="s.MonthlyKgLast6Months"
+                                         Name="Recogidos"
+                                         XValue="@(e => $"{e.Month:D2}/{e.Year}")"
+                                         YValue="@(e => e.KgCollected)"
+                                         SeriesType="SeriesType.Bar" />
+                        <ApexPointSeries TItem="MonthlyKgDto"
+                                         Items="s.MonthlyKgLast6Months"
+                                         Name="Tratados"
+                                         XValue="@(e => $"{e.Month:D2}/{e.Year}")"
+                                         YValue="@(e => e.KgTreated)"
+                                         SeriesType="SeriesType.Bar" />
+                    </ApexChart>
+                </div>
+            </div>
+        </div>
+
+        @* Incidencias abiertas por severidad *@
+        <div class="col-12 col-lg-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Incidencias abiertas
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        @foreach (var (severity, color, icon) in _severityDef)
+                        {
+                            var count = s.OpenIncidentsBySeverity.TryGetValue(severity, out var c) ? c : 0;
+                            <div class="col-6">
+                                <div class="card border-0 text-center p-2" style="background:@color+22">
+                                    <i class="@icon fs-4" style="color:@color"></i>
+                                    <div class="fw-bold fs-5">@count</div>
+                                    <small class="text-muted">@severity</small>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="text-center mt-2">
+                        <a href="/incidents" class="btn btn-sm btn-outline-neutral">
+                            Ver todas las incidencias
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    @* ── Fila 4: Cumplimiento MarketShares + Próximas recogidas ──────────── *@
+    <div class="row g-3 mb-3">
+
+        @* Cumplimiento MarketShares *@
+        <div class="col-12 col-lg-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-bullseye me-2"></i>Cumplimiento de cuotas (@DateTime.Now.Year)
+                </div>
+                <div class="card-body">
+                    @if (s.MarketShareCompliance.Count == 0)
+                    {
+                        <div class="text-center py-3 text-muted">
+                            <i class="bi bi-inbox d-block mb-1"></i>Sin cuotas definidas
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var ms in s.MarketShareCompliance.Take(6))
+                        {
+                            var pct   = Math.Min((double)ms.CompliancePercent, 100);
+                            var color = pct >= 80 ? "success" : pct >= 50 ? "warning" : "danger";
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span class="fw-semibold text-truncate" style="max-width:60%">
+                                        @ms.Category
+                                        @if (!string.IsNullOrEmpty(ms.AutonomousCommunity))
+                                        {
+                                            <span class="text-muted"> · @ms.AutonomousCommunity</span>
+                                        }
+                                    </span>
+                                    <span class="text-@color fw-bold">@ms.CompliancePercent.ToString("N1")%</span>
+                                </div>
+                                <div class="progress" style="height:8px">
+                                    <div class="progress-bar bg-@color"
+                                         role="progressbar"
+                                         style="width:@pct.ToString("F1", CultureInfo.InvariantCulture)%"
+                                         aria-valuenow="@pct"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100"></div>
+                                </div>
+                                <div class="d-flex justify-content-between text-muted" style="font-size:.7rem">
+                                    <span>Real: @FormatKg(ms.ActualKg) kg</span>
+                                    <span>Obj: @FormatKg(ms.TargetKg) kg</span>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* Próximas recogidas *@
+        <div class="col-12 col-lg-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-calendar-event me-2"></i>Próximas recogidas (7 días)
+                </div>
+                <div class="card-body p-0">
+                    @if (s.UpcomingPickups.Count == 0)
+                    {
+                        <div class="text-center py-4 text-muted">
+                            <i class="bi bi-calendar-x d-block fs-3 mb-1"></i>
+                            Sin recogidas planificadas para los próximos 7 días
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Nº Orden</th>
+                                        <th>Punto de recogida</th>
+                                        <th>Fecha planificada</th>
+                                        <th>Prioridad</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var so in s.UpcomingPickups)
+                                    {
+                                        <tr>
+                                            <td class="fw-semibold">@so.ServiceOrderNumber</td>
+                                            <td class="text-truncate" style="max-width:160px">
+                                                @(so.PickupPointName ?? "—")
+                                            </td>
+                                            <td>
+                                                @(so.PlannedPickupStart.HasValue
+                                                    ? so.PlannedPickupStart.Value.ToString("dd/MM HH:mm")
+                                                    : "—")
+                                            </td>
+                                            <td>
+                                                <span class="badge @PriorityBadge(so.Priority)">
+                                                    @so.Priority
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <a href="/service-orders/@so.Id"
+                                                   class="btn btn-xs btn-outline-neutral">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    @* ── Fila 5: Mapa interactivo ─────────────────────────────────────────── *@
+    <div class="row g-3 mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-map me-2"></i>Mapa de entidades y zonas DUM
+                </div>
+                <div class="card-body p-0">
+                    <div id="@_mapContainerId" style="height:420px;width:100%;border-radius:0 0 .5rem .5rem"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        No se pudo cargar el resumen del dashboard.
+    </div>
+}
+
 @code {
-    protected override void OnInitialized()
+    // ── Tipos auxiliares para los gráficos ────────────────────────────────────
+
+    private sealed record StatusItem(string Label, int Count, string Color);
+    private sealed record RateItem(string Label, double Value);
+
+    // ── Estado del componente ─────────────────────────────────────────────────
+
+    private bool                  _loading   = true;
+    private DashboardSummaryDto?  _summary;
+    private const string          _mapContainerId = "dashboard-map";
+
+    // Datos para gráficos
+    private List<StatusItem>   _statusItems = [];
+    private List<RateItem>     _rateItems   = [];
+
+    // Trend CO₂ vs mes anterior (% cambio)
+    private double Co2Trend => _summary is { TotalCO2ThisMonth: > 0, CO2PreviousMonth: > 0 }
+        ? Math.Round(((double)(_summary.TotalCO2ThisMonth - _summary.CO2PreviousMonth)
+            / (double)_summary.CO2PreviousMonth) * 100, 1)
+        : 0d;
+
+    // Colores por estado de traslado (spec §7.2)
+    private static readonly Dictionary<string, string> StatusColors = new(StringComparer.OrdinalIgnoreCase)
     {
-        // ILogger<T> se inyecta directamente — Serilog lo recibe via Microsoft.Extensions.Logging
-        Logger.LogInformation("Dashboard inicializado por el usuario.");
+        ["SOLICITADO"]  = "#6c757d",
+        ["PLANIFICADO"] = "#0d6efd",
+        ["RECOGIDO"]    = "#ffc107",
+        ["EN CAC"]      = "#fd7e14",
+        ["EN PLANTA"]   = "#e67e22",
+        ["CLASIFICADO"] = "#198754",
+        ["BLOQUEADO"]   = "#dc3545",
+    };
+
+    private static readonly (string Severity, string Color, string Icon)[] _severityDef =
+    [
+        ("Low",      "#198754", "bi bi-check-circle-fill"),
+        ("Medium",   "#ffc107", "bi bi-exclamation-circle-fill"),
+        ("High",     "#fd7e14", "bi bi-exclamation-triangle-fill"),
+        ("Critical", "#dc3545", "bi bi-shield-exclamation"),
+    ];
+
+    // ── Opciones de gráficos ApexCharts ──────────────────────────────────────
+
+    private ApexChartOptions<StatusItem> _statusChartOptions = new()
+    {
+        PlotOptions = new PlotOptions
+        {
+            Bar = new PlotOptionsBar { Horizontal = true, BorderRadius = 4 }
+        },
+        DataLabels = new DataLabels { Enabled = true },
+        Xaxis      = new XAxis { Labels = new XAxisLabels { Show = true } },
+        Grid       = new Grid { BorderColor = "#f0f0f0" },
+        Tooltip    = new Tooltip { Y = new TooltipY { Formatter = "function(val){ return val + ' traslados'; }" } }
+    };
+
+    private ApexChartOptions<RateItem> _donutChartOptions = new()
+    {
+        Legend     = new Legend { Position = LegendPosition.Bottom },
+        DataLabels = new DataLabels { Enabled = true },
+        Tooltip    = new Tooltip { Y = new TooltipY { Formatter = "function(val){ return val.toFixed(1) + '%'; }" } }
+    };
+
+    private ApexChartOptions<MonthlyKgDto> _monthlyChartOptions = new()
+    {
+        PlotOptions = new PlotOptions
+        {
+            Bar = new PlotOptionsBar { BorderRadius = 4, ColumnWidth = "60%" }
+        },
+        DataLabels = new DataLabels { Enabled = false },
+        Yaxis      = [new YAxis { Labels = new YAxisLabels { Formatter = "function(val){ return (val/1000).toFixed(1)+'t'; }" } }],
+        Grid       = new Grid { BorderColor = "#f0f0f0" },
+        Colors     = ["#0d6efd", "#198754"]
+    };
+
+    // ── Ciclo de vida ─────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
+        if (!firstRender || _summary is null) return;
+        await InitMapAsync();
+    }
 
-        using (Serilog.Context.LogContext.PushProperty("Accion", "CargaDashboard"))
+    // ── Métodos privados ──────────────────────────────────────────────────────
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        _summary = null;
+        StateHasChanged();
+        await LoadDataAsync();
+        if (_summary is not null)
+            await InitMapAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
         {
-            Logger.LogDebug("Primera renderización del Dashboard completada.");
+            _summary = await Mediator.Send(new GetDashboardSummaryQuery());
+            BuildChartData();
         }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar el resumen del dashboard.");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
 
-        await Task.CompletedTask;
+    private void BuildChartData()
+    {
+        if (_summary is null) return;
+
+        // Datos para el embudo de traslados (barra horizontal)
+        _statusItems = _summary.WasteMovesByStatus
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => new StatusItem(
+                kv.Key,
+                kv.Value,
+                StatusColors.TryGetValue(kv.Key, out var c) ? c : "#6c757d"))
+            .ToList();
+
+        // Datos para la dona de tasas de tratamiento
+        var totalRates = _summary.RecyclingRatePercent
+            + _summary.EnergyRecoveryPercent
+            + _summary.ReusePercent;
+        var rejectionRate = Math.Max(0d, 100d - totalRates);
+
+        _rateItems =
+        [
+            new("Reciclaje",       _summary.RecyclingRatePercent),
+            new("Energ. recuper.", _summary.EnergyRecoveryPercent),
+            new("Reutilización",   _summary.ReusePercent),
+            new("Rechazo",         rejectionRate),
+        ];
+    }
+
+    private async Task InitMapAsync()
+    {
+        if (_summary is null) return;
+        try
+        {
+            var points = _summary.EntityMapPoints
+                .Select(p => new { name = p.Name, role = p.EntityRole, lat = p.Lat, lng = p.Lng })
+                .ToList();
+
+            var zones = _summary.DumZones
+                .Select(z => new { zoneCode = z.ZoneCode, name = z.Name, geometryJson = z.GeometryJson })
+                .ToList();
+
+            await JS.InvokeVoidAsync("dashboardMap.initLazy",
+                _mapContainerId,
+                points,
+                zones);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error al inicializar el mapa del dashboard.");
+        }
+    }
+
+    // ── Helpers de formato ────────────────────────────────────────────────────
+
+    private static string FormatKg(decimal kg) =>
+        kg >= 1_000_000 ? $"{kg / 1_000_000:N2} Mt"
+        : kg >= 1_000   ? $"{kg / 1_000:N1} t"
+        : $"{kg:N0} kg";
+
+    private static string PriorityBadge(string priority) => priority switch
+    {
+        "High"   or "Alta"   => "bg-danger",
+        "Normal" or "Media"  => "bg-primary",
+        "Low"    or "Baja"   => "bg-secondary",
+        _                    => "bg-light text-dark"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("dashboardMap.dispose", _mapContainerId); }
+        catch { /* componente ya desmontado */ }
     }
 }

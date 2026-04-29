@@ -25,16 +25,16 @@
 | C-3 | Economía | Objetivos y Cuotas de Mercado (MarketShares) | 🟡 | ⬜ |
 | D-1 | Operaciones | Órdenes de Servicio (ServiceOrders): CQRS + UI | 🔴 | ✅ |
 | D-2 | Operaciones | Traslados (WasteMoves): creación — estado SOLICITADO | 🔴 | ✅ |
-| D-3 | Operaciones | Planificación Logística — estado PLANIFICADO + DUM | 🔴 | ⬜ |
-| D-4 | Operaciones | Ejecución de Recogida — estado RECOGIDO + emisiones | 🔴 | ⬜ |
-| D-5 | Operaciones | Entrada en CAC — estado EN CAC | 🟠 | ⬜ |
-| D-6 | Operaciones | Entrada y Pesaje en Planta — estado EN PLANTA | 🔴 | ⬜ |
-| D-7 | Operaciones | Clasificación y Tratamiento Final — estado CLASIFICADO | 🔴 | ⬜ |
-| D-8 | Operaciones | Vista 360º del Traslado | 🟠 | ⬜ |
+| D-3 | Operaciones | Planificación Logística — estado PLANIFICADO + DUM | 🔴 | ✅ |
+| D-4 | Operaciones | Ejecución de Recogida — estado RECOGIDO + emisiones | 🔴 | ✅ |
+| D-5 | Operaciones | Entrada en CAC — estado EN CAC | 🟠 | ✅ |
+| D-6 | Operaciones | Entrada y Pesaje en Planta — estado EN PLANTA | 🔴 | ✅ |
+| D-7 | Operaciones | Clasificación y Tratamiento Final — estado CLASIFICADO | 🔴 | ✅ |
+| D-8 | Operaciones | Vista 360º del Traslado | 🟠 | ✅ |
 | E-1 | Sostenibilidad | Gestión de Incidencias | 🟠 | ⬜ |
 | E-2 | Sostenibilidad | Zonas DUM: editor visual y simulador | 🟡 | ⬜ |
 | E-3 | Sostenibilidad | Energía de Planta + Factores de Emisión | 🟡 | ⬜ |
-| F-1 | Reporting | Dashboard operativo principal | 🟠 | ⬜ |
+| F-1 | Reporting | Dashboard operativo principal | 🟠 | ✅ |
 | F-2 | Reporting | Trazabilidad end-to-end + buscador global | 🟠 | ⬜ |
 | F-3 | Reporting | KPIs regulatorios y exportación XLSX | 🟡 | ⬜ |
 | G-1 | Seguridad | Gestión de Usuarios, Perfiles y SharePoint | 🟠 | ⬜ |

@@ -1,12 +1,6 @@
 ﻿@page "/"
+@inject NavigationManager Nav
 
-<PageTitle>GreenTransit</PageTitle>
-
-<div class="page-container">
-    <div class="page-header">
-        <div class="page-header-info">
-            <h1>Bienvenido a GreenTransit</h1>
-            <p>Plataforma de trazabilidad y gestión de residuos.</p>
-        </div>
-    </div>
-</div>
+@code {
+    protected override void OnInitialized() => Nav.NavigateTo("/dashboard", replace: true);
+}
