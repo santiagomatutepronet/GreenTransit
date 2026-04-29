@@ -75,5 +75,31 @@ public sealed record WasteMoveResidueDto(
     Guid?     IdCarrier,
     string?   CarrierName,
     string?   NTNumber,
-    string?   DINumber
+    string?   DINumber,
+    string?   DIPhase,
+    string?   VehicleType,
+    string?   FuelType,
+    string?   EuroClass,
+    decimal?  TransportDistance,
+    decimal?  TransportCarbonEmissions,
+    Guid?     EmissionFactorSetId,
+    string?   EmissionFactorVersion
+);
+
+/// <summary>Input de línea para ConfirmPickupCommand.</summary>
+public sealed record ConfirmPickupLineInput(
+    Guid    WasteMoveResidueId,
+    string? NTNumber,
+    string? DINumber,
+    string? DIPhase
+);
+
+/// <summary>DTO de estimación de emisiones CO₂ para el panel previo a confirmar recogida.</summary>
+public sealed record EmissionEstimateDto(
+    Guid    WasteMoveResidueId,
+    string? ResidueName,
+    decimal DistanceKm,
+    decimal EmissionFactor,
+    decimal EstimatedKgCO2e,
+    string  FactorSetVersion
 );

@@ -1,0 +1,307 @@
+@page "/entry-cacs"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.EntryCACs.DTOs
+@using GreenTransit.Application.Features.EntryCACs.Queries
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Entradas en CAC</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-building me-2"></i>Entradas en Centros de Acopio
+        </h1>
+    </div>
+</div>
+
+@* ── Panel: Nueva entrada en CAC ──────────────────────────────────────────── *@
+<div class="card mb-3 border-primary">
+    <div class="card-header bg-primary-subtle">
+        <h6 class="mb-0 text-primary">
+            <i class="bi bi-plus-circle me-2"></i>Nueva entrada en CAC
+        </h6>
+    </div>
+    <div class="card-body">
+        @if (_loadingRecogidos)
+        {
+            <div class="text-muted small">
+                <span class="spinner-border spinner-border-sm me-1"></span>
+                Cargando traslados disponibles…
+            </div>
+        }
+        else if (_recogidos.Count == 0)
+        {
+            <div class="text-muted small">
+                <i class="bi bi-info-circle me-1"></i>
+                No hay traslados en estado <strong>RECOGIDO</strong> pendientes de entrada en CAC.
+                Ve al detalle de un traslado y usa el botón <em>"Entrada en CAC"</em>.
+            </div>
+        }
+        else
+        {
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-8">
+                    <label class="form-label form-label-sm fw-semibold">
+                        Traslado en estado RECOGIDO
+                    </label>
+                    <select class="form-select" @bind="_selectedWasteMoveId">
+                        <option value="">— Seleccionar traslado —</option>
+                        @foreach (var wm in _recogidos)
+                        {
+                            <option value="@wm.Id">
+                                @(wm.WasteMoveReference ?? wm.Id.ToString()[..8])
+                                — @(wm.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "sin fecha")
+                                (@wm.ResidueCount residuo@(wm.ResidueCount != 1 ? "s" : ""))
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
+                    <button class="btn btn-primary w-100"
+                            disabled="@string.IsNullOrEmpty(_selectedWasteMoveId)"
+                            @onclick="GoToNewEntry">
+                        <i class="bi bi-arrow-right-circle me-2"></i>Registrar entrada
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@* ── Filtros del historial ────────────────────────────────────────────────── *@
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-4">
+                <label class="form-label form-label-sm">Referencia traslado</label>
+                <input class="form-control form-control-sm"
+                       @bind="_filterReference"
+                       @bind:event="oninput"
+                       placeholder="WM-2024-…" />
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label form-label-sm">Fecha entrada desde</label>
+                <InputDate TValue="DateTime?" class="form-control form-control-sm"
+                           @bind-Value="_filterDateFrom" />
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label form-label-sm">Fecha entrada hasta</label>
+                <InputDate TValue="DateTime?" class="form-control form-control-sm"
+                           @bind-Value="_filterDateTo" />
+            </div>
+            <div class="col-12 col-md-2 d-flex gap-2">
+                <button class="btn btn-primary btn-sm w-100" @onclick="LoadAsync">
+                    <i class="bi bi-search me-1"></i>Buscar
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="ResetFilters"
+                        title="Limpiar filtros">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Historial de entradas registradas ───────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_result is null || _result.Items.Count == 0)
+{
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-1"></i>
+        No se encontraron entradas en CAC con los filtros indicados.
+    </div>
+}
+else
+{
+    @* Vista móvil: tarjetas *@
+    <div class="d-md-none">
+        @foreach (var item in _result.Items)
+        {
+            <div class="card mb-2 shadow-sm" @onclick="() => GoToDetail(item.Id)"
+                 style="cursor:pointer">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between">
+                        <span class="fw-semibold">
+                            @(item.WasteMoveReference ?? item.IdWasteMove.ToString()[..8])
+                        </span>
+                        <span class="badge text-bg-secondary">@item.ResidueLineCount residuos</span>
+                    </div>
+                    <div class="text-muted small mt-1">
+                        <i class="bi bi-calendar3 me-1"></i>
+                        @(item.CACEntryDate?.ToString("dd/MM/yyyy HH:mm") ?? "—")
+                    </div>
+                    @if (!string.IsNullOrEmpty(item.TypeContainer))
+                    {
+                        <div class="text-muted small">
+                            <i class="bi bi-box me-1"></i>@item.TypeContainer
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(item.CollectionMethod))
+                    {
+                        <div class="text-muted small">
+                            <i class="bi bi-truck me-1"></i>@item.CollectionMethod
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    @* Vista escritorio: tabla *@
+    <div class="d-none d-md-block">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Referencia traslado</th>
+                        <th>Fecha entrada</th>
+                        <th>Tipo contenedor</th>
+                        <th>Método recogida</th>
+                        <th class="text-end">€ Contenedor</th>
+                        <th class="text-center">Residuos</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _result.Items)
+                    {
+                        <tr @onclick="() => GoToDetail(item.Id)" style="cursor:pointer">
+                            <td class="fw-semibold">
+                                @(item.WasteMoveReference ?? item.IdWasteMove.ToString()[..8])
+                            </td>
+                            <td class="text-nowrap">
+                                @(item.CACEntryDate?.ToString("dd/MM/yyyy HH:mm") ?? "—")
+                            </td>
+                            <td>@(item.TypeContainer ?? "—")</td>
+                            <td>@(item.CollectionMethod ?? "—")</td>
+                            <td class="text-end">
+                                @(item.PriceContainer.HasValue
+                                    ? item.PriceContainer.Value.ToString("N2") + " €"
+                                    : "—")
+                            </td>
+                            <td class="text-center">
+                                <span class="badge text-bg-secondary">@item.ResidueLineCount</span>
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary"
+                                        @onclick:stopPropagation
+                                        @onclick="() => GoToDetail(item.Id)">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (_result.TotalCount > _pageSize)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="text-muted small">
+                Mostrando @((_page - 1) * _pageSize + 1)–@(Math.Min(_page * _pageSize, _result.TotalCount))
+                de @_result.TotalCount entradas
+            </span>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary"
+                        disabled="@(_page <= 1)"
+                        @onclick="PrevPage">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <button class="btn btn-outline-secondary"
+                        disabled="@(_page * _pageSize >= _result.TotalCount)"
+                        @onclick="NextPage">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool      _loading          = true;
+    private bool      _loadingRecogidos = true;
+    private int       _page             = 1;
+    private const int _pageSize         = 20;
+
+    private string?   _filterReference;
+    private DateTime? _filterDateFrom;
+    private DateTime? _filterDateTo;
+    private string    _selectedWasteMoveId = "";
+
+    private GetEntryCACsResult? _result;
+    private List<WasteMoveDto>  _recogidos = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        await LoadRecogidosAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _result  = await Mediator.Send(new GetEntryCACsQuery(
+            _filterReference,
+            _filterDateFrom,
+            _filterDateTo,
+            _page,
+            _pageSize));
+        _loading = false;
+    }
+
+    /// <summary>Carga traslados en estado RECOGIDO disponibles para crear entrada en CAC.</summary>
+    private async Task LoadRecogidosAsync()
+    {
+        _loadingRecogidos = true;
+        var result = await Mediator.Send(new GetWasteMovesQuery(
+            ServiceStatus: WasteMoveStatuses.Recogido,
+            PageSize: 100));
+        _recogidos = [.. result.Items];
+        _loadingRecogidos = false;
+    }
+
+    private void GoToNewEntry()
+    {
+        if (!string.IsNullOrEmpty(_selectedWasteMoveId))
+            Nav.NavigateTo($"/waste-moves/{_selectedWasteMoveId}/entry-cac");
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page > 1) { _page--; await LoadAsync(); }
+    }
+
+    private async Task NextPage()
+    {
+        _page++;
+        await LoadAsync();
+    }
+
+    private async Task ResetFilters()
+    {
+        _filterReference = null;
+        _filterDateFrom  = null;
+        _filterDateTo    = null;
+        _page            = 1;
+        await LoadAsync();
+    }
+
+    private void GoToDetail(Guid id)
+        => Nav.NavigateTo($"/entry-cacs/{id}");
+}

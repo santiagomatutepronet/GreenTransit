@@ -58,7 +58,15 @@ public sealed class GetWasteMoveByIdQueryHandler
                 r.IdCarrier,
                 r.Carrier?.Name,
                 r.NTNumber,
-                r.DINumber
+                r.DINumber,
+                r.DIPhase,
+                r.VehicleType,
+                r.FuelType,
+                r.EuroClass,
+                r.TransportInfo_TransportDistance,
+                r.TransportInfo_TransportCarbonEmissions,
+                r.EmissionFactorSetId,
+                r.EmissionFactorVersion
             ))
             .ToList();
 

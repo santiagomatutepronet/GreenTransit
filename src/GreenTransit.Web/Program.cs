@@ -2,8 +2,7 @@ using System.Security.Claims;
 using FluentValidation;
 using GreenTransit.Application.Common.Behaviours;
 using GreenTransit.Application.Common.Interfaces;
-using GreenTransit.Application.Features.ServiceOrders.Commands;
-using GreenTransit.Infrastructure.Persistence;
+using GreenTransit.Application.Features.ServiceOrders.Commands;using GreenTransit.Infrastructure.Persistence;
 using GreenTransit.Infrastructure.Persistence.Repositories;
 using GreenTransit.Web.Auth;
 using MediatR;
@@ -76,6 +75,9 @@ try
     builder.Services.AddScoped(typeof(IRepository<>), typeof(GreenTransit.Infrastructure.Persistence.Repositories.EfRepository<>));
     builder.Services.AddScoped<IUnitOfWork, GreenTransit.Infrastructure.Persistence.UnitOfWork>();
     builder.Services.AddScoped<IUserRepository, GreenTransit.Infrastructure.Persistence.Repositories.UserRepository>();
+
+    // ── Servicios de dominio (Infrastructure) ─────────────────────────────────
+    builder.Services.AddScoped<IDumZoneService, GreenTransit.Infrastructure.Services.DumZoneService>();
 
     // ── Caché en memoria (catálogos geográficos y otros estáticos) ───────────
     builder.Services.AddMemoryCache();

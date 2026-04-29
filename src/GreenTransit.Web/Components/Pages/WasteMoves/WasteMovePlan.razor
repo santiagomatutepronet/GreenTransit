@@ -1,0 +1,380 @@
+@page "/waste-moves/{WasteMoveId:guid}/plan"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.WasteMoves.Commands
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Planificar Traslado</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Traslado no encontrado.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/waste-moves")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1 class="page-title">
+                <i class="bi bi-calendar-check me-2"></i>
+                Planificar — @(_detail.WasteMoveReference ?? WasteMoveId.ToString()[..8])
+            </h1>
+            <div class="mt-1">
+                <WasteMoveStatusStepper Status="@_detail.ServiceStatus"
+                                        StatusDates="@_statusDates" />
+            </div>
+        </div>
+        <div class="page-header-actions">
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    @if (_detail.ServiceStatus != WasteMoveStatuses.Solicitado)
+    {
+        <div class="alert alert-warning">
+            Este traslado no se puede planificar porque está en estado
+            <strong>@WasteMoveStatuses.Label(_detail.ServiceStatus ?? "")</strong>.
+        </div>
+    }
+    else
+    {
+        <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            @* ── Panel de error global ─────────────────────────────────────── *@
+            @if (!string.IsNullOrEmpty(_globalError))
+            {
+                <div class="alert alert-danger">
+                    <i class="bi bi-x-circle me-1"></i>@_globalError
+                </div>
+            }
+
+            @* ── Panel DUM ────────────────────────────────────────────────── *@
+            @if (_dumResult is not null && _dumResult.ActionType != "Allow")
+            {
+                <div class="alert @(_dumResult.ActionType == "Block" ? "alert-danger" : "alert-warning")">
+                    <i class="bi @(_dumResult.ActionType == "Block" ? "bi-slash-circle" : "bi-exclamation-triangle") me-1"></i>
+                    <strong>Zona DUM — @_dumResult.ActionType:</strong>
+                    @_dumResult.DumReason
+                    @if (_dumResult.DumZoneCodes.Length > 0)
+                    {
+                        <span class="ms-1">(Zonas: @string.Join(", ", _dumResult.DumZoneCodes))</span>
+                    }
+                </div>
+            }
+
+            @* ── Ventanas de tiempo ───────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock me-2"></i>Ventanas de tiempo planificadas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Inicio recogida *</label>
+                            <InputDate TValue="DateTime" class="form-control"
+                                       @bind-Value="_model.PlannedPickupStart" Type="InputDateType.DateTimeLocal" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fin recogida *</label>
+                            <InputDate TValue="DateTime" class="form-control"
+                                       @bind-Value="_model.PlannedPickupEnd" Type="InputDateType.DateTimeLocal" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Inicio entrega *</label>
+                            <InputDate TValue="DateTime" class="form-control"
+                                       @bind-Value="_model.PlannedDeliveryStart" Type="InputDateType.DateTimeLocal" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fin entrega *</label>
+                            <InputDate TValue="DateTime" class="form-control"
+                                       @bind-Value="_model.PlannedDeliveryEnd" Type="InputDateType.DateTimeLocal" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Operador de transferencia ────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-building me-2"></i>Operador de transferencia</h5>
+                </div>
+                <div class="card-body">
+                    <label class="form-label">Entidad operadora *
+                        <small class="text-muted ms-1">(Carrier o OperatorTransfer)</small>
+                    </label>
+                    <InputSelect TValue="Guid" class="form-select"
+                                 @bind-Value="_model.IdOperatorTransfer">
+                        <option value="@Guid.Empty">— Selecciona operador —</option>
+                        @foreach (var op in _operators)
+                        {
+                            <option value="@op.Id">@op.Name (@op.EntityRole)</option>
+                        }
+                    </InputSelect>
+                </div>
+            </div>
+
+            @* ── Líneas de residuo ────────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Asignación de transporte por residuo</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Residuo</th>
+                                <th>Peso</th>
+                                <th>Transportista *</th>
+                                <th>Matrícula *</th>
+                                <th>Remolque</th>
+                                <th>Tipo vehículo</th>
+                                <th>Combustible</th>
+                                <th>Euro</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var line in _lineModels)
+                            {
+                                <tr>
+                                    <td>@(line.ResidueName ?? line.ResidueId.ToString()[..8])</td>
+                                    <td>@line.Weight @line.MeasureUnit</td>
+                                    <td>
+                                        <InputSelect TValue="Guid" class="form-select form-select-sm"
+                                                     @bind-Value="line.IdCarrier">
+                                            <option value="@Guid.Empty">— Selecciona —</option>
+                                            @foreach (var c in _carriers)
+                                            {
+                                                <option value="@c.Id">@c.Name</option>
+                                            }
+                                        </InputSelect>
+                                    </td>
+                                    <td>
+                                        <InputText class="form-control form-control-sm"
+                                                   @bind-Value="line.VehicleRegistration"
+                                                   placeholder="Matrícula" />
+                                    </td>
+                                    <td>
+                                        <InputText class="form-control form-control-sm"
+                                                   @bind-Value="line.VehicleRegistrationTrailer"
+                                                   placeholder="Opcional" />
+                                    </td>
+                                    <td>
+                                        <InputText class="form-control form-control-sm"
+                                                   @bind-Value="line.VehicleType"
+                                                   placeholder="Camion / Furgoneta…" />
+                                    </td>
+                                    <td>
+                                        <InputText class="form-control form-control-sm"
+                                                   @bind-Value="line.FuelType"
+                                                   placeholder="Diesel / GNC…" />
+                                    </td>
+                                    <td>
+                                        <InputText class="form-control form-control-sm"
+                                                   @bind-Value="line.EuroClass"
+                                                   placeholder="Euro6…" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            @* ── Botones ──────────────────────────────────────────────────── *@
+            <div class="d-flex gap-2">
+                <button type="submit"
+                        class="btn btn-primary"
+                        disabled="@(_saving || _dumResult?.ActionType == "Block")">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    <i class="bi bi-check-lg me-1"></i>Confirmar planificación
+                </button>
+                <button type="button" class="btn btn-outline-neutral"
+                        @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                    Cancelar
+                </button>
+            </div>
+
+        </EditForm>
+    }
+}
+
+@code {
+    [Parameter] public Guid WasteMoveId { get; set; }
+
+    // ── Estado de carga ───────────────────────────────────────────────────────
+    private bool                           _loading   = true;
+    private bool                           _saving    = false;
+    private string?                        _globalError;
+    private WasteMoveDetailDto?            _detail;
+    private PlanWasteMoveResult?           _dumResult;
+    private Dictionary<string, DateTime?>  _statusDates = [];
+
+    // ── Listas de entidades para selectores ───────────────────────────────────
+    private List<EntitySelectorDto> _operators = [];
+    private List<EntitySelectorDto> _carriers  = [];
+
+    // ── Modelo del formulario ─────────────────────────────────────────────────
+    private PlanModel            _model      = new();
+    private List<LineModel>      _lineModels = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail = await Mediator.Send(new GetWasteMoveByIdQuery(WasteMoveId));
+
+        if (_detail is not null)
+        {
+            // Pre-poblar fechas del modelo
+            _model.PlannedPickupStart   = _detail.PlannedPickupStart   ?? DateTime.UtcNow.AddDays(1);
+            _model.PlannedPickupEnd     = _detail.PlannedPickupEnd     ?? DateTime.UtcNow.AddDays(1).AddHours(4);
+            _model.PlannedDeliveryStart = _detail.PlannedDeliveryStart ?? DateTime.UtcNow.AddDays(1).AddHours(5);
+            _model.PlannedDeliveryEnd   = _detail.PlannedDeliveryEnd   ?? DateTime.UtcNow.AddDays(1).AddHours(8);
+            _model.IdOperatorTransfer   = _detail.IdOperatorTransfer   ?? Guid.Empty;
+
+            // Fechas para el stepper
+            _statusDates = new Dictionary<string, DateTime?>
+            {
+                [WasteMoveStatuses.Solicitado] = _detail.DateCreateSys
+            };
+
+            // Líneas de residuo
+            _lineModels = _detail.Residues.Select(r => new LineModel
+            {
+                WasteMoveResidueId         = r.Id,
+                ResidueId                  = r.IdResidue ?? Guid.Empty,
+                ResidueName                = r.ResidueName,
+                Weight                     = r.Weight,
+                MeasureUnit                = r.MeasureUnit,
+                IdCarrier                  = r.IdCarrier ?? Guid.Empty,
+                VehicleRegistration        = "",
+                VehicleRegistrationTrailer = null,
+                VehicleType                = null,
+                FuelType                   = null,
+                EuroClass                  = null
+            }).ToList();
+
+            // Cargar entidades para selectores
+            var allEntities = await Mediator.Send(
+                new GetEntitiesForSelectorQuery(null));
+
+            _operators = allEntities
+                .Where(e => e.EntityRole is EntityRoles.Carrier or EntityRoles.OperatorTransfer)
+                .ToList();
+
+            _carriers = allEntities
+                .Where(e => e.EntityRole == EntityRoles.Carrier)
+                .ToList();
+        }
+
+        _loading = false;
+    }
+
+    private async Task HandleSubmit()
+    {
+        _saving      = false;
+        _globalError = null;
+        _dumResult   = null;
+
+        // Validar líneas mínimas
+        if (_lineModels.Any(l => l.IdCarrier == Guid.Empty || string.IsNullOrWhiteSpace(l.VehicleRegistration)))
+        {
+            _globalError = "Todas las líneas deben tener transportista y matrícula.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var cmd = new PlanWasteMoveCommand(
+                WasteMoveId,
+                _model.PlannedPickupStart,
+                _model.PlannedPickupEnd,
+                _model.PlannedDeliveryStart,
+                _model.PlannedDeliveryEnd,
+                _model.IdOperatorTransfer,
+                _lineModels.Select(l => new PlanWasteMoveLineInput(
+                    l.WasteMoveResidueId,
+                    l.IdCarrier,
+                    l.VehicleRegistration,
+                    l.VehicleRegistrationTrailer,
+                    l.VehicleType,
+                    l.FuelType,
+                    l.EuroClass)).ToArray());
+
+            var result = await Mediator.Send(cmd);
+
+            if (result.ActionType is "Notify" or "Restrict")
+            {
+                _dumResult = result;
+                // Mostrar advertencia pero la navegación procede
+            }
+
+            Nav.NavigateTo("/waste-moves/" + WasteMoveId);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("DUM"))
+        {
+            // Block DUM — mostrar panel rojo y no navegar
+            _dumResult = new PlanWasteMoveResult("Block", ex.Message, []);
+        }
+        catch (Exception ex)
+        {
+            _globalError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Modelos de formulario locales ─────────────────────────────────────────
+
+    private sealed class PlanModel
+    {
+        public DateTime PlannedPickupStart   { get; set; }
+        public DateTime PlannedPickupEnd     { get; set; }
+        public DateTime PlannedDeliveryStart { get; set; }
+        public DateTime PlannedDeliveryEnd   { get; set; }
+        public Guid     IdOperatorTransfer   { get; set; }
+    }
+
+    private sealed class LineModel
+    {
+        public Guid     WasteMoveResidueId         { get; set; }
+        public Guid     ResidueId                  { get; set; }
+        public string?  ResidueName                { get; set; }
+        public decimal? Weight                     { get; set; }
+        public string?  MeasureUnit                { get; set; }
+        public Guid     IdCarrier                  { get; set; }
+        public string   VehicleRegistration        { get; set; } = "";
+        public string?  VehicleRegistrationTrailer { get; set; }
+        public string?  VehicleType                { get; set; }
+        public string?  FuelType                   { get; set; }
+        public string?  EuroClass                  { get; set; }
+    }
+}

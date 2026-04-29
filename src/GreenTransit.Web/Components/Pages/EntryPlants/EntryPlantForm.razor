@@ -1,0 +1,658 @@
+@page "/waste-moves/{WasteMoveId:guid}/entry-plant"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.EntryPlants.Commands
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Application.Features.Residues.DTOs
+@using GreenTransit.Application.Features.Residues.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Entrada en Planta — Pesaje</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_wasteMove is null)
+{
+    <div class="alert alert-warning">Traslado no encontrado.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/entry-plants")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1 class="page-title">
+                <i class="bi bi-building-gear me-2"></i>
+                Entrada en Planta — @(_wasteMove.WasteMoveReference ?? WasteMoveId.ToString()[..8])
+            </h1>
+            <div class="mt-1">
+                <WasteMoveStatusStepper Status="@_wasteMove.ServiceStatus" />
+            </div>
+        </div>
+        <div class="page-header-actions">
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    @if (_wasteMove.ServiceStatus != WasteMoveStatuses.Recogido
+      && _wasteMove.ServiceStatus != WasteMoveStatuses.EnCAC)
+    {
+        <div class="alert alert-warning">
+            Este traslado no puede registrar una entrada en planta porque está en estado
+            <strong>@WasteMoveStatuses.Label(_wasteMove.ServiceStatus ?? "")</strong>.
+            Se requiere estado <strong>RECOGIDO</strong> o <strong>EN CAC</strong>.
+        </div>
+    }
+    else
+    {
+        <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            @if (!string.IsNullOrEmpty(_globalError))
+            {
+                <div class="alert alert-danger mb-3">
+                    <i class="bi bi-x-circle me-1"></i>@_globalError
+                </div>
+            }
+
+            @* ── Ticket y datos de entrada ────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-ticket-detailed me-2"></i>Datos del ticket
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-semibold">Nº Ticket báscula *</label>
+                            <input class="form-control form-control-lg"
+                                   @bind="_model.TicketScale"
+                                   placeholder="TIC-2024-0001" />
+                            @if (_submitted && string.IsNullOrWhiteSpace(_model.TicketScale))
+                            {
+                                <div class="text-danger small mt-1">El ticket es obligatorio.</div>
+                            }
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-semibold">Fecha y hora entrada *</label>
+                            <InputDate TValue="DateTime"
+                                       class="form-control form-control-lg"
+                                       @bind-Value="_model.PlantEntryDate"
+                                       Type="InputDateType.DateTimeLocal" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-semibold">Báscula (ID)</label>
+                            <input class="form-control form-control-lg"
+                                   @bind="_model.WeighbridgeId"
+                                   placeholder="BAS-01" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-semibold">Tipo contenedor</label>
+                            <InputSelect TValue="string?" class="form-select form-select-lg"
+                                         @bind-Value="_model.TypeContainer">
+                                <option value="">— Seleccionar —</option>
+                                <option value="Bigbag">Big Bag</option>
+                                <option value="Contenedor">Contenedor</option>
+                                <option value="Palet">Palé</option>
+                                <option value="Granel">Granel</option>
+                                <option value="Otro">Otro</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-semibold">Precio contenedor (€)</label>
+                            <InputNumber TValue="decimal?"
+                                         class="form-control form-control-lg"
+                                         @bind-Value="_model.PriceContainer"
+                                         placeholder="0.00" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Pesos — sección destacada ────────────────────────────── *@
+            <div class="card mb-3 border-success border-2">
+                <div class="card-header bg-success-subtle">
+                    <h5 class="mb-0 text-success">
+                        <i class="bi bi-speedometer2 me-2"></i>Pesaje en báscula
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @* ── Toggle modo pesaje ─────────────────────────────── *@
+                    <div class="d-flex gap-3 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" id="modeGrossTare"
+                                   checked="@(!_useNetDirect)"
+                                   @onchange="() => { _useNetDirect = false; RecalcNet(); }" />
+                            <label class="form-check-label" for="modeGrossTare">
+                                Bruto / Tara
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" id="modeNetDirect"
+                                   checked="@_useNetDirect"
+                                   @onchange="() => { _useNetDirect = true; RecalcNet(); }" />
+                            <label class="form-check-label" for="modeNetDirect">
+                                Neto directo
+                            </label>
+                        </div>
+                    </div>
+
+                    @if (_useNetDirect)
+                    {
+                        <div class="row g-3 align-items-end">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold fs-6 text-success">
+                                    Peso NETO (kg) *
+                                </label>
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       class="form-control form-control-lg fw-bold
+                                              bg-success-subtle border-success text-success"
+                                       style="font-size:1.4rem"
+                                       value="@_model.DirectNetWeight"
+                                       @oninput="OnDirectNetWeightInput"
+                                       placeholder="0.00" />
+                                @if (_submitted && _model.DirectNetWeight <= 0)
+                                {
+                                    <div class="text-danger small mt-1">Peso neto &gt; 0.</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="row g-3 align-items-end">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold fs-6">Peso BRUTO (kg) *</label>
+                                <input id="grossWeight"
+                                       type="number"
+                                       step="0.01"
+                                       min="0"
+                                       class="form-control form-control-lg fw-bold
+                                              bg-success-subtle border-success text-success"
+                                       style="font-size:1.4rem"
+                                       value="@_model.GrossWeight"
+                                       @oninput="OnGrossWeightInput"
+                                       placeholder="0.00" />
+                                @if (_submitted && _model.GrossWeight <= 0)
+                                {
+                                    <div class="text-danger small mt-1">Peso bruto &gt; 0.</div>
+                                }
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold fs-6">Peso TARA (kg) *</label>
+                                <input id="tareWeight"
+                                       type="number"
+                                       step="0.01"
+                                       min="0"
+                                       class="form-control form-control-lg fw-bold
+                                              bg-warning-subtle border-warning"
+                                       style="font-size:1.4rem"
+                                       value="@_model.TareWeight"
+                                       @oninput="OnTareWeightInput"
+                                       placeholder="0.00" />
+                                @if (_submitted && _model.TareWeight <= 0)
+                                {
+                                    <div class="text-danger small mt-1">Peso tara &gt; 0.</div>
+                                }
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold fs-6 text-success">
+                                    Peso NETO (kg) — calculado
+                                </label>
+                                <div class="form-control form-control-lg fw-bold
+                                            bg-body-secondary text-success border-success"
+                                     style="font-size:1.6rem">
+                                    @(_netWeightDisplay > 0 ? _netWeightDisplay.ToString("F2") : "—")
+                                </div>
+                                <div class="form-text">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    Calculado exclusivamente en el servidor (Bruto − Tara).
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (_submitted && _model.GrossWeight > 0 && _model.TareWeight > 0
+                                        && _model.GrossWeight <= _model.TareWeight)
+                        {
+                            <div class="alert alert-danger mt-3 mb-0">
+                                <i class="bi bi-exclamation-triangle me-1"></i>
+                                El peso bruto debe ser mayor que el peso tara.
+                            </div>
+                        }
+                    }
+
+                    @* Aviso de descuadre *@
+                    @if (_estimatedWeight > 0 && _netWeightDisplay > 0)
+                    {
+                        var diff = Math.Abs(_netWeightDisplay - _estimatedWeight)
+                                   / _estimatedWeight;
+                        @if (diff > 0.05m)
+                        {
+                            <div class="alert alert-warning mt-3 mb-0">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                <strong>Aviso previo:</strong> el peso neto indicado
+                                (@_netWeightDisplay.ToString("N2") kg) difiere un
+                                <strong>@diff.ToString("P1")</strong> del peso estimado
+                                del traslado (@_estimatedWeight.ToString("N2") kg).
+                                Se creará automáticamente una incidencia de descuadre al guardar.
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* ── Líneas de residuo ────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-ul me-2"></i>Residuos pesados
+                    </h5>
+                    <div class="d-flex align-items-center gap-3">
+                        @if (_lines.Count > 0 && _netWeightDisplay > 0)
+                        {
+                            var linesSum = _lines.Sum(l => l.Weight);
+                            var diff     = linesSum - _netWeightDisplay;
+                            var color    = Math.Abs(diff) < 0.01m ? "text-success" : "text-danger";
+                            <span class="small @color">
+                                <i class="bi bi-sigma me-1"></i>
+                                @linesSum.ToString("N2") kg
+                                @if (Math.Abs(diff) >= 0.01m)
+                                {
+                                    <span>(diferencia: @diff.ToString("+0.##;-0.##") kg)</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-check-circle ms-1"></i>
+                                }
+                            </span>
+                        }
+                        <button type="button" class="btn btn-outline-primary btn-sm"
+                                @onclick="AddLine">
+                            <i class="bi bi-plus-lg me-1"></i>Añadir residuo
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    @if (_lines.Count == 0)
+                    {
+                        <div class="p-3 text-muted">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Añade al menos una línea de residuo.
+                        </div>
+                    }
+                    else
+                    {
+                        @* Vista móvil: tarjetas *@
+                        <div class="d-md-none">
+                            @foreach (var (line, idx) in _lines.Select((l, i) => (l, i)))
+                            {
+                                <div class="border-bottom p-3">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="fw-semibold text-muted small">
+                                            LÍNEA @(idx + 1)
+                                        </span>
+                                        <button type="button"
+                                                class="btn btn-link text-danger p-0"
+                                                @onclick="() => RemoveLine(line)">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label form-label-sm">Residuo *</label>
+                                        <InputSelect TValue="Guid"
+                                                     class="form-select"
+                                                     @bind-Value="line.IdResidue">
+                                            <option value="@Guid.Empty">
+                                                — Seleccionar residuo —
+                                            </option>
+                                            @foreach (var r in _residues)
+                                            {
+                                                <option value="@r.Id">@r.Name</option>
+                                            }
+                                        </InputSelect>
+                                        @if (line.IdResidue == Guid.Empty && _submitted)
+                                        {
+                                            <div class="text-danger small mt-1">
+                                                Selecciona un residuo.
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-5">
+                                            <label class="form-label form-label-sm">Peso *</label>
+                                            <InputNumber TValue="decimal"
+                                                         class="form-control"
+                                                         @bind-Value="line.Weight"
+                                                         inputmode="decimal"
+                                                         placeholder="0.00" />
+                                            @if (line.Weight <= 0 && _submitted)
+                                            {
+                                                <div class="text-danger small mt-1">
+                                                    Peso &gt; 0.
+                                                </div>
+                                            }
+                                        </div>
+                                        <div class="col-4">
+                                            <label class="form-label form-label-sm">Unidad *</label>
+                                            <InputSelect TValue="string"
+                                                         class="form-select"
+                                                         @bind-Value="line.MeasureUnit">
+                                                <option value="kg">kg</option>
+                                                <option value="t">t</option>
+                                                <option value="l">l</option>
+                                                <option value="ud">ud</option>
+                                            </InputSelect>
+                                        </div>
+                                        <div class="col-3">
+                                            <label class="form-label form-label-sm">Uds.</label>
+                                            <InputNumber TValue="int?"
+                                                         class="form-control"
+                                                         @bind-Value="line.Units"
+                                                         inputmode="numeric"
+                                                         placeholder="—" />
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @* Vista escritorio: tabla *@
+                        <div class="d-none d-md-block table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Residuo *</th>
+                                        <th>Peso *</th>
+                                        <th>Unidad *</th>
+                                        <th>Uds.</th>
+                                        <th>€/kg</th>
+                                        <th>€/ud</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var line in _lines)
+                                    {
+                                        <tr>
+                                            <td style="min-width:200px">
+                                                <InputSelect TValue="Guid"
+                                                             class="form-select form-select-sm"
+                                                             @bind-Value="line.IdResidue">
+                                                    <option value="@Guid.Empty">— Seleccionar —</option>
+                                                    @foreach (var r in _residues)
+                                                    {
+                                                        <option value="@r.Id">@r.Name</option>
+                                                    }
+                                                </InputSelect>
+                                                @if (line.IdResidue == Guid.Empty && _submitted)
+                                                {
+                                                    <div class="text-danger small">Obligatorio.</div>
+                                                }
+                                            </td>
+                                            <td style="width:110px">
+                                                <InputNumber TValue="decimal"
+                                                             class="form-control form-control-sm"
+                                                             @bind-Value="line.Weight"
+                                                             inputmode="decimal"
+                                                             placeholder="0.00" />
+                                                @if (line.Weight <= 0 && _submitted)
+                                                {
+                                                    <div class="text-danger small">&gt; 0.</div>
+                                                }
+                                            </td>
+                                            <td style="width:80px">
+                                                <InputSelect TValue="string"
+                                                             class="form-select form-select-sm"
+                                                             @bind-Value="line.MeasureUnit">
+                                                    <option value="kg">kg</option>
+                                                    <option value="t">t</option>
+                                                    <option value="l">l</option>
+                                                    <option value="ud">ud</option>
+                                                </InputSelect>
+                                            </td>
+                                            <td style="width:70px">
+                                                <InputNumber TValue="int?"
+                                                             class="form-control form-control-sm"
+                                                             @bind-Value="line.Units"
+                                                             inputmode="numeric"
+                                                             placeholder="—" />
+                                            </td>
+                                            <td style="width:90px">
+                                                <InputNumber TValue="decimal?"
+                                                             class="form-control form-control-sm"
+                                                             @bind-Value="line.PriceWeight"
+                                                             inputmode="decimal"
+                                                             placeholder="—" />
+                                            </td>
+                                            <td style="width:90px">
+                                                <InputNumber TValue="decimal?"
+                                                             class="form-control form-control-sm"
+                                                             @bind-Value="line.PriceUnit"
+                                                             inputmode="decimal"
+                                                             placeholder="—" />
+                                            </td>
+                                            <td>
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-danger"
+                                                        @onclick="() => RemoveLine(line)">
+                                                    <i class="bi bi-trash3"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ── Acciones ─────────────────────────────────────────────── *@
+            <div class="d-flex justify-content-end gap-2 mb-4">
+                <button type="button"
+                        class="btn btn-outline-neutral"
+                        @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                    Cancelar
+                </button>
+                <button type="submit"
+                        class="btn btn-success btn-lg"
+                        disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    <i class="bi bi-check-circle me-2"></i>Registrar pesaje
+                </button>
+            </div>
+        </EditForm>
+    }
+}
+
+@code {
+    [Parameter] public Guid WasteMoveId { get; set; }
+
+    private sealed class FormModel
+    {
+        public string    TicketScale      { get; set; } = "";
+        public string?   WeighbridgeId    { get; set; }
+        public DateTime  PlantEntryDate   { get; set; } = DateTime.Now;
+        public decimal   GrossWeight      { get; set; }
+        public decimal   TareWeight       { get; set; }
+        public decimal   DirectNetWeight  { get; set; }
+        public string?   TypeContainer    { get; set; }
+        public decimal?  PriceContainer   { get; set; }
+    }
+
+    private sealed class LineModel
+    {
+        public Guid     IdResidue   { get; set; }
+        public decimal  Weight      { get; set; }
+        public string   MeasureUnit { get; set; } = "kg";
+        public int?     Units       { get; set; }
+        public decimal? PriceWeight { get; set; }
+        public decimal? PriceUnit   { get; set; }
+    }
+
+    private bool      _loading       = true;
+    private bool      _saving        = false;
+    private bool      _submitted     = false;
+    private bool      _useNetDirect  = false;
+    private string?   _globalError;
+
+    private WasteMoveDetailDto? _wasteMove;
+    private List<ResidueDto>    _residues = [];
+    private List<LineModel>     _lines    = [];
+    private FormModel           _model    = new();
+
+    private decimal _netWeightDisplay;
+    private decimal _estimatedWeight;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _wasteMove = await Mediator.Send(new GetWasteMoveByIdQuery(WasteMoveId));
+
+        if (_wasteMove is not null)
+            _estimatedWeight = _wasteMove.Residues.Sum(r => r.Weight ?? 0m);
+
+        var residuesResult = await Mediator.Send(new GetResiduesQuery(PageSize: 500));
+        _residues = [.. residuesResult.Items];
+
+        AddLine();
+        _loading = false;
+    }
+
+    private void OnGrossWeightInput(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(),
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var v))
+            _model.GrossWeight = v;
+        RecalcNet();
+    }
+
+    private void OnTareWeightInput(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(),
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var v))
+            _model.TareWeight = v;
+        RecalcNet();
+    }
+
+    private void OnDirectNetWeightInput(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(),
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var v))
+            _model.DirectNetWeight = v;
+        RecalcNet();
+    }
+
+    private void RecalcNet()
+    {
+        _netWeightDisplay = _useNetDirect
+            ? _model.DirectNetWeight
+            : (_model.GrossWeight > _model.TareWeight
+                ? _model.GrossWeight - _model.TareWeight
+                : 0m);
+    }
+
+    private void AddLine() => _lines.Add(new LineModel());
+
+    private void RemoveLine(LineModel line) => _lines.Remove(line);
+
+    private async Task HandleSubmit()
+    {
+        _submitted = true;
+        RecalcNet();
+
+        var netWeight = _netWeightDisplay;
+
+        // Validación de pesos
+        if (_useNetDirect && _model.DirectNetWeight <= 0)
+            return;
+
+        if (!_useNetDirect && (_model.GrossWeight <= 0
+            || _model.TareWeight  <= 0
+            || _model.GrossWeight <= _model.TareWeight))
+            return;
+
+        // Validación básica
+        if (string.IsNullOrWhiteSpace(_model.TicketScale)
+            || _lines.Count == 0
+            || _lines.Any(l => l.IdResidue == Guid.Empty || l.Weight <= 0))
+            return;
+
+        // Validación: suma de residuos debe coincidir con peso neto
+        var linesSum = _lines.Sum(l => l.Weight);
+        if (Math.Abs(linesSum - netWeight) >= 0.01m)
+        {
+            _globalError = $"La suma de los residuos ({linesSum:N2} kg) no coincide con el peso neto ({netWeight:N2} kg). " +
+                           $"Ajusta los pesos de las líneas para que sumen exactamente el peso neto.";
+            return;
+        }
+
+        _saving      = true;
+        _globalError = null;
+
+        try
+        {
+            var result = await Mediator.Send(new CreateEntryPlantCommand(
+                WasteMoveId,
+                _model.TicketScale,
+                _model.WeighbridgeId,
+                _model.PlantEntryDate,
+                _useNetDirect ? 0m          : _model.GrossWeight,
+                _useNetDirect ? 0m          : _model.TareWeight,
+                _useNetDirect ? _model.DirectNetWeight : null,
+                _model.TypeContainer,
+                _model.PriceContainer,
+                ServiceOrderId: null,
+                Lines: [.. _lines.Select(l => new CreateEntryPlantLineInput(
+                    l.IdResidue, l.Weight, l.MeasureUnit, l.Units,
+                    l.PriceWeight, l.PriceUnit))]
+            ));
+
+            Nav.NavigateTo($"/entry-plants/{result.EntryPlantId}");
+        }
+        catch (FluentValidation.ValidationException ex)
+        {
+            _globalError = string.Join(" ", ex.Errors.Select(e => e.ErrorMessage));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _globalError = ex.Message;
+        }
+        catch (KeyNotFoundException ex)
+        {
+            _globalError = ex.Message;
+        }
+        catch (Exception)
+        {
+            _globalError = "Ha ocurrido un error inesperado. Inténtalo de nuevo.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

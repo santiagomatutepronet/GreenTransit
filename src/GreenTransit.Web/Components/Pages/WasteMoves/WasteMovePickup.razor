@@ -1,0 +1,400 @@
+@page "/waste-moves/{WasteMoveId:guid}/pickup"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.WasteMoves.Commands
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Application.Features.Emissions.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Cryptography
+@using System.Text
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Confirmar Recogida</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Traslado no encontrado.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/waste-moves")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1 class="page-title">
+                <i class="bi bi-truck me-2"></i>
+                Confirmar Recogida — @(_detail.WasteMoveReference ?? WasteMoveId.ToString()[..8])
+            </h1>
+            <div class="mt-1">
+                <WasteMoveStatusStepper Status="@_detail.ServiceStatus"
+                                        StatusDates="@_statusDates" />
+            </div>
+        </div>
+        <div class="page-header-actions">
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    @if (_detail.ServiceStatus != WasteMoveStatuses.Planificado)
+    {
+        <div class="alert alert-warning">
+            Este traslado no puede confirmarse como recogido porque está en estado
+            <strong>@WasteMoveStatuses.Label(_detail.ServiceStatus ?? "")</strong>.
+        </div>
+    }
+    else
+    {
+        <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            @* ── Error global ─────────────────────────────────────────────── *@
+            @if (!string.IsNullOrEmpty(_globalError))
+            {
+                <div class="alert alert-danger">
+                    <i class="bi bi-x-circle me-1"></i>@_globalError
+                </div>
+            }
+
+            @* ── Tiempos reales ───────────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Tiempos reales de recogida</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Inicio de recogida *</label>
+                            <InputDate TValue="DateTime" class="form-control"
+                                       @bind-Value="_model.ActualPickupStart"
+                                       Type="InputDateType.DateTimeLocal" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fin de recogida</label>
+                            <InputDate TValue="DateTime?" class="form-control"
+                                       @bind-Value="_model.ActualPickupEnd"
+                                       Type="InputDateType.DateTimeLocal" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha de carga confirmada *</label>
+                            <InputDate TValue="DateTime" class="form-control"
+                                       @bind-Value="_model.GatheredDate"
+                                       Type="InputDateType.DateTimeLocal" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Documentación ────────────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-file-earmark-check me-2"></i>Documentación</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Referencia de documento (DMS)</label>
+                            <div class="input-group">
+                                <InputText class="form-control"
+                                           @bind-Value="_model.DocumentId"
+                                           placeholder="Ref. externa al gestor documental" />
+                                <button type="button" class="btn btn-outline-secondary"
+                                        @onclick="ComputeDocumentHash"
+                                        title="Calcular SHA-256 del texto introducido">
+                                    <i class="bi bi-hash me-1"></i>Hash
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">SHA-256</label>
+                            <input class="form-control font-monospace"
+                                   readonly value="@_model.DocumentHash"
+                                   placeholder="Se calcula al pulsar Hash" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Estado de firma</label>
+                            <InputSelect TValue="string?" class="form-select"
+                                         @bind-Value="_model.SignatureStatus">
+                                <option value="">— Sin firma —</option>
+                                <option value="Pending">Pendiente</option>
+                                <option value="Signed">Firmado</option>
+                                <option value="Verified">Verificado</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Líneas NT/DI ─────────────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-ul me-2"></i>
+                        Documentos por residuo (NT / DI)
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Residuo</th>
+                                <th>Peso</th>
+                                <th>Peligroso</th>
+                                <th>NTNumber</th>
+                                <th>DINumber</th>
+                                <th>DIPhase</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var line in _lineModels)
+                            {
+                                var ntCss  = line.IsDangerous && string.IsNullOrWhiteSpace(line.NTNumber) ? "form-control form-control-sm border-danger" : "form-control form-control-sm";
+                                var diCss  = line.IsDangerous && string.IsNullOrWhiteSpace(line.DINumber) ? "form-control form-control-sm border-danger" : "form-control form-control-sm";
+                                var phCss  = line.IsDangerous && string.IsNullOrWhiteSpace(line.DIPhase)  ? "form-control form-control-sm border-danger" : "form-control form-control-sm";
+                                var ntPh   = line.IsDangerous ? "Obligatorio *" : "Opcional";
+                                var diPh   = line.IsDangerous ? "Obligatorio *" : "Opcional";
+                                var phPh   = line.IsDangerous ? "E1/E2… *"      : "Opcional";
+                                <tr>
+                                    <td>@(line.ResidueName ?? line.WasteMoveResidueId.ToString()[..8])</td>
+                                    <td class="text-nowrap">@line.Weight @line.MeasureUnit</td>
+                                    <td>
+                                        @if (line.IsDangerous)
+                                        {
+                                            <span class="badge text-bg-danger">
+                                                <i class="bi bi-exclamation-triangle-fill me-1"></i>Peligroso
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge text-bg-secondary">No</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <InputText class="@ntCss" @bind-Value="line.NTNumber" placeholder="@ntPh" />
+                                    </td>
+                                    <td>
+                                        <InputText class="@diCss" @bind-Value="line.DINumber" placeholder="@diPh" />
+                                    </td>
+                                    <td>
+                                        <InputText class="@phCss" @bind-Value="line.DIPhase" placeholder="@phPh" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            @* ── Panel estimación de emisiones CO₂ ───────────────────────── *@
+            @if (_emissionEstimates.Count > 0)
+            {
+                <div class="card mb-3 border-success">
+                    <div class="card-header bg-success-subtle">
+                        <h5 class="mb-0 text-success">
+                            <i class="bi bi-leaf me-2"></i>
+                            Estimación de huella CO₂ (previa a confirmar)
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Residuo</th>
+                                    <th class="text-end">Distancia (km)</th>
+                                    <th class="text-end">Factor (kgCO₂e/km)</th>
+                                    <th class="text-end">Estimación (kgCO₂e)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in _emissionEstimates)
+                                {
+                                    <tr>
+                                        <td>@(e.ResidueName ?? "—")</td>
+                                        <td class="text-end">@e.DistanceKm.ToString("N1")</td>
+                                        <td class="text-end">@e.EmissionFactor.ToString("N4")</td>
+                                        <td class="text-end fw-semibold">@e.EstimatedKgCO2e.ToString("N2")</td>
+                                    </tr>
+                                }
+                                <tr class="table-success fw-bold">
+                                    <td colspan="3">Total estimado</td>
+                                    <td class="text-end">
+                                        @(_emissionEstimates.Sum(e => e.EstimatedKgCO2e).ToString("N2")) kgCO₂e
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="px-3 pb-2 text-muted small">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Basado en el set de factores de emisión versión
+                            <strong>@(_emissionEstimates.FirstOrDefault()?.FactorSetVersion ?? "—")</strong>.
+                            El valor definitivo se calculará al confirmar.
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── Botones ──────────────────────────────────────────────────── *@
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-success" disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    <i class="bi bi-check-lg me-1"></i>Confirmar recogida
+                </button>
+                <button type="button" class="btn btn-outline-neutral"
+                        @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                    Cancelar
+                </button>
+            </div>
+
+        </EditForm>
+    }
+}
+
+@code {
+    [Parameter] public Guid WasteMoveId { get; set; }
+
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private bool                            _loading  = true;
+    private bool                            _saving   = false;
+    private string?                         _globalError;
+    private WasteMoveDetailDto?             _detail;
+    private Dictionary<string, DateTime?>   _statusDates = [];
+    private List<EmissionEstimateDto>       _emissionEstimates = [];
+
+    // ── Modelos de formulario ─────────────────────────────────────────────────
+    private PickupModel       _model      = new();
+    private List<LineModel>   _lineModels = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail = await Mediator.Send(new GetWasteMoveByIdQuery(WasteMoveId));
+
+        if (_detail is not null)
+        {
+            _model.ActualPickupStart = DateTime.UtcNow;
+            _model.GatheredDate      = DateTime.UtcNow;
+
+            _statusDates = new Dictionary<string, DateTime?>
+            {
+                [WasteMoveStatuses.Solicitado]  = _detail.DateCreateSys,
+                [WasteMoveStatuses.Planificado] = _detail.PlannedPickupStart
+            };
+
+            _lineModels = _detail.Residues.Select(r => new LineModel
+            {
+                WasteMoveResidueId = r.Id,
+                ResidueName        = r.ResidueName,
+                IsDangerous        = r.IsDangerous,
+                Weight             = r.Weight,
+                MeasureUnit        = r.MeasureUnit,
+                NTNumber           = r.NTNumber,
+                DINumber           = r.DINumber,
+                DIPhase            = r.DIPhase
+            }).ToList();
+
+            // Carga estimaciones CO₂ (fallo silencioso)
+            try
+            {
+                var estimates = await Mediator.Send(
+                    new GetEmissionEstimatesQuery(WasteMoveId));
+                _emissionEstimates = [.. estimates];
+            }
+            catch
+            {
+                // No bloqueamos la carga del formulario si falla la estimación
+            }
+        }
+
+        _loading = false;
+    }
+
+    /// <summary>Calcula el SHA-256 del DocumentId introducido y lo rellena en el campo Hash.</summary>
+    private void ComputeDocumentHash()
+    {
+        if (string.IsNullOrWhiteSpace(_model.DocumentId))
+        {
+            _model.DocumentHash = null;
+            return;
+        }
+
+        var bytes  = SHA256.HashData(Encoding.UTF8.GetBytes(_model.DocumentId));
+        _model.DocumentHash = Convert.ToHexStringLower(bytes);
+    }
+
+    private async Task HandleSubmit()
+    {
+        _globalError = null;
+        _saving      = true;
+
+        try
+        {
+            var cmd = new ConfirmPickupCommand(
+                WasteMoveId,
+                _model.ActualPickupStart,
+                _model.ActualPickupEnd,
+                _model.GatheredDate,
+                _model.DocumentId,
+                _model.DocumentHash,
+                _model.SignatureStatus,
+                _lineModels.Select(l => new ConfirmPickupLineInput(
+                    l.WasteMoveResidueId,
+                    l.NTNumber,
+                    l.DINumber,
+                    l.DIPhase)).ToArray());
+
+            await Mediator.Send(cmd);
+            Nav.NavigateTo("/waste-moves/" + WasteMoveId);
+        }
+        catch (Exception ex)
+        {
+            _globalError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Modelos internos ──────────────────────────────────────────────────────
+
+    private sealed class PickupModel
+    {
+        public DateTime  ActualPickupStart { get; set; }
+        public DateTime? ActualPickupEnd   { get; set; }
+        public DateTime  GatheredDate      { get; set; }
+        public string?   DocumentId        { get; set; }
+        public string?   DocumentHash      { get; set; }
+        public string?   SignatureStatus   { get; set; }
+    }
+
+    private sealed class LineModel
+    {
+        public Guid     WasteMoveResidueId { get; set; }
+        public string?  ResidueName        { get; set; }
+        public bool     IsDangerous        { get; set; }
+        public decimal? Weight             { get; set; }
+        public string?  MeasureUnit        { get; set; }
+        public string?  NTNumber           { get; set; }
+        public string?  DINumber           { get; set; }
+        public string?  DIPhase            { get; set; }
+    }
+}

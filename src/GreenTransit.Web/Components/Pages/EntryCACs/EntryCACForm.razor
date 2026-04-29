@@ -1,0 +1,467 @@
+@page "/waste-moves/{WasteMoveId:guid}/entry-cac"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.EntryCACs.Commands
+@using GreenTransit.Application.Features.EntryCACs.DTOs
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Application.Features.Residues.Queries
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Entrada en CAC</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_wasteMove is null)
+{
+    <div class="alert alert-warning">Traslado no encontrado.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/waste-moves")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1 class="page-title">
+                <i class="bi bi-building me-2"></i>
+                Entrada en CAC — @(_wasteMove.WasteMoveReference ?? WasteMoveId.ToString()[..8])
+            </h1>
+            <div class="mt-1">
+                <WasteMoveStatusStepper Status="@_wasteMove.ServiceStatus" />
+            </div>
+        </div>
+        <div class="page-header-actions">
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    @if (_wasteMove.ServiceStatus != WasteMoveStatuses.Recogido)
+    {
+        <div class="alert alert-warning">
+            Este traslado no puede registrar una entrada en CAC porque está en estado
+            <strong>@WasteMoveStatuses.Label(_wasteMove.ServiceStatus ?? "")</strong>.
+            Se requiere estado <strong>RECOGIDO</strong>.
+        </div>
+    }
+    else
+    {
+        <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            @if (!string.IsNullOrEmpty(_globalError))
+            {
+                <div class="alert alert-danger mb-3">
+                    <i class="bi bi-x-circle me-1"></i>@_globalError
+                </div>
+            }
+
+            @* ── Cabecera ─────────────────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-calendar-check me-2"></i>Datos de entrada
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fw-semibold">Fecha y hora de entrada *</label>
+                            <InputDate TValue="DateTime" class="form-control form-control-lg"
+                                       @bind-Value="_model.CACEntryDate"
+                                       Type="InputDateType.DateTimeLocal" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fw-semibold">Tipo de contenedor</label>
+                            <InputSelect TValue="string?" class="form-select form-select-lg"
+                                         @bind-Value="_model.TypeContainer">
+                                <option value="">— Seleccionar —</option>
+                                <option value="Bigbag">Big Bag</option>
+                                <option value="Contenedor">Contenedor</option>
+                                <option value="Palet">Palé</option>
+                                <option value="Granel">Granel</option>
+                                <option value="Otro">Otro</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fw-semibold">Precio contenedor (€)</label>
+                            <InputNumber TValue="decimal?" class="form-control form-control-lg"
+                                         @bind-Value="_model.PriceContainer"
+                                         placeholder="0.00" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fw-semibold">Método de recogida</label>
+                            <InputSelect TValue="string?" class="form-select form-select-lg"
+                                         @bind-Value="_model.CollectionMethod">
+                                <option value="">— Seleccionar —</option>
+                                <option value="Puerta a puerta">Puerta a puerta</option>
+                                <option value="Punto limpio">Punto limpio</option>
+                                <option value="Contenedor calle">Contenedor calle</option>
+                                <option value="Recogida especial">Recogida especial</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Líneas de residuo ────────────────────────────────────────── *@
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-ul me-2"></i>Residuos acopiados
+                    </h5>
+                    <button type="button" class="btn btn-outline-primary btn-sm"
+                            @onclick="AddLine">
+                        <i class="bi bi-plus-lg me-1"></i>Añadir residuo
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    @if (_lines.Count == 0)
+                    {
+                        <div class="p-3 text-muted">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Añade al menos una línea de residuo.
+                        </div>
+                    }
+                    else
+                    {
+                        @* Vista móvil: tarjetas *@
+                        <div class="d-md-none">
+                            @foreach (var (line, idx) in _lines.Select((l, i) => (l, i)))
+                            {
+                                <div class="border-bottom p-3">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="fw-semibold text-muted small">LÍNEA @(idx + 1)</span>
+                                        <button type="button"
+                                                class="btn btn-link text-danger p-0"
+                                                @onclick="() => RemoveLine(line)">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label form-label-sm">Residuo *</label>
+                                        <InputSelect TValue="Guid" class="form-select"
+                                                     @bind-Value="line.IdResidue">
+                                            <option value="@Guid.Empty">— Seleccionar residuo —</option>
+                                            @foreach (var r in _residues)
+                                            {
+                                                <option value="@r.Id">@r.Name</option>
+                                            }
+                                        </InputSelect>
+                                        @if (line.IdResidue == Guid.Empty && _submitted)
+                                        {
+                                            <div class="text-danger small mt-1">Selecciona un residuo.</div>
+                                        }
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-5">
+                                            <label class="form-label form-label-sm">Peso *</label>
+                                            <InputNumber TValue="decimal" class="form-control"
+                                                         @bind-Value="line.Weight"
+                                                         inputmode="decimal"
+                                                         placeholder="0.00" />
+                                            @if (line.Weight <= 0 && _submitted)
+                                            {
+                                                <div class="text-danger small mt-1">Peso &gt; 0.</div>
+                                            }
+                                        </div>
+                                        <div class="col-4">
+                                            <label class="form-label form-label-sm">Unidad *</label>
+                                            <InputSelect TValue="string" class="form-select"
+                                                         @bind-Value="line.MeasureUnit">
+                                                <option value="kg">kg</option>
+                                                <option value="t">t</option>
+                                                <option value="l">l</option>
+                                                <option value="ud">ud</option>
+                                            </InputSelect>
+                                        </div>
+                                        <div class="col-3">
+                                            <label class="form-label form-label-sm">Uds.</label>
+                                            <InputNumber TValue="int?" class="form-control"
+                                                         @bind-Value="line.Units"
+                                                         inputmode="numeric"
+                                                         placeholder="—" />
+                                        </div>
+                                    </div>
+                                    <div class="row g-2 mt-1">
+                                        <div class="col-6">
+                                            <label class="form-label form-label-sm">€/kg</label>
+                                            <InputNumber TValue="decimal?" class="form-control"
+                                                         @bind-Value="line.PriceWeight"
+                                                         inputmode="decimal"
+                                                         placeholder="0.000" />
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label form-label-sm">€/ud</label>
+                                            <InputNumber TValue="decimal?" class="form-control"
+                                                         @bind-Value="line.PriceUnit"
+                                                         inputmode="decimal"
+                                                         placeholder="0.00" />
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @* Vista escritorio: tabla *@
+                        <div class="d-none d-md-block">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Residuo *</th>
+                                        <th style="width:110px">Peso *</th>
+                                        <th style="width:80px">Unidad</th>
+                                        <th style="width:70px">Uds.</th>
+                                        <th style="width:90px">€/kg</th>
+                                        <th style="width:90px">€/ud</th>
+                                        <th style="width:40px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var line in _lines)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <InputSelect TValue="Guid" class="form-select form-select-sm"
+                                                             @bind-Value="line.IdResidue">
+                                                    <option value="@Guid.Empty">— Seleccionar —</option>
+                                                    @foreach (var r in _residues)
+                                                    {
+                                                        <option value="@r.Id">@r.Name</option>
+                                                    }
+                                                </InputSelect>
+                                                @if (line.IdResidue == Guid.Empty && _submitted)
+                                                {
+                                                    <div class="text-danger small">Requerido.</div>
+                                                }
+                                            </td>
+                                            <td>
+                                                <InputNumber TValue="decimal" class="form-control form-control-sm"
+                                                             @bind-Value="line.Weight"
+                                                             inputmode="decimal" />
+                                                @if (line.Weight <= 0 && _submitted)
+                                                {
+                                                    <div class="text-danger small">&gt;0.</div>
+                                                }
+                                            </td>
+                                            <td>
+                                                <InputSelect TValue="string" class="form-select form-select-sm"
+                                                             @bind-Value="line.MeasureUnit">
+                                                    <option value="kg">kg</option>
+                                                    <option value="t">t</option>
+                                                    <option value="l">l</option>
+                                                    <option value="ud">ud</option>
+                                                </InputSelect>
+                                            </td>
+                                            <td>
+                                                <InputNumber TValue="int?" class="form-control form-control-sm"
+                                                             @bind-Value="line.Units"
+                                                             inputmode="numeric" />
+                                            </td>
+                                            <td>
+                                                <InputNumber TValue="decimal?" class="form-control form-control-sm"
+                                                             @bind-Value="line.PriceWeight"
+                                                             inputmode="decimal" />
+                                            </td>
+                                            <td>
+                                                <InputNumber TValue="decimal?" class="form-control form-control-sm"
+                                                             @bind-Value="line.PriceUnit"
+                                                             inputmode="decimal" />
+                                            </td>
+                                            <td>
+                                                <button type="button"
+                                                        class="btn btn-link text-danger p-0"
+                                                        @onclick="() => RemoveLine(line)">
+                                                    <i class="bi bi-trash3"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-light fw-semibold">
+                                    <tr>
+                                        <td>Total</td>
+                                        <td>@_lines.Sum(l => l.Weight).ToString("N2")</td>
+                                        <td colspan="5"></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ── Botón guardar ────────────────────────────────────────────── *@
+            <div class="d-grid d-md-flex gap-2">
+                <button type="submit" class="btn btn-success btn-lg flex-md-grow-0"
+                        disabled="@_saving" @onclick="() => _submitted = true">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    <i class="bi bi-check2-circle me-2"></i>Guardar y continuar
+                </button>
+                <button type="button" class="btn btn-outline-neutral btn-lg flex-md-grow-0"
+                        @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
+                    Cancelar
+                </button>
+            </div>
+
+        </EditForm>
+    }
+}
+
+@code {
+    [Parameter] public Guid WasteMoveId { get; set; }
+
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private bool   _loading   = true;
+    private bool   _saving    = false;
+    private bool   _submitted = false;
+    private string? _globalError;
+
+    private WasteMoveDetailDto? _wasteMove;
+
+    // ── Modelo de cabecera ────────────────────────────────────────────────────
+    private HeaderModel _model = new();
+
+    // ── Líneas ────────────────────────────────────────────────────────────────
+    private List<LineModel> _lines = [];
+
+    // ── Catálogo de residuos para los selectores ──────────────────────────────
+    private List<ResidueOption> _residues = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _wasteMove = await Mediator.Send(new GetWasteMoveByIdQuery(WasteMoveId));
+
+        if (_wasteMove is not null)
+        {
+            _model.CACEntryDate = DateTime.Now;
+
+            // Carga residuos del catálogo para los selectores de línea
+            try
+            {
+                var result = await Mediator.Send(
+                    new GetResiduesQuery(PageSize: 500));
+                _residues = result.Items
+                    .Select(r => new ResidueOption(r.Id, r.Name))
+                    .ToList();
+            }
+            catch
+            {
+                // Si falla la carga del catálogo, el selector mostrará lista vacía
+            }
+
+            // Prellena líneas a partir de los residuos del traslado
+            foreach (var r in _wasteMove.Residues)
+            {
+                _lines.Add(new LineModel
+                {
+                    IdResidue   = r.IdResidue ?? Guid.Empty,
+                    Weight      = r.Weight ?? 0m,
+                    MeasureUnit = r.MeasureUnit ?? "kg",
+                });
+            }
+
+            if (_lines.Count == 0)
+                AddLine();
+        }
+
+        _loading = false;
+    }
+
+    private void AddLine()
+        => _lines.Add(new LineModel { MeasureUnit = "kg" });
+
+    private void RemoveLine(LineModel line)
+    {
+        if (_lines.Count > 1)
+            _lines.Remove(line);
+    }
+
+    private async Task HandleSubmit()
+    {
+        _submitted   = true;
+        _globalError = null;
+
+        // Validación manual de líneas
+        if (_lines.Count == 0 || _lines.Any(l => l.IdResidue == Guid.Empty || l.Weight <= 0))
+            return;
+
+        _saving = true;
+        try
+        {
+            var lineInputs = _lines
+                .Select(l => new CreateEntryCACLineInput(
+                    l.IdResidue,
+                    l.Weight,
+                    l.MeasureUnit,
+                    l.Units,
+                    l.PriceWeight,
+                    l.PriceUnit))
+                .ToArray();
+
+            var cmd = new CreateEntryCACCommand(
+                WasteMoveId,
+                _model.CACEntryDate,
+                _model.TypeContainer,
+                _model.PriceContainer,
+                _model.CollectionMethod,
+                lineInputs);
+
+            var id = await Mediator.Send(cmd);
+
+            Nav.NavigateTo($"/entry-cacs/{id}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _globalError = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _globalError = $"Error inesperado: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Modelos locales ───────────────────────────────────────────────────────
+
+    private sealed class HeaderModel
+    {
+        public DateTime CACEntryDate   { get; set; } = DateTime.Now;
+        public string?  TypeContainer  { get; set; }
+        public decimal? PriceContainer { get; set; }
+        public string?  CollectionMethod { get; set; }
+    }
+
+    private sealed class LineModel
+    {
+        public Guid     IdResidue   { get; set; }
+        public decimal  Weight      { get; set; }
+        public string   MeasureUnit { get; set; } = "kg";
+        public int?     Units       { get; set; }
+        public decimal? PriceWeight { get; set; }
+        public decimal? PriceUnit   { get; set; }
+    }
+
+    private sealed record ResidueOption(Guid Id, string? Name);
+}

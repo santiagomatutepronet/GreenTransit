@@ -1,0 +1,219 @@
+@page "/entry-plants/{Id:guid}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.EntryPlants.DTOs
+@using GreenTransit.Application.Features.EntryPlants.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Detalle Entrada en Planta</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Entrada en planta no encontrada.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/entry-plants")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1 class="page-title">
+                <i class="bi bi-building-gear me-2"></i>
+                Entrada Planta — @(_detail.TicketScale ?? Id.ToString()[..8])
+            </h1>
+        </div>
+        <div class="page-header-actions">
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick='() => Nav.NavigateTo("/entry-plants")'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+            <button class="btn btn-outline-primary btn-sm"
+                    @onclick='() => Nav.NavigateTo("/waste-moves/" + _detail.IdWasteMove)'>
+                <i class="bi bi-arrow-right-circle me-1"></i>Ver traslado
+            </button>
+        </div>
+    </div>
+
+    @* Aviso de incidencia de descuadre *@
+    @if (_detail.HasWeightDiscrepancy)
+    {
+        <div class="alert alert-warning d-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+            <div>
+                <strong>Incidencia de descuadre de peso registrada.</strong>
+                Se detectó una diferencia superior al 5% entre el peso neto y el estimado
+                del traslado. Consulta el módulo de incidencias para más detalle.
+            </div>
+        </div>
+    }
+
+    @* ── Cabecera: datos del pesaje ──────────────────────────────────────── *@
+    <div class="card mb-3 border-success border-2">
+        <div class="card-header bg-success-subtle">
+            <h5 class="mb-0 text-success">
+                <i class="bi bi-speedometer2 me-2"></i>Datos del pesaje
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 text-center">
+                <div class="col-12 col-md-4">
+                    <div class="fs-6 text-muted mb-1">Peso BRUTO</div>
+                    <div class="fw-bold" style="font-size:1.8rem">
+                        @(_detail.GrossWeight?.ToString("N2") ?? "—")
+                        <span class="fs-6 text-muted ms-1">kg</span>
+                    </div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <div class="fs-6 text-muted mb-1">Peso TARA</div>
+                    <div class="fw-bold text-warning" style="font-size:1.8rem">
+                        @(_detail.TareWeight?.ToString("N2") ?? "—")
+                        <span class="fs-6 text-muted ms-1">kg</span>
+                    </div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <div class="fs-6 text-muted mb-1">Peso NETO (oficial)</div>
+                    <div class="fw-bold text-success" style="font-size:2rem">
+                        @(_detail.NetWeight?.ToString("N2") ?? "—")
+                        <span class="fs-6 text-muted ms-1">kg</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Datos del ticket ────────────────────────────────────────────────── *@
+    <div class="card mb-3">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-ticket-detailed me-2"></i>Datos del ticket
+            </h5>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-4">Nº Ticket báscula</dt>
+                <dd class="col-sm-8 fw-semibold">@(_detail.TicketScale ?? "—")</dd>
+                <dt class="col-sm-4">Báscula (ID)</dt>
+                <dd class="col-sm-8">@(_detail.WeighbridgeId ?? "—")</dd>
+                <dt class="col-sm-4">Fecha entrada</dt>
+                <dd class="col-sm-8">
+                    @(_detail.PlantEntryDate?.ToString("dd/MM/yyyy HH:mm") ?? "—")
+                </dd>
+                <dt class="col-sm-4">Traslado</dt>
+                <dd class="col-sm-8">
+                    <a href="/waste-moves/@_detail.IdWasteMove">
+                        @(_detail.WasteMoveReference ?? _detail.IdWasteMove.ToString()[..8])
+                    </a>
+                    @if (!string.IsNullOrEmpty(_detail.WasteMoveServiceStatus))
+                    {
+                        <span class="ms-2 badge text-bg-success">
+                            @_detail.WasteMoveServiceStatus
+                        </span>
+                    }
+                </dd>
+                <dt class="col-sm-4">Origen</dt>
+                <dd class="col-sm-8">@(_detail.SourceName ?? "—")</dd>
+                <dt class="col-sm-4">Tipo contenedor</dt>
+                <dd class="col-sm-8">@(_detail.TypeContainer ?? "—")</dd>
+                <dt class="col-sm-4">Precio contenedor</dt>
+                <dd class="col-sm-8">
+                    @(_detail.PriceContainer.HasValue
+                        ? _detail.PriceContainer.Value.ToString("N2") + " €"
+                        : "—")
+                </dd>
+                <dt class="col-sm-4">Creado</dt>
+                <dd class="col-sm-8">
+                    @(_detail.DateCreateSys?.ToString("dd/MM/yyyy HH:mm") ?? "—")
+                    por usuario #@_detail.IdUser
+                </dd>
+            </dl>
+        </div>
+    </div>
+
+    @* ── Líneas de residuo ───────────────────────────────────────────────── *@
+    <div class="card mb-3">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul me-2"></i>Residuos (@_detail.Residues.Count)
+            </h5>
+        </div>
+        @if (_detail.Residues.Count == 0)
+        {
+            <div class="card-body text-muted">Sin líneas registradas.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Residuo</th>
+                            <th class="text-end">Peso</th>
+                            <th>Unidad</th>
+                            <th class="text-end">Uds.</th>
+                            <th class="text-end">€/kg</th>
+                            <th class="text-end">€/ud</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _detail.Residues)
+                        {
+                            <tr>
+                                <td>@(r.ResidueName ?? r.IdResidue?.ToString()[..8] ?? "—")</td>
+                                <td class="text-end fw-semibold">
+                                    @(r.Weight?.ToString("N2") ?? "—")
+                                </td>
+                                <td>@(r.MeasureUnit ?? "—")</td>
+                                <td class="text-end">@(r.Units?.ToString() ?? "—")</td>
+                                <td class="text-end">
+                                    @(r.PriceWeight.HasValue
+                                        ? r.PriceWeight.Value.ToString("N4")
+                                        : "—")
+                                </td>
+                                <td class="text-end">
+                                    @(r.PriceUnit.HasValue
+                                        ? r.PriceUnit.Value.ToString("N2")
+                                        : "—")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-light fw-bold">
+                        <tr>
+                            <td>Total</td>
+                            <td class="text-end text-success">
+                                @_detail.Residues.Sum(r => r.Weight ?? 0m).ToString("N2")
+                            </td>
+                            <td colspan="4"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool               _loading = true;
+    private EntryPlantDetailDto? _detail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail  = await Mediator.Send(new GetEntryPlantByIdQuery(Id));
+        _loading = false;
+    }
+}

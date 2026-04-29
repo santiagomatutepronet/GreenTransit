@@ -44,6 +44,27 @@ else
             </div>
         </div>
         <div class="page-header-actions">
+            @if (d.ServiceStatus == WasteMoveStatuses.Solicitado)
+            {
+                <button class="btn btn-primary btn-sm"
+                        @onclick='() => Nav.NavigateTo("/waste-moves/" + d.Id + "/plan")'>
+                    <i class="bi bi-calendar-check me-1"></i>Planificar
+                </button>
+            }
+            @if (d.ServiceStatus == WasteMoveStatuses.Planificado)
+            {
+                <button class="btn btn-success btn-sm"
+                        @onclick='() => Nav.NavigateTo("/waste-moves/" + d.Id + "/pickup")'>
+                    <i class="bi bi-truck me-1"></i>Confirmar recogida
+                </button>
+            }
+            @if (d.ServiceStatus == WasteMoveStatuses.Recogido)
+            {
+                <button class="btn btn-primary btn-sm"
+                        @onclick='() => Nav.NavigateTo("/waste-moves/" + d.Id + "/entry-cac")'>
+                    <i class="bi bi-building me-1"></i>Entrada en CAC
+                </button>
+            }
             @if (WasteMoveStatuses.Editable.Contains(d.ServiceStatus ?? ""))
             {
                 <button class="btn btn-outline btn-sm"

@@ -4,19 +4,29 @@
     WasteMoveStatusStepper — barra visual del estado actual de un Traslado.
     Muestra los pasos del ciclo lineal (SOLICITADO → CLASIFICADO).
     Los estados INCIDENCIA y CANCELADO se muestran como badge aparte.
+    Soporta tooltip con fecha real por paso (parámetro StatusDates).
+    Los pasos bloqueados (INCIDENCIA abierta) muestran icono de alerta roja.
 *@
 
 <div class="waste-move-stepper">
     @{
-        var isSpecial = Status is WasteMoveStatuses.Incidencia or WasteMoveStatuses.Cancelado;
-        var stepIndex = WasteMoveStatuses.StepperOrder
+        var isSpecial  = Status is WasteMoveStatuses.Incidencia or WasteMoveStatuses.Cancelado;
+        var isBlocked  = Status == WasteMoveStatuses.Incidencia;
+        var stepIndex  = WasteMoveStatuses.StepperOrder
             .Select((s, i) => (s, i))
             .FirstOrDefault(x => x.s == (Status ?? "")).i;
     }
 
     @if (isSpecial)
     {
-        <span class="@WasteMoveStatuses.BadgeCss(Status!)">@WasteMoveStatuses.Label(Status!)</span>
+        <div class="d-flex align-items-center gap-2">
+            <span class="@WasteMoveStatuses.BadgeCss(Status!)">@WasteMoveStatuses.Label(Status!)</span>
+            @if (isBlocked)
+            {
+                <i class="bi bi-exclamation-triangle-fill text-danger"
+                   title="Traslado bloqueado por incidencia abierta"></i>
+            }
+        </div>
     }
     else
     {
@@ -31,18 +41,40 @@
                               : active    ? "stepper-item active"
                                           : "stepper-item";
 
-                <div class="@itemClass">
+                // Tooltip: fecha real si está disponible
+                var hasDate  = StatusDates is not null && StatusDates.TryGetValue(step, out var dt) && dt.HasValue;
+                var tooltip  = hasDate
+                    ? $"{WasteMoveStatuses.Label(step)}: {StatusDates![step]!.Value:dd/MM/yyyy HH:mm}"
+                    : WasteMoveStatuses.Label(step);
+
+                // EN CAC es opcional — mostrar punteado si no es el estado actual/completado
+                var isOptional  = step == WasteMoveStatuses.EnCAC;
+                var finalClass  = isOptional && !completed && !active
+                    ? itemClass + " optional"
+                    : itemClass;
+
+                <div class="@finalClass" title="@tooltip">
                     <div class="stepper-circle">
                         @if (completed)
                         {
                             <i class="bi bi-check-lg" style="font-size:.65rem"></i>
+                        }
+                        else if (active && isBlocked)
+                        {
+                            <i class="bi bi-exclamation-triangle-fill text-danger" style="font-size:.65rem"></i>
                         }
                         else
                         {
                             <span>@(i + 1)</span>
                         }
                     </div>
-                    <span class="stepper-label">@WasteMoveStatuses.Label(step)</span>
+                    <span class="stepper-label">
+                        @WasteMoveStatuses.Label(step)
+                        @if (isOptional && !completed && !active)
+                        {
+                            <small class="text-muted d-block" style="font-size:.6rem">(opcional)</small>
+                        }
+                    </span>
                 </div>
             }
         </div>
@@ -52,4 +84,10 @@
 @code {
     /// <summary>Estado actual del traslado (p.ej. "SOLICITADO").</summary>
     [Parameter, EditorRequired] public string? Status { get; set; }
+
+    /// <summary>
+    /// Fechas reales por estado para el tooltip (clave = WasteMoveStatuses.Xxx).
+    /// Es opcional: si no se provee no se muestra fecha en el tooltip.
+    /// </summary>
+    [Parameter] public Dictionary<string, DateTime?>? StatusDates { get; set; }
 }
