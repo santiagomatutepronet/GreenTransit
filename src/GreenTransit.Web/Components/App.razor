@@ -13,26 +13,29 @@
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
     @* ── Leaflet (mapas interactivos) ──────────────────────────────────────── *@
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="lib/leaflet/leaflet.css" />
     <HeadOutlet />
 </head>
 
 <body>
     <Routes />
     <ReconnectModal />
-    <script src="@Assets["_framework/blazor.web.js"]"></script>
-    @* ── Leaflet ────────────────────────────────────────────────────────────── *@
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WLI=" crossorigin=""></script>
     @* ── Bootstrap Icons (iconos de marcadores del mapa) ──────────────────── *@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    @* ── Leaflet + Leaflet.draw (deben cargarse ANTES que blazor.web.js     *@
+    @*    para que L esté definido cuando Blazor establezca el circuito       *@
+    @*    SignalR e invoque JS Interop por primera vez)                      ── *@
+    <script src="lib/leaflet/leaflet.js"></script>
+    <link rel="stylesheet" href="lib/leaflet.draw/leaflet.draw.css" />
+    <script src="lib/leaflet.draw/leaflet.draw.js"></script>
+    @* ── Interop maps (también antes de blazor.web.js por la misma razón) ── *@
+    <script src="js/dashboardMap.js"></script>
+    <script src="js/wasteMoveMap.js"></script>
+    <script src="js/dumZoneMap.js"></script>
+    @* ── Blazor (después de que todas las dependencias JS estén listas) ───── *@
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
     @* ── ApexCharts ────────────────────────────────────────────────────────── *@
     <script src="_content/Blazor-ApexCharts/js/blazor-apexcharts.js"></script>
-    @* ── Dashboard map interop ─────────────────────────────────────────────── *@
-    <script src="js/dashboardMap.js"></script>
-    @* ── WasteMove map interop ─────────────────────────────────────────────── *@
-    <script src="js/wasteMoveMap.js"></script>
 </body>
 
 </html>

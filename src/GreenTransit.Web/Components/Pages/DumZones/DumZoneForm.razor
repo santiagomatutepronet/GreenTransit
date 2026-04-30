@@ -1,0 +1,420 @@
+@using GreenTransit.Application.Features.DumZones.Commands
+@using GreenTransit.Application.Features.DumZones.DTOs
+@using GreenTransit.Application.Features.DumZones.Queries
+@using MediatR
+@using System.Text.Json
+
+@inject IMediator         Mediator
+@inject NavigationManager Nav
+
+@* Componente reutilizable: alta y edición de una zona DUM.
+   Puede usarse embebido en modal (DumZoneMap) o como página /dum-zones/new y /dum-zones/{id}/edit. *@
+
+<EditForm Model="_model" OnValidSubmit="SubmitAsync">
+    <DataAnnotationsValidator />
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="alert alert-danger small py-2">
+            <i class="bi bi-exclamation-circle me-1"></i>@_errorMessage
+        </div>
+    }
+
+    @* ── Código y estado ─────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <label class="form-label fw-semibold form-label-sm">
+                Código de zona <span class="text-danger">*</span>
+            </label>
+            <input class="form-control form-control-sm" @bind="_model.ZoneCode"
+                   placeholder="Ej: DUM-MAD-001" maxlength="50" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label fw-semibold form-label-sm">
+                Nombre <span class="text-danger">*</span>
+            </label>
+            <input class="form-control form-control-sm" @bind="_model.Name"
+                   placeholder="Nombre descriptivo de la zona" maxlength="200" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label fw-semibold form-label-sm">Estado</label>
+            <select class="form-select form-select-sm" @bind="_model.Status">
+                <option value="Active">Activa</option>
+                <option value="Inactive">Inactiva</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label fw-semibold form-label-sm">Descripción</label>
+        <input class="form-control form-control-sm" @bind="_model.Description"
+               placeholder="Descripción opcional" maxlength="500" />
+    </div>
+
+    @* ── GeometryJson ─────────────────────────────────────────────────────── *@
+    <div class="mb-2">
+        <label class="form-label fw-semibold form-label-sm">
+            GeoJSON (Polygon / MultiPolygon) <span class="text-danger">*</span>
+        </label>
+        <textarea class="form-control form-control-sm font-monospace"
+                  rows="8"
+                  placeholder='{"type":"Polygon","coordinates":[[[lng,lat],…]]}'
+                  @bind="_model.GeometryJson"></textarea>
+        <div class="d-flex gap-2 mt-1 align-items-center">
+            <button type="button" class="btn btn-outline-secondary btn-sm"
+                    @onclick="ValidateGeoJsonAsync">
+                <i class="bi bi-check2-square me-1"></i>Validar GeoJSON
+            </button>
+            @if (_geoJsonValid == true)
+            {
+                <span class="text-success small"><i class="bi bi-check-circle-fill me-1"></i>GeoJSON válido</span>
+            }
+            else if (_geoJsonValid == false)
+            {
+                <span class="text-danger small"><i class="bi bi-x-circle-fill me-1"></i>@_geoJsonError</span>
+            }
+        </div>
+    </div>
+
+    @* ── Reglas de restricción (solo en edición) ──────────────────────────── *@
+    @if (ZoneId.HasValue && _rules.Count > 0)
+    {
+        <hr class="my-3" />
+        <h6 class="fw-semibold">
+            <i class="bi bi-shield-exclamation me-1"></i>Reglas de restricción activas
+        </h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Código</th>
+                        <th>Acción</th>
+                        <th>Vigencia</th>
+                        <th>Motivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _rules)
+                    {
+                        <tr>
+                            <td class="small">@r.RuleCode</td>
+                            <td>
+                                <span class="badge" style="background-color:@ActionColor(r.ActionType)">
+                                    @r.ActionType
+                                </span>
+                            </td>
+                            <td class="small text-nowrap">
+                                @r.ValidFrom.ToString("dd/MM/yyyy")
+                                @if (r.ValidTo.HasValue)
+                                {
+                                    <span> → @r.ValidTo.Value.ToString("dd/MM/yyyy")</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted"> → indefinida</span>
+                                }
+                            </td>
+                            <td class="small text-truncate" style="max-width:180px;">
+                                @r.ActionReason
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @* ── Añadir regla ─────────────────────────────────────────────────────── *@
+    @if (ZoneId.HasValue)
+    {
+        <button type="button" class="btn btn-outline-primary btn-sm mb-3"
+                @onclick="ToggleAddRule">
+            <i class="bi bi-plus-circle me-1"></i>Añadir regla de restricción
+        </button>
+
+        @if (_showAddRule)
+        {
+            <div class="card border-primary mb-3">
+                <div class="card-header py-1 small fw-semibold bg-primary text-white">
+                    Nueva regla
+                </div>
+                <div class="card-body">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm fw-semibold">Código regla *</label>
+                            <input class="form-control form-control-sm" @bind="_ruleModel.RuleCode"
+                                   maxlength="50" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm fw-semibold">Acción *</label>
+                            <select class="form-select form-select-sm" @bind="_ruleModel.ActionType">
+                                <option value="Block">Block — Bloquea</option>
+                                <option value="Restrict">Restrict — Restringe</option>
+                                <option value="Notify">Notify — Avisa</option>
+                                <option value="Allow">Allow — Permite</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm fw-semibold">Desde *</label>
+                            <input type="datetime-local" class="form-control form-control-sm"
+                                   @bind="_ruleModel.ValidFrom" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm fw-semibold">Hasta</label>
+                            <input type="datetime-local" class="form-control form-control-sm"
+                                   @bind="_ruleModel.ValidTo" />
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label form-label-sm fw-semibold">Motivo / ActionReason</label>
+                        <input class="form-control form-control-sm" @bind="_ruleModel.ActionReason"
+                               maxlength="500" placeholder="Descripción de la restricción" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label form-label-sm fw-semibold">
+                            ConditionsJson *
+                            <small class="text-muted fw-normal">
+                                (ej: <code>{"{"}"vehicleTypes":["Camion"],"minEuroClass":"Euro5"{"}"}</code>)
+                            </small>
+                        </label>
+                        <textarea class="form-control form-control-sm font-monospace"
+                                  rows="2"
+                                  @bind="_ruleModel.ConditionsJson"
+                                  placeholder='{"vehicleTypes":["Camion"],"minEuroClass":"Euro5"}'>
+                        </textarea>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_ruleError))
+                    {
+                        <div class="alert alert-danger small py-1">@_ruleError</div>
+                    }
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-primary btn-sm"
+                                @onclick="SaveRuleAsync" disabled="@_savingRule">
+                            @if (_savingRule)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-save me-1"></i>Guardar regla
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                @onclick="ToggleAddRule">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    @* ── Botones ──────────────────────────────────────────────────────────── *@
+    <div class="d-flex gap-2 justify-content-end mt-3">
+        <button type="button" class="btn btn-outline-neutral btn-sm" @onclick="OnCancelled">
+            Cancelar
+        </button>
+        <button type="submit" class="btn btn-primary btn-sm" disabled="@_saving">
+            @if (_saving)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            <i class="bi bi-save me-1"></i>@(ZoneId.HasValue ? "Guardar cambios" : "Crear zona")
+        </button>
+    </div>
+
+</EditForm>
+
+@code {
+    [Parameter] public Guid?             ZoneId              { get; set; }
+    [Parameter] public string?           InitialGeometryJson { get; set; }
+    [Parameter] public EventCallback<Guid> OnSaved           { get; set; }
+    [Parameter] public EventCallback     OnCancelled         { get; set; }
+
+    private ZoneFormModel                _model       = new();
+    private RuleFormModel                _ruleModel   = new();
+    private List<DumRestrictionRuleDto>  _rules       = [];
+    private bool                         _saving;
+    private bool                         _savingRule;
+    private bool                         _showAddRule;
+    private bool?                        _geoJsonValid;
+    private string?                      _geoJsonError;
+    private string?                      _errorMessage;
+    private string?                      _ruleError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ZoneId.HasValue)
+        {
+            var detail = await Mediator.Send(new GetDumZoneByIdQuery(ZoneId.Value));
+            if (detail is not null)
+            {
+                _model = new ZoneFormModel
+                {
+                    ZoneCode     = detail.ZoneCode,
+                    Name         = detail.Name,
+                    Description  = detail.Description,
+                    GeometryJson = detail.GeometryJson,
+                    Status       = detail.Status
+                };
+                _rules = detail.Rules.ToList();
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(InitialGeometryJson))
+        {
+            _model.GeometryJson = InitialGeometryJson;
+        }
+    }
+
+    private void ValidateGeoJsonAsync()
+    {
+        _geoJsonValid = null;
+        _geoJsonError = null;
+
+        if (string.IsNullOrWhiteSpace(_model.GeometryJson))
+        {
+            _geoJsonValid = false;
+            _geoJsonError = "El campo GeoJSON está vacío.";
+            return;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(_model.GeometryJson);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("type", out var typeEl))
+            {
+                _geoJsonValid = false;
+                _geoJsonError = "Falta la propiedad 'type'.";
+                return;
+            }
+
+            var type = typeEl.GetString();
+            if (type != "Polygon" && type != "MultiPolygon")
+            {
+                _geoJsonValid = false;
+                _geoJsonError = $"Tipo '{type}' no permitido. Usa Polygon o MultiPolygon.";
+                return;
+            }
+
+            if (!root.TryGetProperty("coordinates", out _))
+            {
+                _geoJsonValid = false;
+                _geoJsonError = "Falta la propiedad 'coordinates'.";
+                return;
+            }
+
+            _geoJsonValid = true;
+        }
+        catch (JsonException ex)
+        {
+            _geoJsonValid = false;
+            _geoJsonError = $"JSON inválido: {ex.Message}";
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _errorMessage = null;
+        _saving       = true;
+
+        try
+        {
+            Guid savedId;
+
+            if (ZoneId.HasValue)
+            {
+                await Mediator.Send(new UpdateDumZoneCommand(
+                    ZoneId.Value,
+                    _model.ZoneCode,
+                    _model.Name,
+                    _model.Description,
+                    _model.GeometryJson!,
+                    _model.Status
+                ));
+                savedId = ZoneId.Value;
+            }
+            else
+            {
+                savedId = await Mediator.Send(new CreateDumZoneCommand(
+                    _model.ZoneCode,
+                    _model.Name,
+                    _model.Description,
+                    _model.GeometryJson!,
+                    _model.Status
+                ));
+            }
+
+            await OnSaved.InvokeAsync(savedId);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ToggleAddRule() => _showAddRule = !_showAddRule;
+
+    private async Task SaveRuleAsync()
+    {
+        _ruleError  = null;
+        _savingRule = true;
+
+        try
+        {
+            await Mediator.Send(new AddRestrictionRuleCommand(
+                ZoneId!.Value,
+                _ruleModel.RuleCode,
+                _ruleModel.ValidFrom,
+                _ruleModel.ValidTo,
+                _ruleModel.ConditionsJson ?? "{}",
+                _ruleModel.ActionType,
+                _ruleModel.ActionReason
+            ));
+
+            // Recargar reglas
+            var detail = await Mediator.Send(new GetDumZoneByIdQuery(ZoneId.Value));
+            if (detail is not null) _rules = detail.Rules.ToList();
+
+            _ruleModel   = new RuleFormModel();
+            _showAddRule = false;
+        }
+        catch (Exception ex)
+        {
+            _ruleError = ex.Message;
+        }
+        finally
+        {
+            _savingRule = false;
+        }
+    }
+
+    private static string ActionColor(string? action) => action switch
+    {
+        "Block"    => "#dc3545",
+        "Restrict" => "#fd7e14",
+        "Notify"   => "#0d6efd",
+        _          => "#6c757d"
+    };
+
+    // ── Modelos internos ─────────────────────────────────────────────────────
+
+    private sealed class ZoneFormModel
+    {
+        public string  ZoneCode     { get; set; } = "";
+        public string  Name         { get; set; } = "";
+        public string? Description  { get; set; }
+        public string? GeometryJson { get; set; }
+        public string  Status       { get; set; } = "Active";
+    }
+
+    private sealed class RuleFormModel
+    {
+        public string    RuleCode       { get; set; } = "";
+        public string    ActionType     { get; set; } = "Notify";
+        public DateTime  ValidFrom      { get; set; } = DateTime.Today;
+        public DateTime? ValidTo        { get; set; }
+        public string?   ConditionsJson { get; set; } = "{}";
+        public string?   ActionReason   { get; set; }
+    }
+}

@@ -1,0 +1,89 @@
+@using GreenTransit.Application.Features.Incidents.Queries
+@using MediatR
+@rendermode InteractiveServer
+
+@inject IMediator Mediator
+
+@if (_loading)
+{
+    <div class="text-center py-2">
+        <div class="spinner-border spinner-border-sm text-secondary"></div>
+    </div>
+}
+else
+{
+    <div class="row g-2">
+        <div class="col-6 col-xl-3">
+            <div class="card text-center border-danger h-100">
+                <div class="card-body py-2 px-1">
+                    <div class="fs-3 fw-bold text-danger">@_critical</div>
+                    <div class="small text-muted">
+                        <i class="bi bi-fire me-1"></i>Critical
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card text-center border-warning h-100">
+                <div class="card-body py-2 px-1">
+                    <div class="fs-3 fw-bold text-warning">@_high</div>
+                    <div class="small text-muted">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>High
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card text-center border-info h-100">
+                <div class="card-body py-2 px-1">
+                    <div class="fs-3 fw-bold text-info">@_medium</div>
+                    <div class="small text-muted">
+                        <i class="bi bi-exclamation-circle me-1"></i>Medium
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card text-center border-secondary h-100">
+                <div class="card-body py-2 px-1">
+                    <div class="fs-3 fw-bold text-secondary">@_low</div>
+                    <div class="small text-muted">
+                        <i class="bi bi-info-circle me-1"></i>Low
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="text-end mt-1">
+        <a href="/incidents" class="small text-muted">
+            Ver todas las incidencias abiertas →
+        </a>
+    </div>
+}
+
+@code {
+    private int  _critical;
+    private int  _high;
+    private int  _medium;
+    private int  _low;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var tasks = new Task<GetIncidentsResult>[]
+        {
+            Mediator.Send(new GetIncidentsQuery(Severity: "Critical", IsOpen: true, PageSize: 1)),
+            Mediator.Send(new GetIncidentsQuery(Severity: "High",     IsOpen: true, PageSize: 1)),
+            Mediator.Send(new GetIncidentsQuery(Severity: "Medium",   IsOpen: true, PageSize: 1)),
+            Mediator.Send(new GetIncidentsQuery(Severity: "Low",      IsOpen: true, PageSize: 1))
+        };
+
+        await Task.WhenAll(tasks);
+
+        _critical = tasks[0].Result.TotalCount;
+        _high     = tasks[1].Result.TotalCount;
+        _medium   = tasks[2].Result.TotalCount;
+        _low      = tasks[3].Result.TotalCount;
+        _loading  = false;
+    }
+}

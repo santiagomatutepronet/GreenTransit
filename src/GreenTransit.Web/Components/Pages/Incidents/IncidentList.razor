@@ -1,0 +1,272 @@
+@page "/incidents"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Incidents.DTOs
+@using GreenTransit.Application.Features.Incidents.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Incidencias</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-exclamation-triangle-fill me-2 text-warning"></i>Gestión de Incidencias
+        </h1>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-danger btn-sm" @onclick='() => Nav.NavigateTo("/incidents/new")'>
+            <i class="bi bi-plus-lg me-1"></i>Nueva incidencia
+        </button>
+    </div>
+</div>
+
+@* ── Tabs ─────────────────────────────────────────────────────────────────── *@
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class="nav-link @(_isOpen ? "active" : "")" @onclick='() => SetTabAsync(true)'>
+            <i class="bi bi-exclamation-circle me-1"></i>Abiertas
+            @if (_totalOpen > 0)
+            {
+                <span class="badge bg-danger ms-1">@_totalOpen</span>
+            }
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link @(!_isOpen ? "active" : "")" @onclick='() => SetTabAsync(false)'>
+            <i class="bi bi-check2-circle me-1"></i>Cerradas
+        </button>
+    </li>
+</ul>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-3">
+                <label class="form-label form-label-sm fw-semibold">Severidad</label>
+                <select class="form-select form-select-sm" @bind="_filterSeverity">
+                    <option value="">— Todas —</option>
+                    <option value="Critical">Critical</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label form-label-sm fw-semibold">Tipo</label>
+                <select class="form-select form-select-sm" @bind="_filterType">
+                    <option value="">— Todos —</option>
+                    <option value="Descuadre de peso">Descuadre de peso</option>
+                    <option value="Residuo no conforme">Residuo no conforme</option>
+                    <option value="Retraso">Retraso</option>
+                    <option value="Avería vehículo">Avería vehículo</option>
+                    <option value="Contaminación de fracción">Contaminación de fracción</option>
+                    <option value="Documento faltante">Documento faltante</option>
+                    <option value="Otro">Otro</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm fw-semibold">Desde</label>
+                <input type="date" class="form-control form-control-sm" @bind="_filterDateFrom" />
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm fw-semibold">Hasta</label>
+                <input type="date" class="form-control form-control-sm" @bind="_filterDateTo" />
+            </div>
+            <div class="col-12 col-md-2 d-flex gap-2">
+                <button class="btn btn-primary btn-sm w-100" @onclick="LoadAsync">
+                    <i class="bi bi-search me-1"></i>Filtrar
+                </button>
+                <button class="btn btn-outline-neutral btn-sm" @onclick="ClearFiltersAsync">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Tabla ────────────────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_items.Count == 0)
+{
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>
+        No hay incidencias @(_isOpen ? "abiertas" : "cerradas") con los filtros actuales.
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Severidad</th>
+                        <th>Tipo</th>
+                        <th>Traslado</th>
+                        <th>Notificado por</th>
+                        <th>Abierta</th>
+                        @if (!_isOpen)
+                        {
+                            <th>Cerrada</th>
+                        }
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var inc in _items)
+                    {
+                        <tr>
+                            <td>
+                                <span class="badge @GetSeverityClass(inc.Severity)">
+                                    @inc.Severity
+                                </span>
+                            </td>
+                            <td class="text-truncate" style="max-width:160px">@inc.Type</td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(inc.WasteMoveReference))
+                                {
+                                    <span class="font-monospace small">@inc.WasteMoveReference</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td class="text-truncate" style="max-width:140px">@inc.ReportedByName</td>
+                            <td class="small text-muted text-nowrap">
+                                @inc.OpenedAt.ToString("dd/MM/yyyy HH:mm")
+                            </td>
+                            @if (!_isOpen)
+                            {
+                                <td class="small text-muted text-nowrap">
+                                    @(inc.ClosedAt?.ToString("dd/MM/yyyy HH:mm"))
+                                </td>
+                            }
+                            <td>
+                                <button class="btn btn-outline-primary btn-xs"
+                                        @onclick="() => GoToDetail(inc.Id)">
+                                    <i class="bi bi-eye-fill"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (_totalCount > _pageSize)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <span class="text-muted small">
+                Mostrando @_items.Count de @_totalCount resultados
+            </span>
+            <div class="d-flex gap-1">
+                <button class="btn btn-outline-neutral btn-sm"
+                        disabled="@(_page <= 1)"
+                        @onclick="PrevPageAsync">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="btn btn-sm btn-light disabled">@_page</span>
+                <button class="btn btn-outline-neutral btn-sm"
+                        disabled="@(_page * _pageSize >= _totalCount)"
+                        @onclick="NextPageAsync">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool              _isOpen     = true;
+    private bool              _loading    = true;
+    private List<IncidentDto> _items      = [];
+    private int               _totalCount = 0;
+    private int               _totalOpen  = 0;
+    private int               _page       = 1;
+    private const int         _pageSize   = 20;
+
+    private string?   _filterSeverity;
+    private string?   _filterType;
+    private DateTime? _filterDateFrom;
+    private DateTime? _filterDateTo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOpenCountAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadOpenCountAsync()
+    {
+        var r = await Mediator.Send(new GetIncidentsQuery(IsOpen: true, PageSize: 1));
+        _totalOpen = r.TotalCount;
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Mediator.Send(new GetIncidentsQuery(
+                Severity:           string.IsNullOrWhiteSpace(_filterSeverity) ? null : _filterSeverity,
+                IsOpen:             _isOpen,
+                Type:               string.IsNullOrWhiteSpace(_filterType) ? null : _filterType,
+                DateFrom:           _filterDateFrom,
+                DateTo:             _filterDateTo,
+                Page:               _page,
+                PageSize:           _pageSize));
+
+            _items      = result.Items.ToList();
+            _totalCount = result.TotalCount;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SetTabAsync(bool isOpen)
+    {
+        _isOpen = isOpen;
+        _page   = 1;
+        await LoadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        _filterSeverity = null;
+        _filterType     = null;
+        _filterDateFrom = null;
+        _filterDateTo   = null;
+        _page           = 1;
+        await LoadAsync();
+    }
+
+    private async Task PrevPageAsync() { _page--; await LoadAsync(); }
+    private async Task NextPageAsync() { _page++; await LoadAsync(); }
+
+    private void GoToDetail(Guid id) => Nav.NavigateTo($"/incidents/{id}");
+
+    private static string GetSeverityClass(string severity) => severity switch
+    {
+        "Critical" => "bg-danger",
+        "High"     => "bg-warning text-dark",
+        "Medium"   => "bg-info text-dark",
+        "Low"      => "bg-secondary",
+        _          => "bg-light text-dark"
+    };
+}

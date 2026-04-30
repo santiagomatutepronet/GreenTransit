@@ -31,8 +31,8 @@
 | D-6 | Operaciones | Entrada y Pesaje en Planta — estado EN PLANTA | 🔴 | ✅ |
 | D-7 | Operaciones | Clasificación y Tratamiento Final — estado CLASIFICADO | 🔴 | ✅ |
 | D-8 | Operaciones | Vista 360º del Traslado | 🟠 | ✅ |
-| E-1 | Sostenibilidad | Gestión de Incidencias | 🟠 | ⬜ |
-| E-2 | Sostenibilidad | Zonas DUM: editor visual y simulador | 🟡 | ⬜ |
+| E-1 | Sostenibilidad | Gestión de Incidencias | 🟠 | ✅ |
+| E-2 | Sostenibilidad | Zonas DUM: editor visual y simulador | 🟡 | ✅ |
 | E-3 | Sostenibilidad | Energía de Planta + Factores de Emisión | 🟡 | ⬜ |
 | F-1 | Reporting | Dashboard operativo principal | 🟠 | ✅ |
 | F-2 | Reporting | Trazabilidad end-to-end + buscador global | 🟠 | ⬜ |

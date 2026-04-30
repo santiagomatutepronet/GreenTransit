@@ -1,0 +1,330 @@
+@page "/dum-zones/simulator"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.DumZones.DTOs
+@using GreenTransit.Application.Features.DumZones.Queries
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Features.Entities.DTOs
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator         Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Simulador DUM</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-geo-alt-fill me-2 text-primary"></i>Simulador de restricciones DUM
+        </h1>
+        <p class="page-subtitle text-muted small mb-0">
+            Comprueba si un punto y vehículo tienen restricciones de acceso en alguna zona DUM activa
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-secondary btn-sm" @onclick='() => Nav.NavigateTo("/dum-zones")'>
+            <i class="bi bi-map me-1"></i>Ver mapa
+        </button>
+    </div>
+</div>
+
+<div class="row g-3">
+
+    @* ── Formulario ──────────────────────────────────────────────────────── *@
+    <div class="col-12 col-lg-5">
+        <div class="card">
+            <div class="card-header py-2 fw-semibold">
+                <i class="bi bi-sliders me-1"></i>Parámetros de simulación
+            </div>
+            <div class="card-body">
+
+                @* Selector de entidad (autocompletar coords) *@
+                <div class="mb-3">
+                    <label class="form-label fw-semibold form-label-sm">
+                        Punto de recogida (entidad del maestro)
+                    </label>
+                    <select class="form-select form-select-sm" @bind="_selectedEntityId"
+                            @bind:after="OnEntitySelectedAsync">
+                        <option value="">— Introducir coordenadas manualmente —</option>
+                        @foreach (var e in _entities)
+                        {
+                            <option value="@e.Id">@e.Name (@e.EntityRole)</option>
+                        }
+                    </select>
+                    <div class="form-text">
+                        Selecciona una entidad para autocompletar latitud y longitud.
+                    </div>
+                </div>
+
+                @* Latitud / Longitud *@
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold form-label-sm">
+                            Latitud <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" step="0.000001" class="form-control form-control-sm"
+                               @bind="_latitude" placeholder="40.416775" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold form-label-sm">
+                            Longitud <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" step="0.000001" class="form-control form-control-sm"
+                               @bind="_longitude" placeholder="-3.703790" />
+                    </div>
+                </div>
+
+                @* Fecha y hora *@
+                <div class="mb-3">
+                    <label class="form-label fw-semibold form-label-sm">
+                        Fecha y hora de recogida <span class="text-danger">*</span>
+                    </label>
+                    <input type="datetime-local" class="form-control form-control-sm"
+                           @bind="_date" />
+                </div>
+
+                @* Tipo vehículo *@
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold form-label-sm">Tipo de vehículo</label>
+                        <select class="form-select form-select-sm" @bind="_vehicleType">
+                            <option value="">— Cualquiera —</option>
+                            <option value="Camion">Camión</option>
+                            <option value="Furgoneta">Furgoneta</option>
+                            <option value="Electrico">Eléctrico</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold form-label-sm">Clase Euro</label>
+                        <select class="form-select form-select-sm" @bind="_euroClass">
+                            <option value="">— Cualquiera —</option>
+                            <option value="Euro3">Euro 3</option>
+                            <option value="Euro4">Euro 4</option>
+                            <option value="Euro5">Euro 5</option>
+                            <option value="Euro6">Euro 6</option>
+                            <option value="EV">EV (eléctrico)</option>
+                        </select>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_validationError))
+                {
+                    <div class="alert alert-warning small py-2">
+                        <i class="bi bi-exclamation-triangle me-1"></i>@_validationError
+                    </div>
+                }
+
+                <div class="d-grid">
+                    <button class="btn btn-primary" @onclick="SimulateAsync" disabled="@_checking">
+                        @if (_checking)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-play-fill me-2"></i>
+                        }
+                        Comprobar restricciones
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    @* ── Resultado ───────────────────────────────────────────────────────── *@
+    <div class="col-12 col-lg-7">
+
+        @if (_result is null && !_checked)
+        {
+            <div class="card h-100 d-flex align-items-center justify-content-center text-muted">
+                <div class="card-body text-center py-5">
+                    <i class="bi bi-geo-alt display-4 mb-3 opacity-50"></i>
+                    <p>Introduce los parámetros y pulsa <strong>Comprobar restricciones</strong></p>
+                </div>
+            </div>
+        }
+        else if (_result is not null)
+        {
+            <div class="card border-2" style="border-color:@ResultColor(_result.ActionType)!important;">
+                <div class="card-header py-2 fw-bold text-white"
+                     style="background-color:@ResultColor(_result.ActionType);">
+                    <i class="bi @ResultIcon(_result.ActionType) me-2"></i>
+                    @ResultLabel(_result.ActionType)
+                </div>
+                <div class="card-body">
+
+                    @if (_result.ActionType == "Allow" && _result.ZoneCodes.Length == 0)
+                    {
+                        <div class="d-flex align-items-center gap-2 text-success">
+                            <i class="bi bi-check-circle-fill fs-3"></i>
+                            <div>
+                                <strong>Sin restricciones</strong>
+                                <div class="small text-muted">
+                                    El punto no cae dentro de ninguna zona DUM activa con restricciones.
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @if (!string.IsNullOrWhiteSpace(_result.Reason))
+                        {
+                            <p class="mb-2">
+                                <i class="bi bi-info-circle me-1"></i>
+                                <strong>Motivo:</strong> @_result.Reason
+                            </p>
+                        }
+
+                        <p class="mb-2">
+                            <strong>Zonas afectadas:</strong>
+                            @foreach (var zc in _result.ZoneCodes)
+                            {
+                                <span class="badge bg-secondary me-1">@zc</span>
+                            }
+                        </p>
+
+                        @if (_result.ActiveRulesApplied.Count > 0)
+                        {
+                            <h6 class="mt-3 fw-semibold">Reglas aplicadas:</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Zona</th>
+                                            <th>Regla</th>
+                                            <th>Acción</th>
+                                            <th>Motivo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var r in _result.ActiveRulesApplied)
+                                        {
+                                            <tr>
+                                                <td class="small">@r.ZoneCode</td>
+                                                <td class="small">@r.RuleCode</td>
+                                                <td>
+                                                    <span class="badge"
+                                                          style="background-color:@ResultColor(r.ActionType)">
+                                                        @r.ActionType
+                                                    </span>
+                                                </td>
+                                                <td class="small">@r.ActionReason</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="card-footer text-muted small">
+                    Simulación ejecutada el @DateTime.Now.ToString("dd/MM/yyyy HH:mm")
+                    para lat=@_latitude, lng=@_longitude
+                </div>
+            </div>
+        }
+    </div>
+
+</div>
+
+@code {
+    // Entidades para autocompletar
+    private List<EntitySelectorDto> _entities = [];
+
+    // Parámetros del formulario
+    private string   _selectedEntityId = "";
+    private decimal  _latitude;
+    private decimal  _longitude;
+    private DateTime _date             = DateTime.Now;
+    private string   _vehicleType      = "";
+    private string   _euroClass        = "";
+
+    // Estado
+    private bool                    _checking        = false;
+    private bool                    _checked         = false;
+    private string?                 _validationError;
+    private DumSimulationResultDto? _result;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _entities = (await Mediator.Send(new GetEntitiesForSelectorQuery())).ToList();
+    }
+
+    private async Task OnEntitySelectedAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedEntityId) ||
+            !Guid.TryParse(_selectedEntityId, out var entityId)) return;
+
+        var detail = await Mediator.Send(new GetEntityByIdQuery(entityId));
+        if (detail is null) return;
+
+        if (decimal.TryParse(detail.Latitude,
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var lat))
+            _latitude = lat;
+
+        if (decimal.TryParse(detail.Longitude,
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var lng))
+            _longitude = lng;
+    }
+
+    private async Task SimulateAsync()
+    {
+        _validationError = null;
+        _result          = null;
+
+        if (_latitude == 0 && _longitude == 0)
+        {
+            _validationError = "Introduce latitud y longitud válidas.";
+            return;
+        }
+
+        _checking = true;
+        _checked  = true;
+
+        try
+        {
+            _result = await Mediator.Send(new SimulateDumCheckQuery(
+                _latitude,
+                _longitude,
+                _date.ToUniversalTime(),
+                string.IsNullOrWhiteSpace(_vehicleType) ? null : _vehicleType,
+                string.IsNullOrWhiteSpace(_euroClass) ? null : _euroClass
+            ));
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private static string ResultColor(string action) => action switch
+    {
+        "Block"    => "#dc3545",
+        "Restrict" => "#fd7e14",
+        "Notify"   => "#0d6efd",
+        _          => "#198754"
+    };
+
+    private static string ResultIcon(string action) => action switch
+    {
+        "Block"    => "bi-x-octagon-fill",
+        "Restrict" => "bi-slash-circle-fill",
+        "Notify"   => "bi-bell-fill",
+        _          => "bi-check-circle-fill"
+    };
+
+    private static string ResultLabel(string action) => action switch
+    {
+        "Block"    => "ACCESO BLOQUEADO",
+        "Restrict" => "ACCESO RESTRINGIDO",
+        "Notify"   => "AVISO DE RESTRICCIÓN",
+        _          => "ACCESO PERMITIDO"
+    };
+
+    }

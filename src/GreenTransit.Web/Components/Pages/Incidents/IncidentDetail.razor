@@ -1,0 +1,418 @@
+@page "/incidents/{Id:guid}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Incidents.Commands
+@using GreenTransit.Application.Features.Incidents.DTOs
+@using GreenTransit.Application.Features.Incidents.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Detalle Incidencia</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Incidencia no encontrada.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/incidents")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    <div class="page-header">
+        <div class="page-header-info">
+            <h1 class="page-title">
+                <i class="bi bi-exclamation-triangle-fill me-2 text-warning"></i>
+                @_detail.Type
+            </h1>
+            <div class="mt-1 d-flex gap-2 flex-wrap">
+                <span class="badge @GetSeverityClass(_detail.Severity) fs-6">
+                    @_detail.Severity
+                </span>
+                @if (_detail.IsOpen)
+                {
+                    <span class="badge bg-danger fs-6">
+                        <i class="bi bi-record-fill me-1"></i>ABIERTA
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-success fs-6">
+                        <i class="bi bi-check-circle-fill me-1"></i>CERRADA
+                    </span>
+                }
+                @if (_detail.WasteMoveServiceStatus == "BLOQUEADO")
+                {
+                    <span class="badge bg-dark fs-6">
+                        <i class="bi bi-lock-fill me-1"></i>TRASLADO BLOQUEADO
+                    </span>
+                }
+            </div>
+        </div>
+        <div class="page-header-actions">
+            <button class="btn btn-outline-neutral btn-sm"
+                    @onclick='() => Nav.NavigateTo("/incidents")'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3">
+
+        @* ── Datos de apertura ────────────────────────────────────────────── *@
+        <div class="col-12 col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-info-circle me-2"></i>Datos de apertura
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0 small">
+                        <dt class="col-5 text-muted">Tipo</dt>
+                        <dd class="col-7">@_detail.Type</dd>
+
+                        <dt class="col-5 text-muted">Severidad</dt>
+                        <dd class="col-7">
+                            <span class="badge @GetSeverityClass(_detail.Severity)">
+                                @_detail.Severity
+                            </span>
+                        </dd>
+
+                        <dt class="col-5 text-muted">Abierta el</dt>
+                        <dd class="col-7">@_detail.OpenedAt.ToString("dd/MM/yyyy HH:mm")</dd>
+
+                        <dt class="col-5 text-muted">Notificado por</dt>
+                        <dd class="col-7">@_detail.ReportedByName</dd>
+
+                        @if (!string.IsNullOrWhiteSpace(_detail.ReportedByNationalId))
+                        {
+                            <dt class="col-5 text-muted">NIF/CIF</dt>
+                            <dd class="col-7 font-monospace">@_detail.ReportedByNationalId</dd>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_detail.ReportedByCenterCode))
+                        {
+                            <dt class="col-5 text-muted">Código centro</dt>
+                            <dd class="col-7 font-monospace">@_detail.ReportedByCenterCode</dd>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_detail.TicketScale))
+                        {
+                            <dt class="col-5 text-muted">Ticket báscula</dt>
+                            <dd class="col-7 font-monospace">@_detail.TicketScale</dd>
+                        }
+                        @if (_detail.ServiceOrderId.HasValue)
+                        {
+                            <dt class="col-5 text-muted">Orden de Servicio</dt>
+                            <dd class="col-7">
+                                <button class="btn btn-link btn-sm p-0"
+                                        @onclick='() => Nav.NavigateTo($"/service-orders/{_detail.ServiceOrderId}")'>
+                                    @(_detail.ServiceOrderId.ToString()![..8])…
+                                    <i class="bi bi-box-arrow-up-right ms-1"></i>
+                                </button>
+                            </dd>
+                        }
+                        <dt class="col-5 text-muted">Versión / Hash</dt>
+                        <dd class="col-7 font-monospace text-muted" style="font-size:0.7rem">
+                            v@_detail.Version — @(_detail.Hash?[..12])…
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        @* ── Traslado vinculado ───────────────────────────────────────────── *@
+        <div class="col-12 col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-truck me-2"></i>Traslado vinculado
+                    </h6>
+                </div>
+                <div class="card-body">
+                    @if (string.IsNullOrWhiteSpace(_detail.WasteMoveReference))
+                    {
+                        <p class="text-muted mb-0 small">Sin traslado vinculado.</p>
+                    }
+                    else
+                    {
+                        <dl class="row mb-0 small">
+                            <dt class="col-5 text-muted">Referencia</dt>
+                            <dd class="col-7 font-monospace">@_detail.WasteMoveReference</dd>
+
+                            <dt class="col-5 text-muted">Estado actual</dt>
+                            <dd class="col-7">
+                                @if (_detail.WasteMoveServiceStatus == "BLOQUEADO")
+                                {
+                                    <span class="badge bg-dark">
+                                        <i class="bi bi-lock-fill me-1"></i>BLOQUEADO
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">
+                                        @(_detail.WasteMoveServiceStatus ?? "—")
+                                    </span>
+                                }
+                            </dd>
+                        </dl>
+                        <div class="mt-3">
+                            <button class="btn btn-outline-primary btn-sm"
+                                    @onclick='() => Nav.NavigateTo($"/waste-moves?ref={_detail.WasteMoveReference}")'>
+                                <i class="bi bi-arrow-right-circle me-1"></i>Ver traslado
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ── Descripción ──────────────────────────────────────────────────── *@
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-chat-text me-2"></i>Descripción
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0" style="white-space:pre-wrap">@_detail.Description</p>
+                </div>
+            </div>
+        </div>
+
+        @* ── Resolución (solo si cerrada) ─────────────────────────────────── *@
+        @if (!_detail.IsOpen && _detail.Resolution is not null)
+        {
+            <div class="col-12">
+                <div class="card border-success">
+                    <div class="card-header bg-success-subtle">
+                        <h6 class="mb-0 text-success">
+                            <i class="bi bi-check2-circle me-2"></i>Resolución
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <dl class="row mb-0 small">
+                            <dt class="col-md-3 text-muted">Tipo de resolución</dt>
+                            <dd class="col-md-9">@_detail.Resolution.ResolutionType</dd>
+
+                            <dt class="col-md-3 text-muted">Descripción</dt>
+                            <dd class="col-md-9" style="white-space:pre-wrap">
+                                @_detail.Resolution.ResolutionDescription
+                            </dd>
+
+                            <dt class="col-md-3 text-muted">Resuelto por</dt>
+                            <dd class="col-md-9">@_detail.Resolution.ResolvedByName</dd>
+
+                            <dt class="col-md-3 text-muted">Cerrada el</dt>
+                            <dd class="col-md-9">
+                                @_detail.ClosedAt?.ToString("dd/MM/yyyy HH:mm")
+                            </dd>
+
+                            @if (!string.IsNullOrWhiteSpace(_detail.Resolution.PreviousStatus))
+                            {
+                                <dt class="col-md-3 text-muted">Estado restaurado</dt>
+                                <dd class="col-md-9">
+                                    <span class="badge bg-secondary">
+                                        @_detail.Resolution.PreviousStatus
+                                    </span>
+                                </dd>
+                            }
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ── Formulario de resolución (solo si abierta) ───────────────────── *@
+        @if (_detail.IsOpen)
+        {
+            <div class="col-12">
+                <div class="card border-warning">
+                    <div class="card-header bg-warning-subtle">
+                        <h6 class="mb-0 text-warning-emphasis">
+                            <i class="bi bi-wrench me-2"></i>Resolver incidencia
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        @if (_resolveSuccess)
+                        {
+                            <div class="alert alert-success mb-0">
+                                <i class="bi bi-check-circle-fill me-2"></i>
+                                <strong>Incidencia resuelta correctamente.</strong>
+                                @if (!string.IsNullOrWhiteSpace(_detail.WasteMoveReference))
+                                {
+                                    <span class="d-block mt-1">
+                                        El traslado
+                                        <strong>@_detail.WasteMoveReference</strong>
+                                        ha sido restaurado a su estado anterior.
+                                    </span>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label fw-semibold">
+                                        Tipo de resolución <span class="text-danger">*</span>
+                                    </label>
+                                    <select class="form-select" @bind="_resolutionType">
+                                        <option value="">— Seleccionar —</option>
+                                        <option>Corregido en campo</option>
+                                        <option>Documento enmendado</option>
+                                        <option>Peso conciliado</option>
+                                        <option>Incidencia desestimada</option>
+                                        <option>Acción correctiva aplicada</option>
+                                        <option>Otro</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label fw-semibold">
+                                        Resuelto por <span class="text-danger">*</span>
+                                    </label>
+                                    <input type="text"
+                                           class="form-control"
+                                           placeholder="Nombre del resolutor"
+                                           @bind="_resolvedByName" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label fw-semibold">
+                                        Descripción de la resolución
+                                        <span class="text-danger">*</span>
+                                    </label>
+                                    <textarea class="form-control" rows="4"
+                                              placeholder="Describe las acciones tomadas…"
+                                              @bind="_resolutionDescription"
+                                              maxlength="2000"></textarea>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(_resolveError))
+                                {
+                                    <div class="col-12">
+                                        <div class="alert alert-danger mb-0">
+                                            <i class="bi bi-x-circle me-2"></i>@_resolveError
+                                        </div>
+                                    </div>
+                                }
+
+                                <div class="col-12">
+                                    @if (!string.IsNullOrWhiteSpace(_detail.WasteMoveReference))
+                                    {
+                                        <div class="alert alert-info d-flex gap-2 align-items-center mb-3 py-2">
+                                            <i class="bi bi-unlock-fill flex-shrink-0"></i>
+                                            <span class="small">
+                                                Al resolver, el traslado
+                                                <strong>@_detail.WasteMoveReference</strong>
+                                                será restaurado al estado anterior al bloqueo.
+                                            </span>
+                                        </div>
+                                    }
+                                    <button class="btn btn-success"
+                                            disabled="@_resolving"
+                                            @onclick="ResolveAsync">
+                                        @if (_resolving)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2"></span>
+                                        }
+                                        <i class="bi bi-check2-circle me-1"></i>
+                                        Resolver y restaurar estado del traslado
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private IncidentDetailDto? _detail;
+    private bool               _loading = true;
+
+    private string? _resolutionType;
+    private string? _resolutionDescription;
+    private string? _resolvedByName;
+    private bool    _resolving;
+    private bool    _resolveSuccess;
+    private string? _resolveError;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _detail = await Mediator.Send(new GetIncidentByIdQuery(Id));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ResolveAsync()
+    {
+        _resolveError = null;
+
+        if (string.IsNullOrWhiteSpace(_resolutionType)        ||
+            string.IsNullOrWhiteSpace(_resolutionDescription) ||
+            string.IsNullOrWhiteSpace(_resolvedByName))
+        {
+            _resolveError = "Completa todos los campos obligatorios antes de resolver.";
+            return;
+        }
+
+        _resolving = true;
+        try
+        {
+            var ok = await Mediator.Send(new ResolveIncidentCommand(
+                Id:                    Id,
+                ResolutionType:        _resolutionType!,
+                ResolutionDescription: _resolutionDescription!,
+                ResolvedByName:        _resolvedByName!));
+
+            if (ok)
+            {
+                _resolveSuccess = true;
+                await LoadAsync();
+            }
+            else
+            {
+                _resolveError = "No se pudo resolver la incidencia. " +
+                                "Verifica que no esté ya cerrada.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _resolveError = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _resolving = false;
+        }
+    }
+
+    private static string GetSeverityClass(string severity) => severity switch
+    {
+        "Critical" => "bg-danger",
+        "High"     => "bg-warning text-dark",
+        "Medium"   => "bg-info text-dark",
+        "Low"      => "bg-secondary",
+        _          => "bg-light text-dark"
+    };
+}

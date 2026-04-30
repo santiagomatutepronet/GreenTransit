@@ -1,0 +1,429 @@
+@page "/dum-zones"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Features.DumZones.DTOs
+@using GreenTransit.Application.Features.DumZones.Commands
+@using GreenTransit.Application.Features.DumZones.Queries
+@using GreenTransit.Application.Common
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Text.Json
+
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject IJSRuntime          JS
+@inject GreenTransit.Application.Common.Interfaces.ICurrentUserService CurrentUser
+
+<PageTitle>Zonas DUM</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-geo-alt-fill me-2 text-primary"></i>Zonas DUM
+        </h1>
+        <p class="page-subtitle text-muted small mb-0">
+            Editor visual de zonas de distribución urbana de mercancías y sus restricciones
+        </p>
+    </div>
+    <div class="page-header-actions">
+        @if (_isAdmin)
+        {
+            <button class="btn btn-primary btn-sm" @onclick="StartDrawingAsync">
+                <i class="bi bi-plus-lg me-1"></i>Nueva zona
+            </button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando…</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row g-3" style="height: calc(100vh - 180px); min-height: 520px;">
+
+        @* ── Panel lateral ─────────────────────────────────────────────── *@
+        <div class="col-12 col-lg-3 d-flex flex-column" style="max-height:100%; overflow:hidden;">
+            <div class="card flex-grow-1 d-flex flex-column" style="overflow:hidden;">
+                <div class="card-header py-2">
+                    <div class="row g-2">
+                        <div class="col">
+                            <input class="form-control form-control-sm"
+                                   placeholder="Filtrar por código…"
+                                   @bind="_filterCode" @bind:event="oninput"
+                                   @bind:after="ApplyFilter" />
+                        </div>
+                        <div class="col-auto">
+                            <select class="form-select form-select-sm" @bind="_filterStatus" @bind:after="ApplyFilter">
+                                <option value="">— Estado —</option>
+                                <option value="Active">Activas</option>
+                                <option value="Inactive">Inactivas</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0" style="overflow-y:auto; flex:1;">
+                    @if (_filteredZones.Count == 0)
+                    {
+                        <div class="text-center text-muted py-4 small">Sin zonas</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var z in _filteredZones)
+                            {
+                                <li class="list-group-item list-group-item-action py-2 px-3 cursor-pointer
+                                           @(_selectedZoneId == z.Id ? "active" : "")"
+                                    @onclick="() => SelectZoneAsync(z.Id)">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge rounded-circle p-2"
+                                              style="background-color:@ActionColor(z.MostRestrictiveAction);">
+                                        </span>
+                                        <div class="flex-grow-1 overflow-hidden">
+                                            <div class="fw-semibold text-truncate small">@z.ZoneCode</div>
+                                            <div class="text-truncate" style="font-size:.75rem; opacity:.75;">@z.Name</div>
+                                        </div>
+                                        <div class="text-end" style="font-size:.7rem; white-space:nowrap;">
+                                            @if (z.RulesCount > 0)
+                                            {
+                                                <span class="badge bg-secondary">@z.RulesCount reglas</span>
+                                            }
+                                            @if (z.Status == "Inactive")
+                                            {
+                                                <span class="badge bg-light text-dark border ms-1">Inactiva</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+                <div class="card-footer py-1 text-muted" style="font-size:.75rem;">
+                    @_filteredZones.Count zona(s) — <span>
+                        @_zoneDetails.Count(z => z.Status == "Active") activas
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        @* ── Mapa ──────────────────────────────────────────────────────── *@
+        <div class="col-12 col-lg-9 d-flex flex-column" style="max-height:100%;">
+            <div class="card flex-grow-1" style="overflow:hidden;">
+                <div class="card-body p-0" style="height:100%; position:relative;">
+                    <div id="dumZoneMapContainer" style="height:100%; width:100%; min-height:400px;"></div>
+
+                    @if (_drawingMode)
+                    {
+                        <div class="position-absolute top-0 start-0 m-2 z-3">
+                            <div class="alert alert-info alert-sm py-1 px-2 mb-0 shadow-sm small">
+                                <i class="bi bi-pencil-square me-1"></i>
+                                <strong>Modo dibujo activo.</strong> Dibuja el polígono en el mapa.
+                                <button class="btn btn-sm btn-outline-secondary ms-2 py-0"
+                                        @onclick="CancelDrawingAsync">Cancelar</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+    </div>
+}
+
+@* ── Modal formulario nueva zona ──────────────────────────────────────────── *@
+@if (_showForm)
+{
+    <div class="modal-backdrop">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-geo-alt-fill me-2"></i>
+                    @(_editingZoneId.HasValue ? "Editar zona DUM" : "Nueva zona DUM")
+                </h5>
+                <div class="d-flex align-items-center gap-2">
+                    @if (!_editingZoneId.HasValue)
+                    {
+                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                @onclick="StartDrawingOnMapAsync"
+                                title="Dibujar polígono en el mapa">
+                            <i class="bi bi-pencil-square me-1"></i>Dibujar en mapa
+                        </button>
+                    }
+                    <button type="button" class="btn-close" @onclick="CloseForm"></button>
+                </div>
+            </div>
+            <div class="modal-body" style="overflow-y:auto; flex:1;">
+                <DumZoneForm ZoneId="_editingZoneId"
+                             InitialGeometryJson="_drawnGeometryJson"
+                             OnSaved="OnFormSavedAsync"
+                             OnCancelled="CloseForm" />
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ── Estado ───────────────────────────────────────────────────────────────
+
+    // Detalle completo de cada zona (incluye GeometryJson)
+    private List<DumZoneDetailDto> _zoneDetails   = [];
+    // DTOs ligeros derivados de _zoneDetails para el panel lateral
+    private List<DumZoneDto>       _filteredZones = [];
+    private bool                   _loading       = true;
+    private bool                   _mapInitialized;          // ← flag correcto
+    private bool                   _isAdmin;
+    private bool                   _showForm;
+    private bool                   _drawingMode;
+    private bool                   _pendingStartDrawing;
+    private Guid?                  _selectedZoneId;
+    private Guid?                  _editingZoneId;
+    private string?                _drawnGeometryJson;
+    private string                 _filterCode    = "";
+    private string                 _filterStatus  = "Active";
+
+    private DotNetObjectReference<DumZoneMap>? _dotNetRef;
+
+    // ── Ciclo de vida ─────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAdmin = CurrentUser.UserProfile == "ADMIN";
+
+        // Cargamos el detalle completo de todas las zonas (incluye GeometryJson)
+        var activeDetails   = await LoadZoneDetailsAsync(status: "Active");
+        var inactiveDetails = await LoadZoneDetailsAsync(status: "Inactive");
+        _zoneDetails = [.. activeDetails, .. inactiveDetails];
+
+        ApplyFilter();
+        _loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Inicializar el mapa la primera vez que el DOM esté listo y los datos cargados
+        if (!_mapInitialized && !_loading)
+        {
+            _mapInitialized = true;
+            await InitMapAsync();
+        }
+
+        // Activar el modo dibujo DESPUÉS de que Blazor haya eliminado el modal del DOM
+        if (_pendingStartDrawing)
+        {
+            _pendingStartDrawing = false;
+            await JS.InvokeVoidAsync("dumZoneMap.startDrawing");
+        }
+    }
+
+    // ── Mapa ─────────────────────────────────────────────────────────────────
+
+    private async Task InitMapAsync()
+    {
+        _dotNetRef = DotNetObjectReference.Create(this);
+
+        var payload = _filteredZones
+            .Select(z =>
+            {
+                var geo = GetGeometryJson(z.Id);
+                return new
+                {
+                    id           = z.Id,
+                    zoneCode     = z.ZoneCode,
+                    geometryJson = geo,
+                    actionColor  = ActionColor(z.MostRestrictiveAction),
+                    popupHtml    = BuildPopupHtml(z)
+                };
+            })
+            .Where(z => z.geometryJson is not null)
+            .ToArray();
+
+        await JS.InvokeVoidAsync("dumZoneMap.init", "dumZoneMapContainer", payload, _dotNetRef);
+    }
+
+    // ── Filtrado ──────────────────────────────────────────────────────────────
+
+    private void ApplyFilter()
+    {
+        _filteredZones = _zoneDetails
+            .Where(d =>
+                (string.IsNullOrWhiteSpace(_filterCode)   || d.ZoneCode.Contains(_filterCode, StringComparison.OrdinalIgnoreCase))
+             && (string.IsNullOrWhiteSpace(_filterStatus) || d.Status == _filterStatus))
+            .OrderBy(d => d.ZoneCode)
+            .Select(d => new DumZoneDto(
+                d.Id,
+                d.ZoneCode,
+                d.Name,
+                d.Description,
+                d.Status,
+                d.Rules.Count(r => IsRuleActive(r)),
+                d.Rules.Where(r => IsRuleActive(r))
+                       .OrderByDescending(r => ActionOrder(r.ActionType))
+                       .Select(r => r.ActionType)
+                       .FirstOrDefault()
+            ))
+            .ToList();
+    }
+
+    private static bool IsRuleActive(DumRestrictionRuleDto r)
+    {
+        var now = DateTime.UtcNow;
+        return r.ValidFrom <= now && (r.ValidTo == null || r.ValidTo >= now);
+    }
+
+    private static int ActionOrder(string a) => a switch
+    {
+        "Block"    => 4,
+        "Restrict" => 3,
+        "Notify"   => 2,
+        _          => 1
+    };
+
+    // ── Interacción panel lateral / mapa ──────────────────────────────────────
+
+    private async Task SelectZoneAsync(Guid id)
+    {
+        _selectedZoneId = id;
+        await JS.InvokeVoidAsync("dumZoneMap.flyToZone", id);
+    }
+
+    [JSInvokable]
+    public Task OnZoneClickedFromMap(Guid zoneId)
+    {
+        _selectedZoneId = zoneId;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── Dibujo ────────────────────────────────────────────────────────────────
+
+    private async Task StartDrawingAsync()
+    {
+        _drawnGeometryJson = null;
+        _editingZoneId     = null;
+        _showForm          = true;
+        await Task.CompletedTask;
+    }
+
+    private void StartDrawingOnMapAsync()
+    {
+        _showForm            = false;
+        _drawingMode         = true;
+        _drawnGeometryJson   = null;
+        _editingZoneId       = null;
+        _pendingStartDrawing = true;
+        // La llamada JS se hace en OnAfterRenderAsync, cuando el modal ya no está en el DOM
+    }
+
+    private async Task CancelDrawingAsync()
+    {
+        _drawingMode = false;
+        await JS.InvokeVoidAsync("dumZoneMap.cancelDrawing");
+    }
+
+    [JSInvokable]
+    public Task OnPolygonDrawn(string geometryJson)
+    {
+        _drawingMode       = false;
+        _drawnGeometryJson = geometryJson;
+        _showForm          = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── Formulario ────────────────────────────────────────────────────────────
+
+    private void OpenEditForm(Guid zoneId)
+    {
+        _editingZoneId     = zoneId;
+        _drawnGeometryJson = null;
+        _showForm          = true;
+    }
+
+    private void CloseForm()
+    {
+        _showForm          = false;
+        _editingZoneId     = null;
+        _drawnGeometryJson = null;
+        _drawingMode       = false;
+    }
+
+    private async Task OnFormSavedAsync(Guid savedId)
+    {
+        CloseForm();
+
+        // Recargar todas las zonas (incluyendo la recién creada/editada)
+        var activeDetails   = await LoadZoneDetailsAsync(status: "Active");
+        var inactiveDetails = await LoadZoneDetailsAsync(status: "Inactive");
+        _zoneDetails = [.. activeDetails, .. inactiveDetails];
+        ApplyFilter();
+
+        // Añadir o actualizar el polígono en el mapa
+        var detail = _zoneDetails.FirstOrDefault(d => d.Id == savedId);
+        if (detail is not null)
+        {
+            var dto = _filteredZones.FirstOrDefault(z => z.Id == savedId);
+            await JS.InvokeVoidAsync("dumZoneMap.addZone", new
+            {
+                id           = detail.Id,
+                zoneCode     = detail.ZoneCode,
+                geometryJson = detail.GeometryJson,
+                actionColor  = ActionColor(dto?.MostRestrictiveAction),
+                popupHtml    = BuildPopupHtml(dto ?? new DumZoneDto(
+                                   detail.Id, detail.ZoneCode, detail.Name,
+                                   detail.Description, detail.Status, 0, null))
+            });
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>Carga los detalles de todas las zonas de un estado dado.</summary>
+    private async Task<IReadOnlyList<DumZoneDetailDto>> LoadZoneDetailsAsync(string status)
+    {
+        var summaries = await Mediator.Send(new GetDumZonesQuery(Status: status));
+        var details   = new List<DumZoneDetailDto>(summaries.Count);
+        foreach (var s in summaries)
+        {
+            var d = await Mediator.Send(new GetDumZoneByIdQuery(s.Id));
+            if (d is not null) details.Add(d);
+        }
+        return details;
+    }
+
+    private string? GetGeometryJson(Guid id)
+        => _zoneDetails.FirstOrDefault(d => d.Id == id)?.GeometryJson;
+
+    private static string ActionColor(string? action) => action switch
+    {
+        "Block"    => "#dc3545",
+        "Restrict" => "#fd7e14",
+        "Notify"   => "#0d6efd",
+        _          => "#6c757d"
+    };
+
+    private static string BuildPopupHtml(DumZoneDto z)
+    {
+        var color = ActionColor(z.MostRestrictiveAction);
+        var action = z.MostRestrictiveAction ?? "Sin reglas";
+        return $"""
+            <strong>{z.ZoneCode}</strong><br>
+            {z.Name}<br>
+            <span style="color:{color}"><b>{action}</b></span><br>
+            <small>{z.RulesCount} regla(s) activa(s)</small>
+            """;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        try { await JS.InvokeVoidAsync("dumZoneMap.dispose"); } catch { }
+    }
+}

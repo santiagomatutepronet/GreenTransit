@@ -1,0 +1,319 @@
+@page "/incidents/new"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Incidents.Commands
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Nueva Incidencia</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-exclamation-triangle-fill me-2 text-warning"></i>Nueva Incidencia
+        </h1>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick='() => Nav.NavigateTo("/incidents")'>
+            <i class="bi bi-arrow-left me-1"></i>Cancelar
+        </button>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-body">
+
+                @if (_saved)
+                {
+                    <div class="alert alert-success d-flex align-items-start gap-2">
+                        <i class="bi bi-check-circle-fill fs-4 flex-shrink-0 mt-1"></i>
+                        <div>
+                            <strong>Incidencia registrada correctamente.</strong>
+                            @if (_severity is "High" or "Critical" &&
+                                 !string.IsNullOrWhiteSpace(_wasteMoveReference))
+                            {
+                                <div class="mt-1 text-danger fw-semibold">
+                                    <i class="bi bi-lock-fill me-1"></i>
+                                    El traslado <strong>@_wasteMoveReference</strong>
+                                    ha sido bloqueado.
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="btn btn-primary"
+                                @onclick='() => Nav.NavigateTo($"/incidents/{_createdId}")'>
+                            <i class="bi bi-eye me-1"></i>Ver incidencia
+                        </button>
+                        <button class="btn btn-outline-neutral" @onclick="ResetForm">
+                            <i class="bi bi-plus-lg me-1"></i>Nueva
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <EditForm Model="_model" OnValidSubmit="SubmitAsync">
+                        <DataAnnotationsValidator />
+
+                        @* ── Severidad (botones grandes) ───────────────────────── *@
+                        <div class="mb-4">
+                            <label class="form-label fw-bold fs-6">
+                                Severidad <span class="text-danger">*</span>
+                            </label>
+                            <div class="d-grid gap-2">
+                                @foreach (var sev in _severities)
+                                {
+                                    <button type="button"
+                                            class="btn btn-lg text-start @GetSeverityBtnClass(sev) @(_severity == sev ? "active" : "")"
+                                            @onclick="() => _severity = sev">
+                                        <i class="bi @GetSeverityIcon(sev) me-2"></i>
+                                        <strong>@sev</strong>
+                                        <small class="d-block fw-normal ms-4 mt-1 opacity-75">
+                                            @GetSeverityDescription(sev)
+                                        </small>
+                                    </button>
+                                }
+                            </div>
+                            @if (_submitted && string.IsNullOrWhiteSpace(_severity))
+                            {
+                                <div class="text-danger small mt-1">
+                                    Selecciona una severidad.
+                                </div>
+                            }
+                        </div>
+
+                        @* ── Tipo ──────────────────────────────────────────────── *@
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Tipo de incidencia <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select form-select-lg" @bind="_type">
+                                <option value="">— Seleccionar tipo —</option>
+                                <option>Descuadre de peso</option>
+                                <option>Residuo no conforme</option>
+                                <option>Retraso</option>
+                                <option>Avería vehículo</option>
+                                <option>Contaminación de fracción</option>
+                                <option>Documento faltante</option>
+                                <option>Otro</option>
+                            </select>
+                            @if (_submitted && string.IsNullOrWhiteSpace(_type))
+                            {
+                                <div class="text-danger small mt-1">Selecciona un tipo.</div>
+                            }
+                        </div>
+
+                        @* ── Descripción ───────────────────────────────────────── *@
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Descripción <span class="text-danger">*</span>
+                            </label>
+                            <textarea class="form-control" rows="5"
+                                      placeholder="Describe la incidencia con el máximo detalle posible…"
+                                      @bind="_description"
+                                      maxlength="2000"></textarea>
+                            <div class="form-text text-end">
+                                @(_description?.Length ?? 0)/2000
+                            </div>
+                            @if (_submitted && string.IsNullOrWhiteSpace(_description))
+                            {
+                                <div class="text-danger small">La descripción es obligatoria.</div>
+                            }
+                        </div>
+
+                        @* ── Traslado vinculado (opcional) ─────────────────────── *@
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Referencia de traslado vinculado
+                                <span class="text-muted small fw-normal">(opcional)</span>
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="Ej: WM-2025-001234"
+                                   @bind="_wasteMoveReference" />
+                            @if (_severity is "High" or "Critical" &&
+                                 !string.IsNullOrWhiteSpace(_wasteMoveReference))
+                            {
+                                <div class="alert alert-warning d-flex gap-2 align-items-start mt-2 py-2">
+                                    <i class="bi bi-lock-fill flex-shrink-0 mt-1"></i>
+                                    <span class="small">
+                                        Al guardar, el traslado <strong>@_wasteMoveReference</strong>
+                                        quedará <strong>BLOQUEADO</strong> hasta que se resuelva
+                                        la incidencia.
+                                    </span>
+                                </div>
+                            }
+                        </div>
+
+                        @* ── Ticket báscula ────────────────────────────────────── *@
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Ticket báscula
+                                <span class="text-muted small fw-normal">(opcional)</span>
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="Ej: TK-20250130-001"
+                                   @bind="_ticketScale" />
+                        </div>
+
+                        @* ── Notificador ───────────────────────────────────────── *@
+                        <hr />
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Notificado por <span class="text-danger">*</span>
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="Nombre completo"
+                                   @bind="_reportedByName" />
+                            @if (_submitted && string.IsNullOrWhiteSpace(_reportedByName))
+                            {
+                                <div class="text-danger small mt-1">
+                                    El nombre del notificador es obligatorio.
+                                </div>
+                            }
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label form-label-sm fw-semibold">NIF/CIF</label>
+                                <input type="text"
+                                       class="form-control form-control-sm"
+                                       placeholder="Opcional"
+                                       @bind="_reportedByNationalId" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm fw-semibold">
+                                    Código centro (NIMA)
+                                </label>
+                                <input type="text"
+                                       class="form-control form-control-sm"
+                                       placeholder="Opcional"
+                                       @bind="_reportedByCenterCode" />
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(_errorMessage))
+                        {
+                            <div class="alert alert-danger">
+                                <i class="bi bi-x-circle me-2"></i>@_errorMessage
+                            </div>
+                        }
+
+                        <div class="d-grid mt-4">
+                            <button type="submit"
+                                    class="btn btn-danger btn-lg"
+                                    disabled="@_saving">
+                                @if (_saving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                }
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                Registrar incidencia
+                            </button>
+                        </div>
+                    </EditForm>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly string[] _severities = ["Critical", "High", "Medium", "Low"];
+
+    private string?  _severity;
+    private string?  _type;
+    private string?  _description;
+    private string?  _wasteMoveReference;
+    private string?  _ticketScale;
+    private string?  _reportedByName;
+    private string?  _reportedByNationalId;
+    private string?  _reportedByCenterCode;
+    private bool     _submitted;
+    private bool     _saving;
+    private bool     _saved;
+    private string?  _errorMessage;
+    private Guid     _createdId;
+
+    private readonly object _model = new();
+
+    private async Task SubmitAsync()
+    {
+        _submitted    = true;
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_severity)      ||
+            string.IsNullOrWhiteSpace(_type)           ||
+            string.IsNullOrWhiteSpace(_description)    ||
+            string.IsNullOrWhiteSpace(_reportedByName))
+            return;
+
+        _saving = true;
+        try
+        {
+            _createdId = await Mediator.Send(new OpenIncidentCommand(
+                Type:                 _type!,
+                Severity:             _severity!,
+                ServiceOrderId:       null,
+                WasteMoveReference:   _wasteMoveReference,
+                TicketScale:          _ticketScale,
+                ReportedByName:       _reportedByName!,
+                ReportedByNationalId: _reportedByNationalId,
+                ReportedByCenterCode: _reportedByCenterCode,
+                Description:          _description!));
+
+            _saved = true;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        _severity = _type = _description = _wasteMoveReference =
+        _ticketScale = _reportedByName = _reportedByNationalId =
+        _reportedByCenterCode = _errorMessage = null;
+        _submitted = _saving = _saved = false;
+        _createdId = Guid.Empty;
+    }
+
+    private static string GetSeverityBtnClass(string sev) => sev switch
+    {
+        "Critical" => "btn-outline-danger",
+        "High"     => "btn-outline-warning",
+        "Medium"   => "btn-outline-info",
+        "Low"      => "btn-outline-secondary",
+        _          => "btn-outline-secondary"
+    };
+
+    private static string GetSeverityIcon(string sev) => sev switch
+    {
+        "Critical" => "bi-fire",
+        "High"     => "bi-exclamation-triangle-fill",
+        "Medium"   => "bi-exclamation-circle",
+        "Low"      => "bi-info-circle",
+        _          => "bi-question-circle"
+    };
+
+    private static string GetSeverityDescription(string sev) => sev switch
+    {
+        "Critical" => "Bloquea el traslado inmediatamente. Requiere resolución urgente.",
+        "High"     => "Bloquea el traslado si está vinculado. Alta prioridad.",
+        "Medium"   => "Requiere seguimiento prioritario. No bloquea.",
+        "Low"      => "Informativo. Sin bloqueo automático.",
+        _          => ""
+    };
+}
