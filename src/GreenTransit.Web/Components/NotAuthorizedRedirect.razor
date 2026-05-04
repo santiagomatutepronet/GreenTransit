@@ -1,0 +1,43 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using GreenTransit.Application.Common
+@inject NavigationManager Nav
+@inject ILogger<NotAuthorizedRedirect> Logger
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Guard: nunca redirigir desde estas rutas para evitar bucles.
+        var path = new Uri(Nav.Uri).AbsolutePath;
+        if (path.StartsWith("/acceso-denegado", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/account/", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var state = AuthTask is not null ? await AuthTask : null;
+
+        // ── Diagnóstico: ver exactamente qué claims tiene el principal cuando
+        //    la policy falla (para distinguir cookie sin gt_user_found vs otro motivo).
+        var isAuth = state?.User.Identity?.IsAuthenticated ?? false;
+        var userFound = state?.User.FindFirst(AuthClaims.UserFound)?.Value;
+        var claimList = state is null
+            ? "(state=null)"
+            : string.Join(" | ", state.User.Claims.Select(c => $"{c.Type}={c.Value}"));
+        Logger.LogWarning(
+            "🛑 NotAuthorizedRedirect Path={Path} | IsAuth={IsAuth} | gt_user_found='{UF}' | Claims=[{Claims}]",
+            path, isAuth, userFound ?? "*** AUSENTE ***", claimList);
+
+        if (isAuth)
+        {
+            // Autenticado pero sin permiso (no registrado en BD o perfil insuficiente)
+            Nav.NavigateTo("/acceso-denegado", forceLoad: true);
+        }
+        else
+        {
+            // No autenticado → login
+            var returnUrl = Uri.EscapeDataString(Nav.Uri);
+            Nav.NavigateTo($"/account/login?returnUrl={returnUrl}", forceLoad: true);
+        }
+    }
+}

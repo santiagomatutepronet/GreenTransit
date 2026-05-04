@@ -5,12 +5,11 @@ Adjunto los documentos de referencia de mi proyecto, que se encuentran en el dir
 2. README.md → especificaciones del proyecto
 3. Crear_BD_v4_1.sql → script de base de datos con 38 tablas
 4. Mapa_Funcionalidades_GreenTransit.md  → Conjunto de funcionalidades del proyecto
-
+5. Mapa_Autorizacion_GreenTransit.md → Define como esta implemetada la autorización dentro de la aplicación
 Lee los cuatro documentos y confirma que entiendes el stack, la arquitectura y el mapa de funcionalidades.
 Todas las nuevas funcionalidades que te pida que añadas, inclúyelas en el documento Mapa_Funcionalidades_GreenTransit.md, modificándolo en consecuencia
+Si cambia algo en cuanto a la autorización, o te pido que lo cambies, inclúyelo en el documento Mapa_Autorizacion_GreenTransit.md
 
 
 Cada vez que completes un paso, actualiza las líneas de estado del archivo cambiando ⬜ Pendiente ejecutar por ✅ Completado  para que la próxima sesión sepa exactamente dónde dejaste el trabajo.
 
-Pendiente del día anterior:
-Quiero poder añadir varias lineas de resiuso en las ordenes de servicio, no solo una como esta actualmente. Ademas, al seleccionar la orden de servicio para crear el traslado de residuos, que se trasladen todas las lineas de la orden de servicio al traslado de residuos, siguiendo el comportamiento actual

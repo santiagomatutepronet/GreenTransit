@@ -83,9 +83,74 @@ Proveedor externo OpenID Connect:
 
 - Aislamiento por `OwnerId`
 - Sin acceso entre tenants
-- Autorización por:
-  - `Users`
-  - `Profiles`
+- Autenticación: OpenID Connect (proveedor externo)
+- Autorización: sistema basado en perfiles (ver sección siguiente)
+
+---
+
+## 🛡️ Autorización por perfiles
+
+Sistema de autorización en dos capas implementado en el Paso 8:
+
+### 9 Perfiles del sistema
+
+| Reference | Descripción |
+|---|---|
+| `ADMIN` | Administrador del sistema |
+| `SCRAP` | Sistema Colectivo de Responsabilidad Ampliada |
+| `PRODUCER` | Productor / Generador de residuos |
+| `CARRIER` | Transportista |
+| `PLANT_OP` | Operador de Planta de Tratamiento |
+| `CAC_OP` | Operador de Centro de Acopio |
+| `PUBLIC_ENT` | Entidad Pública / Ayuntamiento |
+| `COORDINATOR` | Coordinador del acuerdo |
+| `DISPATCH_OFFICE` | Oficina de Asignación — Gestor logístico |
+
+### Componentes de autorización
+
+| Componente | Capa | Función |
+|---|---|---|
+| `ProfileConstants`, `PolicyConstants` | Domain | Constantes sin strings mágicos |
+| `ProfileRequirement`, `OwnDataRequirement` | Infrastructure | Requisitos de ASP.NET Core |
+| `ProfileAuthorizationHandler` | Infrastructure | Evalúa perfil del usuario |
+| `OwnDataAuthorizationHandler` | Infrastructure | Evalúa datos propios + entidad vinculada |
+| `IDataScopeService` / `DataScopeService` | Application / Infrastructure | Filtrado de IQueryable por perfil |
+| `ProfileAuthorizeView` | Web (Blazor) | Muestra/oculta elementos de UI |
+| `AuthorizationBehavior` | Application (MediatR) | Valida permisos en el pipeline |
+| `AuthorizeAttribute` | Application | Decora commands/queries con permisos |
+
+### 24 Policies registradas
+
+Agrupadas en: Maestros · Operaciones · Sostenibilidad · Contratación · Reporting · Seguridad.
+
+Ver [`Mapa_Autorizacion_GreenTransit.md`](./Mapa_Autorizacion_GreenTransit.md) para la matriz completa.  
+Ver [`PATRON_AUTORIZACION_PAGINAS.md`](./PATRON_AUTORIZACION_PAGINAS.md) para el patrón de implementación en páginas Blazor.
+
+### Uso en un command/query
+
+```csharp
+// Proteger un command con perfil específico
+[Authorize(Profiles = "DISPATCH_OFFICE,ADMIN")]
+public record CreateWasteMoveCommand(...) : IRequest<Guid>;
+
+// Filtrar datos según el perfil en un query handler
+var query = _db.ServiceOrders
+    .Where(so => so.OwnerId == _currentUser.OwnerId)  // 1. multi-tenant
+    .AsQueryable();
+query = _dataScopeService.ApplyScope(query);           // 2. filtro por perfil
+```
+
+### Uso en una página Blazor
+
+```razor
+@attribute [Authorize]  @* o @attribute [Authorize(Policy = PolicyConstants.CanManageWasteMoves)] *@
+
+<ProfileAuthorizeView Profiles="@(new[]{ ProfileConstants.DispatchOffice, ProfileConstants.Admin })">
+    <Authorized>
+        <button class="btn btn-primary">Nuevo Traslado</button>
+    </Authorized>
+</ProfileAuthorizeView>
+```
 
 ---
 

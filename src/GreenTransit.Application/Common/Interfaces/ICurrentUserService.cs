@@ -1,39 +1,49 @@
 namespace GreenTransit.Application.Common.Interfaces;
 
 /// <summary>
-/// Provee el contexto del usuario autenticado para multi-tenant y auditoría.
+/// Provee el contexto del usuario autenticado para multi-tenant, autorización y auditoría.
 /// Implementado en GreenTransit.Web con IHttpContextAccessor.
+/// Los valores se leen de los claims gt_* emitidos por ClaimsTransformation.
 /// </summary>
 public interface ICurrentUserService
 {
-    /// <summary>Indica si el usuario está autenticado.</summary>
+    /// <summary>True si el usuario está autenticado Y existe en la tabla Users (gt_user_found=true).</summary>
     bool IsAuthenticated { get; }
 
-    /// <summary>
-    /// Identificador interno del usuario (mapeo del claim 'sub' → tabla Users).
-    /// Devuelve 0 si no está autenticado.
-    /// </summary>
+    /// <summary>Users.ID (int). Devuelve 0 si no autenticado.</summary>
     int IdUser { get; }
 
-    /// <summary>
-    /// OwnerId del tenant activo (claim organizativo del token OIDC).
-    /// Devuelve Guid.Empty si no está autenticado.
-    /// </summary>
-    Guid OwnerId { get; }
+    /// <summary>Users.Login.</summary>
+    string Login { get; }
 
-    /// <summary>Email del usuario autenticado (claim 'email' o 'preferred_username').</summary>
+    /// <summary>Users.Email.</summary>
     string Email { get; }
 
-    /// <summary>
-    /// Nombre para mostrar del usuario autenticado (claim 'name' o CompleteName).
-    /// Fallback a Email si no está disponible.
-    /// </summary>
+    /// <summary>Nombre para mostrar — Users.CompleteName o Email.</summary>
     string UserName { get; }
 
-    /// <summary>
-    /// Reference del perfil del usuario (claim de rol interno: ADMIN, SCRAP, PRODUCER…).
-    /// Devuelve string vacío si no está autenticado o el perfil no está resuelto.
-    /// </summary>
+    /// <summary>Users.OwnerId (multi-tenant). Devuelve Guid.Empty si no hay tenant.</summary>
+    Guid OwnerId { get; }
+
+    /// <summary>Users.IdProfile (int).</summary>
+    int ProfileId { get; }
+
+    /// <summary>Profiles.Reference (ej: "ADMIN", "SCRAP", "PRODUCER"…).</summary>
     string UserProfile { get; }
+
+    /// <summary>
+    /// Alias de UserProfile. Devuelve Profiles.Reference para alinearse con ProfileConstants.
+    /// Usar este nombre en el nuevo código de autorización basado en policies.
+    /// </summary>
+    string ProfileReference => UserProfile;
+
+    /// <summary>Id de la Entidad activa vinculada al usuario por Email. Null si no existe.</summary>
+    Guid? LinkedEntityId { get; }
+
+    /// <summary>True si el usuario tiene exactamente el perfil indicado (case-insensitive).</summary>
+    bool IsInProfile(string profileRef);
+
+    /// <summary>True si el usuario tiene alguno de los perfiles indicados (case-insensitive).</summary>
+    bool IsInAnyProfile(params string[] profileRefs);
 }
 

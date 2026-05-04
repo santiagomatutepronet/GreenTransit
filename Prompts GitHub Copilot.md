@@ -33,10 +33,10 @@
 | D-8 | Operaciones | Vista 360º del Traslado | 🟠 | ✅ |
 | E-1 | Sostenibilidad | Gestión de Incidencias | 🟠 | ✅ |
 | E-2 | Sostenibilidad | Zonas DUM: editor visual y simulador | 🟡 | ✅ |
-| E-3 | Sostenibilidad | Energía de Planta + Factores de Emisión | 🟡 | ⬜ |
+| E-3 | Sostenibilidad | Energía de Planta + Factores de Emisión | 🟡 | ✅ |
 | F-1 | Reporting | Dashboard operativo principal | 🟠 | ✅ |
-| F-2 | Reporting | Trazabilidad end-to-end + buscador global | 🟠 | ⬜ |
-| F-3 | Reporting | KPIs regulatorios y exportación XLSX | 🟡 | ⬜ |
+| F-2 | Reporting | Trazabilidad end-to-end + buscador global | 🟠 | ✅ |
+| F-3 | Reporting | KPIs regulatorios y exportación XLSX | 🟡 | ✅ |
 | G-1 | Seguridad | Gestión de Usuarios, Perfiles y SharePoint | 🟠 | ⬜ |
 | H-1 | Calidad | Tests de integración y cobertura | 🟡 | ⬜ |
 | H-2 | Calidad | Notificaciones en tiempo real con SignalR | 🟡 | ⬜ |

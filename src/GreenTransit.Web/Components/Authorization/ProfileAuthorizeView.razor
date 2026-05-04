@@ -1,0 +1,50 @@
+@using GreenTransit.Application.Common.Interfaces
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ICurrentUserService CurrentUser
+
+@*
+    Componente de autorización por perfil para Blazor.
+    Muestra el contenido de <Authorized> solo si el usuario tiene uno de los perfiles indicados.
+    Si se omite <NotAuthorized>, simplemente no renderiza nada cuando no hay acceso.
+
+    Uso:
+    <ProfileAuthorizeView Profiles="@(new[]{ ProfileConstants.Admin, ProfileConstants.DispatchOffice })">
+        <Authorized>
+            <button>Crear entidad</button>
+        </Authorized>
+        <NotAuthorized>
+            <span class="text-muted">Sin permisos</span>
+        </NotAuthorized>
+    </ProfileAuthorizeView>
+*@
+
+@if (_hasAccess)
+{
+    @Authorized
+}
+else if (NotAuthorized is not null)
+{
+    @NotAuthorized
+}
+
+@code {
+    /// <summary>Perfiles permitidos (valores de ProfileConstants).</summary>
+    [Parameter, EditorRequired]
+    public string[] Profiles { get; set; } = [];
+
+    /// <summary>Contenido a mostrar si el usuario tiene el perfil requerido.</summary>
+    [Parameter]
+    public RenderFragment? Authorized { get; set; }
+
+    /// <summary>Contenido alternativo si el usuario NO tiene el perfil. Opcional.</summary>
+    [Parameter]
+    public RenderFragment? NotAuthorized { get; set; }
+
+    private bool _hasAccess;
+
+    protected override void OnParametersSet()
+    {
+        _hasAccess = CurrentUser.IsAuthenticated
+                  && CurrentUser.IsInAnyProfile(Profiles);
+    }
+}

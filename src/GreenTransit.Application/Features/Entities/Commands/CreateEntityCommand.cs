@@ -1,8 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
-using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.Entities.Commands;
@@ -41,21 +39,24 @@ public sealed record CreateEntityCommand(
 public sealed class CreateEntityCommandHandler
     : IRequestHandler<CreateEntityCommand, Guid>
 {
-    private readonly IUnitOfWork           _uow;
-    private readonly IApplicationDbContext _context;
-    private readonly ICurrentUserService   _currentUser;
+    private readonly IUnitOfWork                        _uow;
+    private readonly IApplicationDbContext              _context;
+    private readonly ICurrentUserService                _currentUser;
+    private readonly IEntityUserProvisioningService     _provisioning;
     private readonly ILogger<CreateEntityCommandHandler> _logger;
 
     public CreateEntityCommandHandler(
         IUnitOfWork uow,
         IApplicationDbContext context,
         ICurrentUserService currentUser,
+        IEntityUserProvisioningService provisioning,
         ILogger<CreateEntityCommandHandler> logger)
     {
-        _uow         = uow;
-        _context     = context;
-        _currentUser = currentUser;
-        _logger      = logger;
+        _uow          = uow;
+        _context      = context;
+        _currentUser  = currentUser;
+        _provisioning = provisioning;
+        _logger       = logger;
     }
 
     public async Task<Guid> Handle(CreateEntityCommand request, CancellationToken ct)
@@ -90,36 +91,8 @@ public sealed class CreateEntityCommandHandler
 
         await _uow.BusinessEntities.AddAsync(entity, ct);
 
-        // ── Provisión automática de usuario ───────────────────────────────────
-        var profileRef = EntityRoles.GetAutoUserProfile(request.EntityRole);
-        if (profileRef is not null && !string.IsNullOrWhiteSpace(request.Email))
-        {
-            var profile = await _context.UserProfiles
-                .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.Reference == profileRef, ct);
-
-            if (profile is not null)
-            {
-                var login = !string.IsNullOrWhiteSpace(request.SuggestedLogin)
-                    ? request.SuggestedLogin
-                    : request.Email;
-
-                var appUser = new AppUser
-                {
-                    Login       = login,
-                    CompleteName= request.Name,
-                    Email       = request.Email,
-                    IdProfile   = profile.Id,
-                    OwnerId     = _currentUser.OwnerId == Guid.Empty ? null : _currentUser.OwnerId,
-                    CreateDate  = DateTime.UtcNow
-                };
-
-                await _uow.AppUsers.AddAsync(appUser, ct);
-                _logger.LogInformation(
-                    "Usuario {Login} (perfil {Profile}) provisionado para entidad {EntityId}",
-                    login, profileRef, entity.Id);
-            }
-        }
+        // ── Provisión automática de usuario (delegada al servicio) ────────────
+        await _provisioning.ProvisionUserForEntityAsync(entity, request.SuggestedLogin, ct);
 
         await _uow.SaveChangesAsync(ct);
 

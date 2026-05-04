@@ -1,0 +1,36 @@
+@inject NavigationManager NavigationManager
+
+@if (_alreadyHere)
+{
+    @* Si ya estamos en /acceso-denegado y este componente se renderiza
+       (p.ej. desde el template NotAuthorized de AuthorizeRouteView durante
+       SSR), no navegamos otra vez para evitar bucles; mostramos el mensaje
+       inline. *@
+    <div style="max-width: 500px; margin: 100px auto; text-align: center; font-family: sans-serif;">
+        <h2>Acceso denegado</h2>
+        <p style="color: #666; margin: 20px 0;">
+            Tu cuenta se ha autenticado correctamente en el servidor de identidad,
+            pero no tienes acceso a este recurso en GreenTransit.
+        </p>
+        <p style="color: #666;">
+            Contacta con el administrador para que te asigne los permisos adecuados.
+        </p>
+        <a href="/account/logout" style="display: inline-block; margin-top: 20px; padding: 10px 24px;
+           background: #dc3545; color: white; border-radius: 6px; text-decoration: none;">
+            Cerrar sesión
+        </a>
+    </div>
+}
+
+@code {
+    private bool _alreadyHere;
+
+    protected override void OnInitialized()
+    {
+        var path = new Uri(NavigationManager.Uri).AbsolutePath;
+        _alreadyHere = path.Equals("/acceso-denegado", StringComparison.OrdinalIgnoreCase);
+
+        if (!_alreadyHere)
+            NavigationManager.NavigateTo("/acceso-denegado", forceLoad: true);
+    }
+}

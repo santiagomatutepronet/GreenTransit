@@ -1,0 +1,74 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using GreenTransit.Application.Common
+@inject NavigationManager NavigationManager
+
+@if (!_initialized)
+{
+    <div class="d-flex justify-content-center align-items-center vh-100">
+        <div class="spinner-border text-success" role="status">
+            <span class="visually-hidden">Verificando sesión…</span>
+        </div>
+    </div>
+}
+else if (_bypass)
+{
+    @ChildContent
+}
+else if (!_isAuthenticated)
+{
+    <RedirectToLogin />
+}
+else if (!_isRegistered)
+{
+    <RedirectToAccessDenied />
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Recibe el Task&lt;AuthenticationState&gt; cascado por CascadingAuthenticationState.
+    /// </summary>
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthTask { get; set; }
+
+    private bool _initialized;
+    private bool _isAuthenticated;
+    private bool _isRegistered;
+    private bool _bypass;
+
+    // Rutas que NUNCA deben pasar por el guard de "usuario registrado",
+    // para evitar bucles de redirección hacia /acceso-denegado y permitir
+    // que /account/login y /account/logout funcionen en cualquier estado.
+    private static readonly string[] BypassPaths =
+    [
+        "acceso-denegado",
+        "account/login",
+        "account/logout",
+        "signin-oidc",
+        "signout-callback-oidc"
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var relative = NavigationManager.ToBaseRelativePath(NavigationManager.Uri)
+            .TrimStart('/');
+        _bypass = BypassPaths.Any(p =>
+            relative.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+
+        if (AuthTask is not null)
+        {
+            var state = await AuthTask;
+            _isAuthenticated = state.User.Identity?.IsAuthenticated == true;
+            // La comprobación de gt_user_found se hace directamente sobre el ClaimsPrincipal,
+            // evitando el problema de RequireClaim en IAuthorizationService con
+            // páginas @rendermode InteractiveServer en Blazor SSR (.NET 10).
+            _isRegistered = state.User.FindFirst(AuthClaims.UserFound)?.Value == "true";
+        }
+        _initialized = true;
+    }
+}

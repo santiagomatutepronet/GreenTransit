@@ -63,6 +63,31 @@ else
                                 }
                             </InputSelect>
                             <FieldMessage Field="EntityRole" Errors="_validationErrors" />
+
+                            @* Mensaje informativo sobre provisión de usuario ──────── *@
+                            @if (!string.IsNullOrEmpty(_model.EntityRole))
+                            {
+                                @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is string autoProfile)
+                                {
+                                    <div class="alert alert-info py-2 px-3 mt-2 mb-0 d-flex align-items-start gap-2"
+                                         style="font-size:0.85rem;">
+                                        <i class="bi bi-person-check-fill mt-1 flex-shrink-0"></i>
+                                        <span>
+                                            Al crear esta entidad se generará automáticamente un usuario
+                                            con perfil <strong>@autoProfile</strong>.
+                                            El email de la entidad se usará como Login del usuario.
+                                        </span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="alert alert-secondary py-2 px-3 mt-2 mb-0 d-flex align-items-start gap-2"
+                                         style="font-size:0.85rem;">
+                                        <i class="bi bi-person-dash-fill mt-1 flex-shrink-0"></i>
+                                        <span>Este rol no genera un usuario de acceso al sistema.</span>
+                                    </div>
+                                }
+                            }
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Tipo de entidad</label>
@@ -170,6 +195,14 @@ else
                                        @bind-Value="_model.Email"
                                        @bind-Value:after="SuggestLogin" />
                             <FieldMessage Field="Email" Errors="_validationErrors" />
+                            @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is not null
+                                 && string.IsNullOrWhiteSpace(_model.Email))
+                            {
+                                <div class="form-text text-warning">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                    El email es obligatorio para este rol porque se creará un usuario.
+                                </div>
+                            }
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Teléfono</label>

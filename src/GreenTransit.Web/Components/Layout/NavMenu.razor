@@ -1,4 +1,9 @@
-﻿<nav class="nav-groups">
+﻿@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Authorization
+@inject ICurrentUserService CurrentUser
+
+<nav class="nav-groups">
 
     @* ── Inicio ──────────────────────────────────────────────────────────── *@
     <div class="nav-group">
@@ -9,6 +14,7 @@
     </div>
 
     @* ── Configuración ──────────────────────────────────────────────────── *@
+    @* Visible para todos los autenticados; opciones internas no varían en el menú *@
     <div class="nav-group">
         <div class="nav-group-title">
             <i class="bi bi-book-fill nav-icon"></i>
@@ -38,26 +44,52 @@
             <i class="bi bi-truck nav-icon"></i>
             <span class="nav-label">Operaciones</span>
         </div>
+
+        @* Órdenes de Servicio: todos los autenticados *@
         <NavLink class="nav-item nav-item--child" href="/service-orders">
             <i class="bi bi-clipboard2-check nav-icon"></i>
             <span class="nav-label">Órdenes de Servicio</span>
         </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/waste-moves">
-            <i class="bi bi-arrow-left-right nav-icon"></i>
-            <span class="nav-label">Traslados</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/entry-plants">
-            <i class="bi bi-box-arrow-in-down nav-icon"></i>
-            <span class="nav-label">Entradas Planta</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/entry-cacs">
-            <i class="bi bi-collection nav-icon"></i>
-            <span class="nav-label">Entradas CAC</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/treatment-plants">
-            <i class="bi bi-arrow-repeat nav-icon"></i>
-            <span class="nav-label">Tratamiento</span>
-        </NavLink>
+
+        @* Traslados: todos excepto PRODUCER (ve los suyos en reporting) *@
+        <ProfileAuthorizeView Profiles="@_profilesWasteMoves">
+            <Authorized>
+                <NavLink class="nav-item nav-item--child" href="/waste-moves">
+                    <i class="bi bi-arrow-left-right nav-icon"></i>
+                    <span class="nav-label">Traslados</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+
+        @* Entradas Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
+        <ProfileAuthorizeView Profiles="@_profilesEntryPlants">
+            <Authorized>
+                <NavLink class="nav-item nav-item--child" href="/entry-plants">
+                    <i class="bi bi-box-arrow-in-down nav-icon"></i>
+                    <span class="nav-label">Entradas Planta</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+
+        @* Entradas CAC: CAC_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
+        <ProfileAuthorizeView Profiles="@_profilesEntryCACs">
+            <Authorized>
+                <NavLink class="nav-item nav-item--child" href="/entry-cacs">
+                    <i class="bi bi-collection nav-icon"></i>
+                    <span class="nav-label">Entradas CAC</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+
+        @* Tratamiento: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
+        <ProfileAuthorizeView Profiles="@_profilesTreatments">
+            <Authorized>
+                <NavLink class="nav-item nav-item--child" href="/treatment-plants">
+                    <i class="bi bi-arrow-repeat nav-icon"></i>
+                    <span class="nav-label">Tratamiento</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
     </div>
 
     @* ── Economía (pendiente de implementar) ────────────────────────────── *@
@@ -86,30 +118,56 @@
             <i class="bi bi-tree-fill nav-icon"></i>
             <span class="nav-label">Sostenibilidad</span>
         </div>
+
+        @* Incidencias: todos los autenticados *@
         <NavLink class="nav-item nav-item--child" href="/incidents">
             <i class="bi bi-exclamation-triangle-fill nav-icon"></i>
             <span class="nav-label">Incidencias</span>
         </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/dum-zones">
-            <i class="bi bi-geo-alt-fill nav-icon"></i>
-            <span class="nav-label">Zonas DUM</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/dum-zones/simulator">
-            <i class="bi bi-geo-fill nav-icon"></i>
-            <span class="nav-label">Simulador DUM</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/emissions">
-            <i class="bi bi-cloud-haze2-fill nav-icon"></i>
-            <span class="nav-label">Emisiones</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/plant-energies">
-            <i class="bi bi-lightning-charge-fill nav-icon"></i>
-            <span class="nav-label">Energía Planta</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/emission-factor-sets">
-            <i class="bi bi-cloud-haze2-fill nav-icon"></i>
-            <span class="nav-label">Factores Emisión</span>
-        </NavLink>
+
+        @* Zonas DUM: todos excepto CAC_OP y PLANT_OP *@
+        <ProfileAuthorizeView Profiles="@_profilesDumZones">
+            <Authorized>
+                <NavLink class="nav-item nav-item--child" href="/dum-zones">
+                    <i class="bi bi-geo-alt-fill nav-icon"></i>
+                    <span class="nav-label">Zonas DUM</span>
+                </NavLink>
+                <NavLink class="nav-item nav-item--child" href="/dum-zones/simulator">
+                    <i class="bi bi-geo-fill nav-icon"></i>
+                    <span class="nav-label">Simulador DUM</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+
+        @* Emisiones: todos excepto CAC_OP *@
+        <ProfileAuthorizeView Profiles="@_profilesEmissions">
+            <Authorized>
+                <NavLink class="nav-item nav-item--child" href="/emissions">
+                    <i class="bi bi-cloud-haze2-fill nav-icon"></i>
+                    <span class="nav-label">Emisiones</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+
+        @* Energía Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
+        <ProfileAuthorizeView Profiles="@_profilesPlantEnergy">
+            <Authorized>
+                <NavLink class="nav-item nav-item--child" href="/plant-energies">
+                    <i class="bi bi-lightning-charge-fill nav-icon"></i>
+                    <span class="nav-label">Energía Planta</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+
+        @* Factores de Emisión: ADMIN, SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE *@
+        <ProfileAuthorizeView Profiles="@_profilesEmissionFactors">
+            <Authorized>
+                <NavLink class="nav-item nav-item--child" href="/emission-factor-sets">
+                    <i class="bi bi-cloud-haze2-fill nav-icon"></i>
+                    <span class="nav-label">Factores Emisión</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
     </div>
 
     @* ── Reporting ──────────────────────────────────────────────────────── *@
@@ -118,6 +176,8 @@
             <i class="bi bi-bar-chart-fill nav-icon"></i>
             <span class="nav-label">Reporting</span>
         </div>
+
+        @* Trazabilidad y Vista 360°: todos los autenticados *@
         <NavLink class="nav-item nav-item--child" href="/traceability">
             <i class="bi bi-diagram-3-fill nav-icon"></i>
             <span class="nav-label">Trazabilidad</span>
@@ -126,31 +186,119 @@
             <i class="bi bi-search-heart nav-icon"></i>
             <span class="nav-label">Vista 360º Traslado</span>
         </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/kpis">
-            <i class="bi bi-graph-up-arrow nav-icon"></i>
-            <span class="nav-label">KPIs</span>
-        </NavLink>
+
+        @* KPIs: SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN *@
+        <ProfileAuthorizeView Profiles="@_profilesKPIs">
+            <Authorized>
+                <NavLink class="nav-item nav-item--child" href="/kpis">
+                    <i class="bi bi-graph-up-arrow nav-icon"></i>
+                    <span class="nav-label">KPIs</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+
+        @* Documentos: todos los autenticados *@
         <NavLink class="nav-item nav-item--child" href="/documents">
             <i class="bi bi-folder2-open nav-icon"></i>
             <span class="nav-label">Documentos</span>
         </NavLink>
     </div>
 
-    @* ── Seguridad ──────────────────────────────────────────────────────── *@
-    <div class="nav-group">
-        <div class="nav-group-title">
-            <i class="bi bi-shield-lock-fill nav-icon"></i>
-            <span class="nav-label">Seguridad</span>
-        </div>
-        <NavLink class="nav-item nav-item--child" href="/users">
-            <i class="bi bi-people-fill nav-icon"></i>
-            <span class="nav-label">Usuarios</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/profiles">
-            <i class="bi bi-person-badge-fill nav-icon"></i>
-            <span class="nav-label">Perfiles</span>
-        </NavLink>
-    </div>
+    @* ── Seguridad: solo ADMIN y SCRAP ──────────────────────────────────── *@
+    <ProfileAuthorizeView Profiles="@_profilesSecurity">
+        <Authorized>
+            <div class="nav-group">
+                <div class="nav-group-title">
+                    <i class="bi bi-shield-lock-fill nav-icon"></i>
+                    <span class="nav-label">Seguridad</span>
+                </div>
+                <NavLink class="nav-item nav-item--child" href="/users">
+                    <i class="bi bi-people-fill nav-icon"></i>
+                    <span class="nav-label">Usuarios</span>
+                </NavLink>
+                <NavLink class="nav-item nav-item--child" href="/profiles">
+                    <i class="bi bi-person-badge-fill nav-icon"></i>
+                    <span class="nav-label">Perfiles</span>
+                </NavLink>
+            </div>
+        </Authorized>
+    </ProfileAuthorizeView>
 
 </nav>
 
+@code {
+    // Perfiles permitidos para cada sección del menú.
+    // Se definen aquí para evitar new[] inline en el markup y facilitar el mantenimiento.
+
+    // Traslados: todos excepto PRODUCER
+    private static readonly string[] _profilesWasteMoves =
+    [
+        ProfileConstants.Carrier, ProfileConstants.Scrap, ProfileConstants.PlantOp,
+        ProfileConstants.CacOp,   ProfileConstants.PublicEnt, ProfileConstants.Coordinator,
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Entradas Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE
+    private static readonly string[] _profilesEntryPlants =
+    [
+        ProfileConstants.PlantOp, ProfileConstants.Admin, ProfileConstants.Scrap,
+        ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
+    ];
+
+    // Entradas CAC: CAC_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE
+    private static readonly string[] _profilesEntryCACs =
+    [
+        ProfileConstants.CacOp, ProfileConstants.Admin, ProfileConstants.Scrap,
+        ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
+    ];
+
+    // Tratamiento: igual que Entradas Planta
+    private static readonly string[] _profilesTreatments =
+    [
+        ProfileConstants.PlantOp, ProfileConstants.Admin, ProfileConstants.Scrap,
+        ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
+    ];
+
+    // Zonas DUM: todos excepto CAC_OP y PLANT_OP
+    private static readonly string[] _profilesDumZones =
+    [
+        ProfileConstants.Producer, ProfileConstants.Carrier, ProfileConstants.Scrap,
+        ProfileConstants.PublicEnt, ProfileConstants.Coordinator,
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Emisiones: todos excepto CAC_OP
+    private static readonly string[] _profilesEmissions =
+    [
+        ProfileConstants.Producer, ProfileConstants.Carrier, ProfileConstants.Scrap,
+        ProfileConstants.PlantOp, ProfileConstants.PublicEnt, ProfileConstants.Coordinator,
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Energía Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE
+    private static readonly string[] _profilesPlantEnergy =
+    [
+        ProfileConstants.PlantOp, ProfileConstants.Admin, ProfileConstants.Scrap,
+        ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
+    ];
+
+    // Factores de Emisión: ADMIN, SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE
+    private static readonly string[] _profilesEmissionFactors =
+    [
+        ProfileConstants.Admin, ProfileConstants.Scrap, ProfileConstants.PublicEnt,
+        ProfileConstants.PlantOp, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
+    ];
+
+    // KPIs: SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN
+    private static readonly string[] _profilesKPIs =
+    [
+        ProfileConstants.Scrap, ProfileConstants.PublicEnt, ProfileConstants.PlantOp,
+        ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Seguridad: solo ADMIN y SCRAP
+    private static readonly string[] _profilesSecurity =
+    [
+        ProfileConstants.Admin, ProfileConstants.Scrap
+    ];
+}

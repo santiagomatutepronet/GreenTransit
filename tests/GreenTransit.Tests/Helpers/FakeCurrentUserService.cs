@@ -22,8 +22,17 @@ public sealed class FakeCurrentUserService : ICurrentUserService
 
     public bool IsAuthenticated => true;
     public int IdUser           => 1;
-    public Guid OwnerId         { get; }
+    public string Login         => "test@greentransit.dev";
     public string Email         => "test@greentransit.dev";
     public string UserName      => "Test User";
+    public Guid OwnerId         { get; }
+    public int ProfileId        => 1;
     public string UserProfile   { get; }
+    public Guid? LinkedEntityId => null;
+
+    public bool IsInProfile(string profileRef) =>
+        string.Equals(UserProfile, profileRef, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsInAnyProfile(params string[] profileRefs) =>
+        profileRefs.Any(p => string.Equals(UserProfile, p, StringComparison.OrdinalIgnoreCase));
 }

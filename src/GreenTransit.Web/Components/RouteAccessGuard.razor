@@ -1,0 +1,113 @@
+@using System.Reflection
+@using System.Security.Claims
+@using GreenTransit.Application.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IAuthorizationService AuthorizationService
+@inject ILogger<RouteAccessGuard> Logger
+
+@if (!_initialized)
+{
+    <div class="d-flex justify-content-center align-items-center vh-100">
+        <div class="spinner-border text-success" role="status">
+            <span class="visually-hidden">Verificando acceso…</span>
+        </div>
+    </div>
+}
+else if (_allow)
+{
+    <RouteView RouteData="RouteData" DefaultLayout="typeof(Layout.MainLayout)" />
+}
+else if (!_isAuthenticated)
+{
+    <RedirectToLogin />
+}
+else
+{
+    <RedirectToAccessDenied />
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public RouteData RouteData { get; set; } = default!;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthTask { get; set; }
+
+    private bool _initialized;
+    private bool _allow;
+    private bool _isAuthenticated;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _initialized = false;
+        _allow = false;
+        _isAuthenticated = false;
+
+        var pageType = RouteData.PageType;
+
+        if (pageType.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true).Any())
+        {
+            _allow = true;
+            _initialized = true;
+            return;
+        }
+
+        var state = AuthTask is not null ? await AuthTask : null;
+        var user = state?.User;
+        _isAuthenticated = user?.Identity?.IsAuthenticated == true;
+
+        if (!_isAuthenticated)
+        {
+            _initialized = true;
+            return;
+        }
+
+        if (user?.HasClaim(AuthClaims.UserFound, "true") != true)
+        {
+            Logger.LogWarning(
+                "Acceso denegado a {Page}: usuario autenticado sin claim {Claim}=true",
+                pageType.FullName, AuthClaims.UserFound);
+            _initialized = true;
+            return;
+        }
+
+        var authorizeAttributes = pageType
+            .GetCustomAttributes<AuthorizeAttribute>(inherit: true)
+            .ToArray();
+
+        foreach (var authorize in authorizeAttributes)
+        {
+            if (!string.IsNullOrWhiteSpace(authorize.Roles) && !IsInAnyRole(user!, authorize.Roles))
+            {
+                Logger.LogWarning(
+                    "Acceso denegado a {Page}: roles requeridos {Roles}",
+                    pageType.FullName, authorize.Roles);
+                _initialized = true;
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(authorize.Policy))
+            {
+                var result = await AuthorizationService.AuthorizeAsync(user!, authorize.Policy);
+                if (!result.Succeeded)
+                {
+                    Logger.LogWarning(
+                        "Acceso denegado a {Page}: policy {Policy} no superada",
+                        pageType.FullName, authorize.Policy);
+                    _initialized = true;
+                    return;
+                }
+            }
+        }
+
+        _allow = true;
+        _initialized = true;
+    }
+
+    private static bool IsInAnyRole(ClaimsPrincipal user, string roles)
+    {
+        return roles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(user.IsInRole);
+    }
+}

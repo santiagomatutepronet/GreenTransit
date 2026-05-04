@@ -9,8 +9,25 @@ namespace GreenTransit.Application.Common.Interfaces;
 public interface IUserRepository
 {
     /// <summary>
-    /// Busca un usuario por su Login (claim 'sub' del proveedor OIDC).
-    /// Devuelve null si el usuario no existe en la base de datos.
+    /// Busca un usuario (incluyendo su perfil) por Login.
+    /// Devuelve null si el usuario no existe.
     /// </summary>
     Task<AppUser?> FindByLoginAsync(string login, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Busca un usuario (incluyendo su perfil) por Email.
+    /// Devuelve null si el usuario no existe.
+    /// </summary>
+    Task<AppUser?> FindByEmailAsync(string email, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Busca el Id de la entidad activa (Entities) cuyo Email coincide con el email del usuario.
+    /// Devuelve null si no existe entidad vinculada.
+    /// </summary>
+    Task<Guid?> FindEntityIdByEmailAsync(string email, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Devuelve una lista de cadenas "Login|Email" de los primeros 10 usuarios para diagnóstico.
+    /// </summary>
+    Task<IEnumerable<string>> GetAllLoginsAsync(CancellationToken cancellationToken = default);
 }
