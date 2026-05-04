@@ -1,0 +1,488 @@
+@page "/plant-energies"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.PlantEnergies.DTOs
+@using GreenTransit.Application.Features.PlantEnergies.Queries
+@using GreenTransit.Application.Features.PlantEnergies.Commands
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator                                          Mediator
+@inject GreenTransit.Application.Common.Interfaces.ICurrentUserService CurrentUser
+
+<PageTitle>Energía de Planta</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-lightning-charge-fill me-2 text-warning"></i>Consumo Energético de Planta
+        </h1>
+        <p class="page-subtitle text-muted small mb-0">
+            Registro mensual de consumo eléctrico y cálculo de huella CO₂ (Scope 2)
+        </p>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-4">
+                <label class="form-label form-label-sm mb-1">Código NIMA (planta)</label>
+                <input class="form-control form-control-sm"
+                       placeholder="Ej. 0800123456"
+                       @bind="_filterCode" @bind:event="oninput" />
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1">Año</label>
+                <select class="form-select form-select-sm" @bind="_filterYear">
+                    <option value="0">— Todos —</option>
+                    @foreach (var y in _availableYears)
+                    {
+                        <option value="@y">@y</option>
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1">Mes</label>
+                <select class="form-select form-select-sm" @bind="_filterMonth">
+                    <option value="0">— Todos —</option>
+                    @for (int m = 1; m <= 12; m++)
+                    {
+                        var mes = m;
+                        <option value="@mes">@MonthName(mes)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary btn-sm" @onclick="LoadDataAsync">
+                    <i class="bi bi-search me-1"></i>Filtrar
+                </button>
+            </div>
+            @if (_isAdmin || _isPlantOp)
+            {
+                <div class="col-auto ms-auto">
+                    <button class="btn btn-success btn-sm" @onclick="() => OpenForm(null)">
+                        <i class="bi bi-plus-lg me-1"></i>Registrar consumo
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Resumen anual (si se filtra por planta + año) ────────────────────────── *@
+@if (_summary is not null)
+{
+    <div class="card mb-3 border-warning">
+        <div class="card-header bg-warning-subtle py-2 d-flex justify-content-between align-items-center">
+            <span class="fw-semibold small">
+                <i class="bi bi-bar-chart-fill me-1"></i>
+                Resumen anual @_summary.Year — @_summary.PlantCenterCode
+            </span>
+            <span class="text-muted small">
+                Factor red: @_summary.GridEmissionFactor.ToString("F3") kgCO₂e/kWh
+            </span>
+        </div>
+        <div class="card-body p-2">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered text-center mb-0" style="font-size:.8rem;">
+                    <thead class="table-light">
+                        <tr>
+                            @for (int m = 1; m <= 12; m++)
+                            {
+                                <th>@MonthShort(m)</th>
+                            }
+                            <th class="table-warning fw-bold">Total</th>
+                            <th class="table-danger fw-bold">CO₂e (kg)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            @for (int m = 0; m < 12; m++)
+                            {
+                                var val = _summary.MonthlyKwh[m];
+                                <td class="@(val.HasValue ? "" : "text-muted")">
+                                    @(val.HasValue ? val.Value.ToString("N0") : "—")
+                                </td>
+                            }
+                            <td class="fw-bold table-warning">@_summary.TotalKwhYear.ToString("N0")</td>
+                            <td class="fw-bold table-danger">@_summary.TotalCO2eKg.ToString("N1")</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Tabla de registros ───────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-warning" role="status">
+            <span class="visually-hidden">Cargando…</span>
+        </div>
+    </div>
+}
+else if (_records.Count == 0)
+{
+    <div class="alert alert-light text-center">Sin registros para los filtros seleccionados.</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Planta</th>
+                            <th>NIMA</th>
+                            <th>Año</th>
+                            <th>Mes</th>
+                            <th class="text-end">kWh</th>
+                            <th>Fuente</th>
+                            <th>Grid Mix</th>
+                            <th>Notas</th>
+                            @if (_isAdmin || _isPlantOp)
+                            {
+                                <th></th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _records)
+                        {
+                            <tr>
+                                <td class="small">@r.PlantName</td>
+                                <td class="small text-muted">@r.PlantCenterCode</td>
+                                <td class="small">@r.Year</td>
+                                <td class="small">@(r.Month.HasValue ? MonthName(r.Month.Value) : "—")</td>
+                                <td class="text-end small fw-semibold">@r.KwhTotal.ToString("N0")</td>
+                                <td class="small text-muted">@r.Source</td>
+                                <td class="small text-muted">@r.GridMixRef</td>
+                                <td class="small text-muted text-truncate" style="max-width:180px;" title="@r.Notes">@r.Notes</td>
+                                @if (_isAdmin || _isPlantOp)
+                                {
+                                    <td>
+                                        <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                                                @onclick="() => OpenForm(r)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer py-1 text-muted small">
+            @_records.Count registro(s)
+        </div>
+    </div>
+}
+
+@* ── Modal de formulario ──────────────────────────────────────────────────── *@
+@if (_showForm)
+{
+    <div class="modal-backdrop" style="display:flex; align-items:center; justify-content:center;">
+        <div class="modal" style="max-width:540px; width:100%;">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-lightning-charge me-2"></i>
+                    @(_editingRecord is null ? "Registrar consumo" : "Editar consumo")
+                </h5>
+                <button type="button" class="btn-close" @onclick="CloseForm"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-12 col-md-8">
+                        <label class="form-label form-label-sm">Planta *</label>
+                        <select class="form-select form-select-sm" @bind="_form.SelectedEntityId"
+                                @bind:after="OnPlantSelected">
+                            <option value="">— Seleccionar planta —</option>
+                            @foreach (var p in _plantEntities)
+                            {
+                                <option value="@p.Id">@p.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label form-label-sm">Código NIMA</label>
+                        <input class="form-control form-control-sm" readonly
+                               value="@_form.PlantCenterCode"
+                               placeholder="Auto" />
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label form-label-sm">Año *</label>
+                        <input type="number" class="form-control form-control-sm"
+                               @bind="_form.Year" min="2000" max="2100" />
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label form-label-sm">Mes *</label>
+                        <select class="form-select form-select-sm" @bind="_form.Month">
+                            @for (int m = 1; m <= 12; m++)
+                            {
+                                var mes = m;
+                                <option value="@mes">@MonthName(mes)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label form-label-sm">kWh Total *</label>
+                        <input type="number" class="form-control form-control-sm"
+                               @bind="_form.KwhTotal" min="0" step="0.01" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label form-label-sm">Fuente</label>
+                        <input class="form-control form-control-sm"
+                               placeholder="Ej. Factura eléctrica"
+                               @bind="_form.Source" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label form-label-sm">Grid Mix Ref.</label>
+                        <input class="form-control form-control-sm"
+                               placeholder="Ej. REE 2024"
+                               @bind="_form.GridMixRef" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label form-label-sm">Método de asignación</label>
+                        <input class="form-control form-control-sm" @bind="_form.AllocationMethod" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label form-label-sm">Notas</label>
+                        <textarea class="form-control form-control-sm" rows="2"
+                                  @bind="_form.Notes"></textarea>
+                    </div>
+                </div>
+                @if (_formError is not null)
+                {
+                    <div class="alert alert-danger mt-3 py-1 small">@_formError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" @onclick="CloseForm">Cancelar</button>
+                <button class="btn btn-success btn-sm" @onclick="SaveFormAsync"
+                        disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private List<PlantEnergyDto>    _records  = [];
+    private PlantEnergySummaryDto?  _summary;
+    private bool                    _loading  = true;
+    private bool                    _isAdmin;
+    private bool                    _isPlantOp;
+
+    // Filtros
+    private string  _filterCode  = "";
+    private int     _filterYear  = DateTime.UtcNow.Year;
+    private int     _filterMonth = 0;
+    private IReadOnlyList<int> _availableYears =
+        Enumerable.Range(DateTime.UtcNow.Year - 5, 8).Reverse().ToList();
+
+    // Selector de plantas
+    private IReadOnlyList<EntitySelectorDto> _plantEntities = [];
+
+    // Formulario
+    private bool             _showForm;
+    private bool             _saving;
+    private string?          _formError;
+    private PlantEnergyDto?  _editingRecord;
+    private PlantEnergyFormModel _form = new();
+
+    // ── Ciclo de vida ─────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        _isAdmin   = CurrentUser.UserProfile == "ADMIN";
+        _isPlantOp = CurrentUser.UserProfile is "ADMIN" or "PLANT_OP";
+        _plantEntities = await Mediator.Send(new GetEntitiesForSelectorQuery(["Plant"]));
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _summary = null;
+
+        var q = new GetPlantEnergiesQuery(
+            PlantCenterCode: string.IsNullOrWhiteSpace(_filterCode) ? null : _filterCode,
+            Year:            _filterYear  > 0 ? _filterYear  : null,
+            Month:           _filterMonth > 0 ? _filterMonth : null);
+
+        _records = [.. await Mediator.Send(q)];
+
+        // Si se filtra por planta + año cargamos el resumen anual
+        if (!string.IsNullOrWhiteSpace(_filterCode) && _filterYear > 0)
+        {
+            _summary = await Mediator.Send(
+                new GetPlantEnergySummaryQuery(_filterCode, _filterYear));
+        }
+
+        _loading = false;
+    }
+
+    // ── Formulario ────────────────────────────────────────────────────────────
+    private void OpenForm(PlantEnergyDto? record)
+    {
+        _editingRecord = record;
+        _formError     = null;
+        if (record is null)
+        {
+            _form = new PlantEnergyFormModel
+            {
+                PlantCenterCode = _filterCode,
+                Year            = _filterYear  > 0 ? _filterYear  : DateTime.UtcNow.Year,
+                Month           = _filterMonth > 0 ? _filterMonth : DateTime.UtcNow.Month
+            };
+            // Preseleccionar planta si el filtro coincide con una entidad conocida
+            var preselect = _plantEntities.FirstOrDefault(
+                p => p.CenterCode == _filterCode || p.Name == _filterCode);
+            if (preselect is not null)
+            {
+                _form.SelectedEntityId  = preselect.Id.ToString();
+                _form.PlantName         = preselect.Name;
+                _form.PlantCenterCode   = preselect.CenterCode ?? "";
+            }
+        }
+        else
+        {
+            var matched = _plantEntities.FirstOrDefault(
+                p => p.CenterCode == record.PlantCenterCode || p.Name == record.PlantName);
+            _form = new PlantEnergyFormModel
+            {
+                SelectedEntityId = matched?.Id.ToString() ?? "",
+                PlantName        = record.PlantName,
+                PlantCenterCode  = record.PlantCenterCode ?? "",
+                Year             = record.Year,
+                Month            = record.Month ?? DateTime.UtcNow.Month,
+                KwhTotal         = record.KwhTotal,
+                Source           = record.Source,
+                GridMixRef       = record.GridMixRef,
+                AllocationMethod = record.AllocationMethod,
+                Notes            = record.Notes
+            };
+        }
+        _showForm = true;
+    }
+
+    private void CloseForm()
+    {
+        _showForm      = false;
+        _editingRecord = null;
+        _formError     = null;
+    }
+
+    private void OnPlantSelected()
+    {
+        if (Guid.TryParse(_form.SelectedEntityId, out var id))
+        {
+            var entity = _plantEntities.FirstOrDefault(p => p.Id == id);
+            if (entity is not null)
+            {
+                _form.PlantName        = entity.Name;
+                _form.PlantCenterCode  = entity.CenterCode ?? "";
+            }
+        }
+        else
+        {
+            _form.PlantName       = "";
+            _form.PlantCenterCode = "";
+        }
+    }
+
+    private async Task SaveFormAsync()
+    {
+        _saving    = true;
+        _formError = null;
+        try
+        {
+            if (_editingRecord is null)
+            {
+                await Mediator.Send(new CreatePlantEnergyCommand(
+                    _form.PlantName,
+                    _form.PlantCenterCode,
+                    _form.Year,
+                    _form.Month,
+                    _form.KwhTotal,
+                    _form.Source,
+                    _form.GridMixRef,
+                    _form.AllocationMethod,
+                    _form.Notes));
+            }
+            else
+            {
+                await Mediator.Send(new UpdatePlantEnergyCommand(
+                    _editingRecord.Id,
+                    _form.PlantName,
+                    _form.PlantCenterCode,
+                    _form.Year,
+                    _form.Month,
+                    _form.KwhTotal,
+                    _form.Source,
+                    _form.GridMixRef,
+                    _form.AllocationMethod,
+                    _form.Notes));
+            }
+
+            CloseForm();
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static string MonthName(int m) => m switch
+    {
+        1  => "Enero",    2  => "Febrero",   3  => "Marzo",
+        4  => "Abril",    5  => "Mayo",      6  => "Junio",
+        7  => "Julio",    8  => "Agosto",    9  => "Septiembre",
+        10 => "Octubre",  11 => "Noviembre", 12 => "Diciembre",
+        _  => m.ToString()
+    };
+
+    private static string MonthShort(int m) => m switch
+    {
+        1  => "Ene", 2  => "Feb", 3  => "Mar", 4  => "Abr",
+        5  => "May", 6  => "Jun", 7  => "Jul", 8  => "Ago",
+        9  => "Sep", 10 => "Oct", 11 => "Nov", 12 => "Dic",
+        _  => m.ToString()
+    };
+
+    // ── Modelo formulario interno ─────────────────────────────────────────────
+    private sealed class PlantEnergyFormModel
+    {
+        public string   SelectedEntityId { get; set; } = "";
+        public string   PlantName        { get; set; } = "";
+        public string   PlantCenterCode  { get; set; } = "";
+        public int      Year             { get; set; } = DateTime.UtcNow.Year;
+        public int      Month            { get; set; } = DateTime.UtcNow.Month;
+        public decimal  KwhTotal         { get; set; }
+        public string?  Source           { get; set; }
+        public string?  GridMixRef       { get; set; }
+        public string?  AllocationMethod { get; set; }
+        public string?  Notes            { get; set; }
+    }
+}

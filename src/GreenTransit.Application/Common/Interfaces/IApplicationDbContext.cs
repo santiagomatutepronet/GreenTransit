@@ -53,6 +53,7 @@ public interface IApplicationDbContext
     DbSet<Incident> Incidents { get; }
     DbSet<DumZone> DumZones { get; }
     DbSet<DumRestrictionRule> DumRestrictionRules { get; }
+    DbSet<RegulatoryTarget> RegulatoryTargets { get; }
 
     // ── Geografía ─────────────────────────────────────────────────────────────
     DbSet<Country>              Countries              { get; }

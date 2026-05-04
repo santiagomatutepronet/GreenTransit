@@ -1,0 +1,336 @@
+@page "/kpis"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Reporting.DTOs
+@using GreenTransit.Application.Features.Reporting.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using ApexCharts
+
+@inject IMediator    Mediator
+@inject IJSRuntime   JS
+
+<PageTitle>KPIs Regulatorios</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-graph-up-arrow me-2 text-success"></i>KPIs Regulatorios
+        </h1>
+        <p class="page-subtitle text-muted small mb-0">
+            Tasas de reciclaje, reutilización, intensidad CO₂ y cumplimiento de cuotas
+        </p>
+    </div>
+    @if (_dto is not null)
+    {
+        <div class="page-header-actions">
+            <button class="btn btn-success btn-sm" @onclick="ExportXlsxAsync" disabled="@_exporting">
+                @if (_exporting)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-file-earmark-excel me-1"></i>
+                }
+                Exportar XLSX
+            </button>
+        </div>
+    }
+</div>
+
+@* ── Filtros ────────────────────────────────────────────────────────────────── *@
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small fw-semibold">Año *</label>
+                <input type="number" class="form-control form-control-sm"
+                       @bind="_year" min="2020" max="2099" />
+            </div>
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small fw-semibold">Trimestre</label>
+                <select class="form-select form-select-sm" @bind="_quarterStr">
+                    <option value="">Anual</option>
+                    <option value="1">Q1 (Ene–Mar)</option>
+                    <option value="2">Q2 (Abr–Jun)</option>
+                    <option value="3">Q3 (Jul–Sep)</option>
+                    <option value="4">Q4 (Oct–Dic)</option>
+                </select>
+            </div>
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small fw-semibold">CCAA</label>
+                <input type="text" class="form-control form-control-sm"
+                       placeholder="Ej. Cataluña" @bind="_autonomousCommunity" />
+            </div>
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small fw-semibold">Categoría</label>
+                <input type="text" class="form-control form-control-sm"
+                       placeholder="Ej. RAEE" @bind="_category" />
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary btn-sm w-100" @onclick="LoadAsync">
+                    <i class="bi bi-search me-1"></i>Calcular
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success"></div>
+        <p class="text-muted mt-2">Calculando KPIs…</p>
+    </div>
+}
+else if (_dto is not null)
+{
+    @* ── Cards de KPI ──────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            @{
+                var recOk = _dto.RecyclingRatePercent >= _dto.MinRecyclingPercent;
+            }
+            <div class="card h-100 border-@(recOk ? "success" : "danger")">
+                <div class="card-body text-center">
+                    <i class="bi bi-recycle fs-2 text-@(recOk ? "success" : "danger")"></i>
+                    <h6 class="card-title mt-2 mb-0 text-muted small">Tasa de Reciclaje</h6>
+                    <p class="fs-2 fw-bold mb-0 text-@(recOk ? "success" : "danger")">
+                        @_dto.RecyclingRatePercent.ToString("N1") %
+                    </p>
+                    <small class="text-muted">Objetivo: ≥ @_dto.MinRecyclingPercent.ToString("N1") %
+                        <i class="bi bi-@(recOk ? "check-circle-fill text-success" : "x-circle-fill text-danger")"></i>
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-xl-3">
+            @{
+                var reuOk = _dto.ReusePreparationPercent >= _dto.MinReusePercent;
+            }
+            <div class="card h-100 border-@(reuOk ? "success" : "danger")">
+                <div class="card-body text-center">
+                    <i class="bi bi-arrow-repeat fs-2 text-@(reuOk ? "success" : "danger")"></i>
+                    <h6 class="card-title mt-2 mb-0 text-muted small">Preparación Reutilización</h6>
+                    <p class="fs-2 fw-bold mb-0 text-@(reuOk ? "success" : "danger")">
+                        @_dto.ReusePreparationPercent.ToString("N1") %
+                    </p>
+                    <small class="text-muted">Objetivo: ≥ @_dto.MinReusePercent.ToString("N1") %
+                        <i class="bi bi-@(reuOk ? "check-circle-fill text-success" : "x-circle-fill text-danger")"></i>
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-cloud-haze2-fill fs-2 text-secondary"></i>
+                    <h6 class="card-title mt-2 mb-0 text-muted small">Intensidad CO₂</h6>
+                    <p class="fs-2 fw-bold mb-0">@_dto.CO2IntensityKgPerTon.ToString("N2")</p>
+                    <small class="text-muted">kgCO₂e / ton</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-box-seam fs-2 text-primary"></i>
+                    <h6 class="card-title mt-2 mb-0 text-muted small">Total Tratado</h6>
+                    <p class="fs-2 fw-bold mb-0">@(_dto.TotalWeightKg / 1000m).ToString("N1") t</p>
+                    <small class="text-muted">@_dto.TotalTransportsCount traslados clasificados</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Gráfico histórico trimestral ───────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-bar-chart-line me-1 text-success"></i>Evolución trimestral @_dto.Year
+        </div>
+        <div class="card-body">
+            <ApexChart TItem="QuarterlyKpiDto"
+                       Title=""
+                       Options="_chartOptions"
+                       @ref="_chart">
+                <ApexPointSeries TItem="QuarterlyKpiDto"
+                                 Items="_dto.ByQuarter"
+                                 Name="Tasa Reciclaje (%)"
+                                 SeriesType="SeriesType.Line"
+                                 XValue="@(q => $"Q{q.Quarter}")"
+                                 YValue="@(q => (decimal)q.RecyclingRatePercent)" />
+                <ApexPointSeries TItem="QuarterlyKpiDto"
+                                 Items="_dto.ByQuarter"
+                                 Name="Tasa Reutilización (%)"
+                                 SeriesType="SeriesType.Line"
+                                 XValue="@(q => $"Q{q.Quarter}")"
+                                 YValue="@(q => (decimal)q.ReusePreparationPercent)" />
+                <ApexPointSeries TItem="QuarterlyKpiDto"
+                                 Items="_dto.ByQuarter"
+                                 Name="Total (miles kg)"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(q => $"Q{q.Quarter}")"
+                                 YValue="@(q => q.TotalWeightKg / 1000m)" />
+            </ApexChart>
+        </div>
+    </div>
+
+    @* ── Tabla cumplimiento MarketShares ────────────────────────────────────── *@
+    @if (_dto.MarketShareComplianceList.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-pie-chart-fill me-1 text-warning"></i>Cumplimiento de Cuotas de Mercado
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Categoría</th>
+                            <th>CCAA</th>
+                            <th class="text-end">Objetivo (kg)</th>
+                            <th class="text-end">Real (kg)</th>
+                            <th class="text-end">Cumplimiento</th>
+                            <th class="text-center">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var ms in _dto.MarketShareComplianceList)
+                        {
+                            var ok = ms.CompliancePercent >= 100;
+                            <tr>
+                                <td>@ms.Category</td>
+                                <td>@(ms.AutonomousCommunity ?? "—")</td>
+                                <td class="text-end">@ms.TargetKg.ToString("N0")</td>
+                                <td class="text-end">@ms.ActualKg.ToString("N0")</td>
+                                <td class="text-end fw-semibold text-@(ok ? "success" : "danger")">
+                                    @ms.CompliancePercent.ToString("N1") %
+                                </td>
+                                <td class="text-center">
+                                    @if (ok)
+                                    {
+                                        <span class="badge bg-success"><i class="bi bi-check-lg"></i> Cumple</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger"><i class="bi bi-x-lg"></i> Déficit</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    @* ── Tabla desglose por categoría ───────────────────────────────────────── *@
+    @if (_dto.ByCategory.Any())
+    {
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-table me-1 text-primary"></i>Desglose por Categoría de Residuo
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Categoría</th>
+                            <th class="text-end">Total (kg)</th>
+                            <th class="text-end">Tasa Reciclaje</th>
+                            <th class="text-end">Tasa Reutilización</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cat in _dto.ByCategory)
+                        {
+                            <tr>
+                                <td>@cat.Category</td>
+                                <td class="text-end">@cat.TotalWeightKg.ToString("N0")</td>
+                                <td class="text-end">@cat.RecyclingRatePercent.ToString("N1") %</td>
+                                <td class="text-end">@cat.ReusePreparationPercent.ToString("N1") %</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+else if (_searched)
+{
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-1"></i>
+        No se encontraron datos de tratamiento para el periodo seleccionado.
+    </div>
+}
+
+@code {
+    private int     _year                = DateTime.UtcNow.Year;
+    private string? _quarterStr;
+    private string? _autonomousCommunity;
+    private string? _category;
+
+    private int? _quarter => int.TryParse(_quarterStr, out var q) ? q : null;
+
+    private RegulatoryKpisDto?  _dto;
+    private bool                _loading;
+    private bool                _searched;
+    private bool                _exporting;
+
+    private ApexChart<QuarterlyKpiDto>? _chart;
+
+    private ApexChartOptions<QuarterlyKpiDto> _chartOptions = new()
+    {
+        Chart  = new Chart  { Height = 280, Toolbar = new Toolbar { Show = false } },
+        Stroke = new Stroke { Curve   = Curve.Smooth, Width = [3, 3, 0] },
+        Colors = ["#2E7D32", "#1565C0", "#FFA726"],
+        Yaxis  = [new YAxis { Labels = new YAxisLabels { Formatter = "function(v){return v.toFixed(1)}" } }],
+        Theme  = new Theme { Mode = Mode.Light }
+    };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading  = true;
+        _searched = true;
+        _dto      = null;
+
+        try
+        {
+            var result = await Mediator.Send(new GetRegulatoryKpisQuery(
+                _year, _quarter, null, _autonomousCommunity, _category));
+
+            _dto = result;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ExportXlsxAsync()
+    {
+        _exporting = true;
+        try
+        {
+            var result = await Mediator.Send(new ExportKpisToExcelQuery(
+                _year, _quarter, null, _autonomousCommunity, _category));
+
+            await JS.InvokeVoidAsync("downloadBase64File",
+                Convert.ToBase64String(result.Content),
+                result.ContentType,
+                result.FileName);
+        }
+        finally
+        {
+            _exporting = false;
+        }
+    }
+}

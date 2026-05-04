@@ -62,7 +62,7 @@ Reglas de transición (claves):
 ### 0.2. Navegación y UX global
 
 - **Layout**: sidebar colapsable + topbar con selector de `OwnerId` (para admins multi-tenant), buscador global y notificaciones.
-- **Buscador global**: busca por `ServiceOrderNumber`, `WasteMoveReference`, `TicketScale`, `DINumber`, `NTNumber`, `AgreementNumber`, `Entities.Name` / `NationalId` / `CenterCode`.
+- **Buscador global**: busca por `ServiceOrderNumber`, `WasteMoveReference`, `TicketScale`, `DINumber`, `NTNumber`, `AgreementNumber`, `Entities.Name` / `NationalId` / `CenterCode`. ✅ IMPLEMENTADO — `Application/Features/Search/Queries/GlobalSearchQuery.cs` + `Web/Components/Shared/GlobalSearchBar.razor` integrado en el Topbar de `MainLayout.razor`. Debounce 300 ms, navegación por teclado (↑↓ + Enter + Escape), resultados agrupados por tipo con ícono diferenciador.
 - **Stepper de traslado**: componente visual que muestra en qué estado está cada `WasteMove` y cuáles son los siguientes pasos permitidos.
 - **Notificaciones en tiempo real**: cambios de estado, incidencias críticas, liquidaciones a validar.
 - **Modo oscuro / claro** y diseño responsive mobile-first (clave para operadores de campo en planta/CAC/transporte).
@@ -415,12 +415,18 @@ Reglas de transición (claves):
 
 ## 5. 📈 Módulo de Reporting, Trazabilidad y Data Space
 
-### 5.1. Trazabilidad end-to-end del residuo
+### 5.1. Trazabilidad end-to-end del residuo ✅ IMPLEMENTADO
 
-- **Lógica**: dado un `IdResidue` o un `LERCode`, recuperar cadena completa: productor → SO → WasteMove → CAC → planta → fracciones de tratamiento.
-- **Funciones**: buscador por `DINumber`, `NTNumber`, `TicketScale`, `WasteMoveReference`; exportar expediente en PDF/XML.
+- **Lógica**: dado un `DINumber`, `NTNumber`, `TicketScale` o `WasteMoveReference`, recupera la cadena completa: SO → WasteMove → CAC → planta → fracciones de tratamiento → liquidaciones → incidencias → huella CO₂.
+- **Archivos implementados**:
+  - `Application/Features/Reporting/Queries/GetResidueTraceabilityQuery.cs` — resuelve el `WasteMoveId` a partir del término de búsqueda y delega en `GetWasteMoveTimelineQuery`.
+  - `Web/Components/Pages/Reporting/ResidueTraceability.razor` — página `/traceability` con buscador, timeline completo, exportación PDF (QuestPDF) y exportación XML.
+- **Ruta**: `/traceability`
+- **Exportaciones**: PDF (reutiliza `WasteMoveTimelinePdfGenerator`) + XML estándar (`downloadBase64File` JS).
+- **Funciones**: buscador por DI/NT/Ticket/Referencia, timeline con stepper de estado, KPIs (CO₂, pesos por fracción), liquidaciones vinculadas, incidencias.
+- **Roles**: todos (con filtrado por `OwnerId`).
 
-### 5.2. KPIs y cumplimiento regulatorio
+### 5.2. KPIs y cumplimiento regulatorio ✅ IMPLEMENTADO
 
 - **Lógica**: vistas agregadas para justificar cumplimiento de objetivos (Ley 7/2022, RD envases, RD RAEE…).
 - **KPIs**:
@@ -428,14 +434,27 @@ Reglas de transición (claves):
   - Tasa de preparación para reutilización = `Σ WeightReused (IsPreparationForReuse=1)` / `Σ WeightTotal`.
   - % cumplimiento MarketShares = real / `MarketShares.Weight`.
   - Intensidad CO₂ (kgCO₂e / tonelada movida).
-- **Funciones**: cuadros de mando filtrables por SCRAP, CCAA, año, categoría; exportación en XLSX/CSV/PDF.
+  - Desglose por categoría de residuo.
+  - Histórico por los 4 trimestres del año seleccionado.
+- **Archivos implementados**:
+  - `Domain/Entities/RegulatoryTarget.cs` — objetivos mínimos configurables por `OwnerId` / `Category` / `Year`.
+  - `Application/Common/Interfaces/IRegulatoryTargetDefaults.cs` — abstracción para valores por defecto.
+  - `Application/Features/Reporting/DTOs/RegulatoryKpisDtos.cs` — DTOs (`RegulatoryKpisDto`, `QuarterlyKpiDto`, `CategoryKpiDto`, `MarketShareComplianceKpiDto`, `ExportKpisResultDto`).
+  - `Application/Features/Reporting/Queries/GetRegulatoryKpisQuery.cs` — filtros: `Year`, `Quarter?`, `IdScrap?`, `AutonomousCommunity?`, `Category?`.
+  - `Application/Features/Reporting/Queries/ExportKpisToExcelQuery.cs` — genera XLSX en memoria (ClosedXML) con 3 hojas: Resumen, Por Categoría, Histórico Trimestral.
+  - `Web/Services/RegulatoryTargetDefaults.cs` — lee `appsettings["RegulatoryTargets"]` (DefaultMinRecyclingPercent=55, DefaultMinReusePercent=5).
+  - `Web/Components/Pages/Reporting/RegulatoryKpis.razor` — página `/kpis`: cards con semáforo objetivo, gráfico ApexCharts trimestral, tabla MarketShare compliance, tabla por categoría, botón "Exportar XLSX".
+- **Tabla BD**: `RegulatoryTargets` (OwnerId, Category, Year, MinRecyclingPercent, MinReusePercent) — si no existe registro usa valores appsettings.
+- **Exportación XLSX**: 3 hojas en memoria, nunca persiste en servidor. `ContentType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
 - **Roles**: **Administrador**, **SCRAP**, **Entidad Pública**.
 
-### 5.3. Gestión documental centralizada
+### 5.3. Gestión documental centralizada ✅ IMPLEMENTADO
 
 - **Lógica**: único punto de acceso a todos los documentos (contratos, anexos, DI, NT, tickets, certificados, actas de liquidación).
-- **Entidades implicadas**: `AgreementDocuments`, campos `DocumentId/DocumentHash/SignatureStatus` en `WasteMoves`, `EvidenceRefsJson` en `Settlements`.
-- **Funciones**: repositorio con búsqueda por hash, verificación de integridad (SHA), integración con SharePoint vía `UserSharePointCredentials`.
+- **Entidades implicadas**: `AgreementDocuments`, campos `DocumentId/DocumentHash/SignatureStatus` en `WasteMoves`, `EvidenceRefsJson` + `Hash` en `Settlements`.
+- **Archivos implementados**:
+  - `Web/Components/Pages/Reporting/DocumentRepository.razor` — página `/documents`: lista unificada de documentos de `AgreementDocuments`, `WasteMoves` (con `DocumentId`) y `Settlements` (con `EvidenceRefsJson`). Columnas: Tipo, Referencia, Tipo Doc, Fecha, Hash, Estado firma, botón "Verificar hash". Filtros: tipo, referencia, rango de fechas.
+- **Verificación de integridad**: SHA-256 recalculado en cliente y comparado con el hash almacenado. Muestra badge verde (OK) o rojo (ALTERADO).
 - **Roles**: todos con permisos acordes a visibilidad.
 
 ### 5.4. Interoperabilidad y Data Space (EDC)

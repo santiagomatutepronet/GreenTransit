@@ -1,0 +1,525 @@
+@page "/traceability"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Reporting.Queries
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Commands
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Xml.Serialization
+@using System.Text
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+@inject IJSRuntime       JS
+
+<PageTitle>Trazabilidad de Residuos</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-diagram-3 me-2 text-primary"></i>Trazabilidad end-to-end
+        </h1>
+        <p class="page-subtitle text-muted small mb-0">
+            Consulta el expediente completo de un traslado por DI, NT, ticket de báscula o referencia
+        </p>
+    </div>
+    @if (_tl is not null)
+    {
+        <div class="page-header-actions">
+            <button class="btn btn-outline-primary btn-sm"
+                    @onclick="ExportPdfAsync"
+                    disabled="@_exporting">
+                @if (_exporting)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-file-earmark-pdf me-1"></i>
+                }
+                Exportar expediente PDF
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="ExportXmlAsync">
+                <i class="bi bi-file-earmark-code me-1"></i>Exportar XML
+            </button>
+        </div>
+    }
+</div>
+
+@* ── Buscador ──────────────────────────────────────────────────────────────── *@
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-8 col-lg-6">
+                <label class="form-label small mb-1">
+                    <i class="bi bi-search me-1"></i>
+                    Buscar por referencia de traslado, DI, NT o ticket de báscula
+                </label>
+                <div class="input-group">
+                    <input class="form-control"
+                           placeholder="Ej: WM-2025-001, DI-12345, T-2025-0099"
+                           @bind="_searchTerm"
+                           @bind:event="oninput"
+                           @onkeydown="OnSearchKeyDown" />
+                    <button class="btn btn-primary" @onclick="SearchAsync" disabled="@_searching">
+                        @if (_searching)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-search me-1"></i>
+                        }
+                        Buscar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Resultado ─────────────────────────────────────────────────────────────── *@
+@if (_notFound)
+{
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        No se encontró ningún expediente con el término "<strong>@_searchTerm</strong>".
+        Comprueba el valor o verifica que el traslado pertenezca a tu organización.
+    </div>
+}
+else if (_tl is not null)
+{
+    var tl = _tl;
+
+    @* Stepper de estado *@
+    <div class="d-flex gap-2 mb-3 flex-wrap">
+        <WasteMoveStatusStepper Status="@tl.CurrentStatus"
+                                StatusDates="@tl.StatusDates" />
+    </div>
+
+    @* Alerta incidencia bloqueante *@
+    @if (tl.Incidents.Any(i => i.IsOpen && i.Severity is "High" or "Critical"))
+    {
+        <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-shield-exclamation fs-5"></i>
+            <div>
+                <strong>Traslado bloqueado.</strong>
+                @tl.Incidents.Count(i => i.IsOpen && i.Severity is "High" or "Critical")
+                incidencia(s) crítica(s) abiertas.
+            </div>
+        </div>
+    }
+
+    <div class="row g-3">
+
+        @* ── Timeline de pasos ──────────────────────────────────────────── *@
+        <div class="col-12 col-xl-7">
+
+            @* SO Origen *@
+            <TimelineStepCard Icon="bi-file-earmark-text"
+                              Title="Orden de Servicio"
+                              Date="@tl.ServiceOrder?.IssuedAt"
+                              Color="primary"
+                              Empty="@(tl.ServiceOrder is null)">
+                @if (tl.ServiceOrder is { } so)
+                {
+                    <div class="row g-2 small">
+                        <div class="col-6">
+                            <span class="text-muted">Nº SO:</span>
+                            <strong class="ms-1">@so.ServiceOrderNumber</strong>
+                        </div>
+                        <div class="col-6">
+                            <span class="text-muted">Estado:</span>
+                            <span class="ms-1 badge bg-secondary">@so.Status</span>
+                        </div>
+                        <div class="col-6">
+                            <span class="text-muted">Emisor:</span>
+                            <span class="ms-1">@so.IssuedByName</span>
+                        </div>
+                        <div class="col-6">
+                            <span class="text-muted">Flujo:</span>
+                            <span class="ms-1">@so.WasteStream</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(so.LerCodeCode))
+                        {
+                            <div class="col-12">
+                                <span class="text-muted">LER:</span>
+                                <strong class="ms-1">@so.LerCodeCode</strong>
+                                <span class="ms-1 text-muted">— @so.LerCodeDescription</span>
+                                @if (so.LerCodeIsDangerous)
+                                {
+                                    <span class="badge bg-danger ms-1">Peligroso</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </TimelineStepCard>
+
+            @* Traslado *@
+            <TimelineStepCard Icon="bi-truck"
+                              Title="Traslado"
+                              Date="@tl.RequestDate"
+                              Color="info"
+                              Empty="false">
+                <div class="row g-2 small">
+                    <div class="col-6">
+                        <span class="text-muted">Origen:</span>
+                        <strong class="ms-1">@(tl.SourceName ?? "—")</strong>
+                    </div>
+                    <div class="col-6">
+                        <span class="text-muted">Destino:</span>
+                        <strong class="ms-1">@(tl.DestinationName ?? "—")</strong>
+                    </div>
+                    @if (tl.Residues.Count > 0)
+                    {
+                        <div class="col-12 mt-1">
+                            <p class="text-muted mb-1 fw-semibold">Líneas de residuo:</p>
+                            <table class="table table-sm table-borderless mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Residuo</th><th>Kg</th><th>DI / NT</th>
+                                        <th>Transportista</th><th>CO₂ (kg)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var r in tl.Residues)
+                                    {
+                                        <tr>
+                                            <td>
+                                                @(r.ResidueName ?? "—")
+                                                @if (r.IsDangerous)
+                                                {
+                                                    <span class="badge bg-danger ms-1">P</span>
+                                                }
+                                            </td>
+                                            <td>@(r.Weight?.ToString("N0") ?? "—")</td>
+                                            <td>
+                                                @if (!string.IsNullOrEmpty(r.DINumber))
+                                                {
+                                                    <span class="badge bg-warning text-dark me-1">DI: @r.DINumber</span>
+                                                }
+                                                @if (!string.IsNullOrEmpty(r.NTNumber))
+                                                {
+                                                    <span class="badge bg-info text-dark">NT: @r.NTNumber</span>
+                                                }
+                                            </td>
+                                            <td>@(r.CarrierName ?? "—")</td>
+                                            <td>@(r.TransportCarbonEmissions?.ToString("N2") ?? "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </TimelineStepCard>
+
+            @* Entrada CAC (opcional) *@
+            @if (tl.EntryCACs.Count > 0)
+            {
+                foreach (var cac in tl.EntryCACs)
+                {
+                    <TimelineStepCard Icon="bi-collection"
+                                      Title="Centro de Acopio (CAC)"
+                                      Date="@cac.CACEntryDate"
+                                      Color="warning"
+                                      Empty="false">
+                        <div class="row g-2 small">
+                            <div class="col-6">
+                                <span class="text-muted">Referencia:</span>
+                                <span class="ms-1">@(cac.WasteMoveReference ?? "—")</span>
+                            </div>
+                            <div class="col-6">
+                                <span class="text-muted">Contenedor:</span>
+                                <span class="ms-1">@(cac.TypeContainer ?? "—")</span>
+                            </div>
+                        </div>
+                    </TimelineStepCard>
+                }
+            }
+
+            @* Entrada Planta *@
+            @if (tl.EntryPlants.Count > 0)
+            {
+                foreach (var ep in tl.EntryPlants)
+                {
+                    <TimelineStepCard Icon="bi-box-arrow-in-down"
+                                      Title="Entrada en Planta"
+                                      Date="@ep.PlantEntryDate"
+                                      Color="orange"
+                                      Empty="false">
+                        <div class="row g-2 small">
+                            <div class="col-4">
+                                <span class="text-muted">Ticket:</span>
+                                <strong class="ms-1">@(ep.TicketScale ?? "—")</strong>
+                            </div>
+                            <div class="col-4">
+                                <span class="text-muted">Bruto:</span>
+                                <span class="ms-1">@(ep.GrossWeight?.ToString("N0") ?? "—") kg</span>
+                            </div>
+                            <div class="col-4">
+                                <span class="text-muted">Neto:</span>
+                                <strong class="ms-1 text-success">@(ep.NetWeight?.ToString("N0") ?? "—") kg</strong>
+                            </div>
+                            @if (ep.HasWeightDiscrepancy)
+                            {
+                                <div class="col-12">
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>Descuadre respecto al peso estimado
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    </TimelineStepCard>
+                }
+            }
+
+            @* Tratamiento *@
+            @if (tl.TreatmentPlants.Count > 0)
+            {
+                foreach (var tp in tl.TreatmentPlants)
+                {
+                    <TimelineStepCard Icon="bi-arrow-repeat"
+                                      Title="Tratamiento Final"
+                                      Date="@tp.PlantTreatmentDate"
+                                      Color="success"
+                                      Empty="false">
+                        <div class="row g-2 small">
+                            <div class="col-6">
+                                <span class="text-muted">Operación:</span>
+                                <strong class="ms-1">@(tp.TreatmentOperationCode ?? "—")</strong>
+                            </div>
+                            <div class="col-6">
+                                <span class="text-muted">Tasa reciclaje:</span>
+                                <strong class="ms-1 text-success">@tp.RecyclingRate.ToString("N1")%</strong>
+                            </div>
+                        </div>
+                    </TimelineStepCard>
+                }
+            }
+        </div>
+
+        @* ── Panel derecho: KPIs, liquidaciones, incidencias ────────────── *@
+        <div class="col-12 col-xl-5">
+
+            @* KPIs *@
+            <div class="card mb-3">
+                <div class="card-header py-2 fw-semibold small">
+                    <i class="bi bi-bar-chart me-1"></i>KPIs del expediente
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 text-center">
+                        <div class="col-6">
+                            <div class="fw-bold fs-5 text-success">
+                                @tl.TotalCO2EmissionsKg.ToString("N2")
+                            </div>
+                            <div class="text-muted small">kg CO₂e emitidos</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="fw-bold fs-5">@tl.TotalWeightIn.ToString("N0")</div>
+                            <div class="text-muted small">kg entrada</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="fw-bold text-primary">@tl.TotalWeightReused.ToString("N0")</div>
+                            <div class="text-muted small">kg reutilizados</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="fw-bold text-success">@tl.TotalWeightValued.ToString("N0")</div>
+                            <div class="text-muted small">kg valorizados</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="fw-bold text-danger">@tl.TotalWeightRemove.ToString("N0")</div>
+                            <div class="text-muted small">kg rechazo</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Liquidaciones *@
+            @if (tl.SettlementLines.Count > 0)
+            {
+                <div class="card mb-3">
+                    <div class="card-header py-2 fw-semibold small">
+                        <i class="bi bi-receipt me-1"></i>Liquidaciones vinculadas
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Liquidación</th><th>LER</th>
+                                    <th class="text-end">Kg</th><th class="text-end">Importe</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var sl in tl.SettlementLines)
+                                {
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-secondary">@sl.SettlementStatus</span>
+                                            <br /><small class="text-muted">@sl.SettlementNumber</small>
+                                        </td>
+                                        <td><small>@(sl.LerCodeCode ?? "—")</small></td>
+                                        <td class="text-end small">@sl.WeightKg.ToString("N0")</td>
+                                        <td class="text-end small fw-semibold">@sl.Amount.ToString("N2") €</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            @* Incidencias *@
+            @if (tl.Incidents.Count > 0)
+            {
+                <div class="card">
+                    <div class="card-header py-2 fw-semibold small">
+                        <i class="bi bi-exclamation-triangle me-1 text-danger"></i>
+                        Incidencias (@tl.Incidents.Count)
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        @foreach (var inc in tl.Incidents)
+                        {
+                            <li class="list-group-item py-2 small">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge @SeverityBadge(inc.Severity)">@inc.Severity</span>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold">@inc.Type</div>
+                                        <div class="text-muted">@inc.Description</div>
+                                    </div>
+                                    @if (inc.IsOpen)
+                                    {
+                                        <span class="badge bg-danger">Abierta</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">Cerrada</span>
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+@code {
+    private string  _searchTerm = string.Empty;
+    private bool    _searching;
+    private bool    _exporting;
+    private bool    _notFound;
+    private WasteMoveTimelineDto? _tl;
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_searchTerm)) return;
+
+        _searching = true;
+        _notFound  = false;
+        _tl        = null;
+
+        _tl = await Mediator.Send(new GetResidueTraceabilityQuery(_searchTerm.Trim()));
+
+        _notFound  = _tl is null;
+        _searching = false;
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        if (_tl is null) return;
+        _exporting = true;
+        try
+        {
+            var bytes = GreenTransit.Web.Services.WasteMoveTimelinePdfGenerator.Generate(_tl);
+            var b64   = Convert.ToBase64String(bytes);
+            var fn    = $"expediente_{_tl.WasteMoveReference ?? _tl.Id.ToString()}.pdf";
+            await JS.InvokeVoidAsync("downloadBase64File", b64, fn, "application/pdf");
+        }
+        finally { _exporting = false; }
+    }
+
+    private async Task ExportXmlAsync()
+    {
+        if (_tl is null) return;
+        try
+        {
+            var xml = SerializeToXml(_tl);
+            var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(xml));
+            var fn  = $"expediente_{_tl.WasteMoveReference ?? _tl.Id.ToString()}.xml";
+            await JS.InvokeVoidAsync("downloadBase64File", b64, fn, "application/xml");
+        }
+        catch { }
+    }
+
+    private static string SerializeToXml(WasteMoveTimelineDto tl)
+    {
+        // Serialización mediante System.Text.Json → XML manual sencillo
+        var sb = new StringBuilder();
+        sb.AppendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
+        sb.AppendLine("<ExpedienteTraslado>");
+        sb.AppendLine($"  <Id>{tl.Id}</Id>");
+        sb.AppendLine($"  <Referencia>{Xml(tl.WasteMoveReference)}</Referencia>");
+        sb.AppendLine($"  <Estado>{Xml(tl.CurrentStatus)}</Estado>");
+        sb.AppendLine($"  <Origen>{Xml(tl.SourceName)}</Origen>");
+        sb.AppendLine($"  <Destino>{Xml(tl.DestinationName)}</Destino>");
+        sb.AppendLine($"  <FechaRecogidaPlanificada>{tl.PlannedPickupStart:O}</FechaRecogidaPlanificada>");
+        sb.AppendLine($"  <FechaRecogidaReal>{tl.ActualPickupStart:O}</FechaRecogidaReal>");
+        sb.AppendLine($"  <TotalCO2KgEmitidos>{tl.TotalCO2EmissionsKg}</TotalCO2KgEmitidos>");
+        sb.AppendLine($"  <TotalKgEntrada>{tl.TotalWeightIn}</TotalKgEntrada>");
+        sb.AppendLine($"  <TotalKgReutilizados>{tl.TotalWeightReused}</TotalKgReutilizados>");
+        sb.AppendLine($"  <TotalKgValorizados>{tl.TotalWeightValued}</TotalKgValorizados>");
+        sb.AppendLine($"  <TotalKgRechazo>{tl.TotalWeightRemove}</TotalKgRechazo>");
+
+        sb.AppendLine("  <LineasResiduos>");
+        foreach (var r in tl.Residues)
+        {
+            sb.AppendLine("    <Linea>");
+            sb.AppendLine($"      <Residuo>{Xml(r.ResidueName)}</Residuo>");
+            sb.AppendLine($"      <PesoKg>{r.Weight}</PesoKg>");
+            sb.AppendLine($"      <DINumber>{Xml(r.DINumber)}</DINumber>");
+            sb.AppendLine($"      <NTNumber>{Xml(r.NTNumber)}</NTNumber>");
+            sb.AppendLine($"      <Transportista>{Xml(r.CarrierName)}</Transportista>");
+            sb.AppendLine($"      <CO2kgEmitidos>{r.TransportCarbonEmissions}</CO2kgEmitidos>");
+            sb.AppendLine("    </Linea>");
+        }
+        sb.AppendLine("  </LineasResiduos>");
+
+        sb.AppendLine("  <Incidencias>");
+        foreach (var i in tl.Incidents)
+        {
+            sb.AppendLine("    <Incidencia>");
+            sb.AppendLine($"      <Tipo>{Xml(i.Type)}</Tipo>");
+            sb.AppendLine($"      <Severidad>{Xml(i.Severity)}</Severidad>");
+            sb.AppendLine($"      <Abierta>{i.IsOpen}</Abierta>");
+            sb.AppendLine($"      <Descripcion>{Xml(i.Description)}</Descripcion>");
+            sb.AppendLine("    </Incidencia>");
+        }
+        sb.AppendLine("  </Incidencias>");
+
+        sb.AppendLine($"  <GeneradoEn>{DateTime.UtcNow:O}</GeneradoEn>");
+        sb.AppendLine("</ExpedienteTraslado>");
+        return sb.ToString();
+    }
+
+    private static string Xml(string? v)
+        => v is null ? string.Empty : System.Security.SecurityElement.Escape(v);
+
+    private static string SeverityBadge(string s) => s switch
+    {
+        "Critical" => "bg-danger",
+        "High"     => "bg-warning text-dark",
+        "Medium"   => "bg-info text-dark",
+        _          => "bg-secondary"
+    };
+}

@@ -1,0 +1,455 @@
+@page "/emission-factor-sets"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.EmissionFactors.DTOs
+@using GreenTransit.Application.Features.EmissionFactors.Queries
+@using GreenTransit.Application.Features.EmissionFactors.Commands
+@using GreenTransit.Application.Common.Interfaces
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator                                                       Mediator
+@inject GreenTransit.Application.Common.Interfaces.ICurrentUserService CurrentUser
+
+<PageTitle>Factores de Emisión</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-cloud-haze2-fill me-2 text-secondary"></i>Factores de Emisión
+        </h1>
+        <p class="page-subtitle text-muted small mb-0">
+            Conjuntos versionados de factores kgCO₂e/km por tipo de vehículo, combustible y Euro class
+        </p>
+    </div>
+    <div class="page-header-actions">
+        @if (_isAdmin)
+        {
+            <button class="btn btn-primary btn-sm" @onclick="OpenCreateForm">
+                <i class="bi bi-plus-lg me-1"></i>Nuevo set
+            </button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-secondary" role="status">
+            <span class="visually-hidden">Cargando…</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row g-3">
+
+        @* ── Lista de sets ──────────────────────────────────────────────── *@
+        <div class="col-12 col-lg-5">
+            <div class="card h-100">
+                <div class="card-header py-2 small fw-semibold">Sets de factores</div>
+                <div class="card-body p-0">
+                    @if (_sets.Count == 0)
+                    {
+                        <div class="text-center text-muted py-4 small">Sin sets registrados.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var s in _sets)
+                            {
+                                <li class="list-group-item list-group-item-action py-2 px-3
+                                           @(_selectedSetId == s.Id ? "active" : "")"
+                                    @onclick="() => SelectSetAsync(s.Id)">
+                                    <div class="d-flex align-items-start gap-2">
+                                        <div class="flex-grow-1">
+                                            <div class="fw-semibold small">@s.FactorSetName</div>
+                                            <div class="text-muted" style="font-size:.72rem;">
+                                                v@s.Version · @s.ValidFrom.ToString("dd/MM/yyyy")
+                                                @(s.ValidTo.HasValue ? $" – {s.ValidTo.Value:dd/MM/yyyy}" : "")
+                                            </div>
+                                            <div style="font-size:.72rem;" class="text-muted">
+                                                @s.FactorCount factor(es)
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <span class="badge @StatusBadge(s.Status)">@s.Status</span>
+                                        </div>
+                                    </div>
+                                    @if (_isAdmin && s.Status != "Active")
+                                    {
+                                        <div class="mt-1">
+                                            <button class="btn btn-outline-success btn-sm py-0 px-2"
+                                                    style="font-size:.72rem;"
+                                                    @onclick:stopPropagation="true"
+                                                    @onclick="() => ConfirmActivate(s)">
+                                                <i class="bi bi-check-circle me-1"></i>Activar
+                                            </button>
+                                        </div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ── Panel lateral: detalle de factores ─────────────────────────── *@
+        <div class="col-12 col-lg-7">
+            @if (_detail is null)
+            {
+                <div class="card h-100 d-flex align-items-center justify-content-center text-muted">
+                    <div class="py-5 small">
+                        <i class="bi bi-arrow-left me-2"></i>Selecciona un set para previsualizar sus factores
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="card h-100">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold small">
+                            @_detail.FactorSetName — v@_detail.Version
+                            <span class="badge @StatusBadge(_detail.Status) ms-2">@_detail.Status</span>
+                        </span>
+                        <span class="text-muted small">
+                            @_detail.ValidFrom.ToString("dd/MM/yyyy")
+                            @(_detail.ValidTo.HasValue ? $" – {_detail.ValidTo.Value:dd/MM/yyyy}" : "")
+                        </span>
+                    </div>
+                    <div class="card-body p-0" style="overflow-y:auto; max-height:520px;">
+                        <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>Vehículo</th>
+                                    <th>Combustible</th>
+                                    <th>Euro Class</th>
+                                    <th class="text-end">Valor</th>
+                                    <th>Unidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var f in _detail.Factors)
+                                {
+                                    <tr>
+                                        <td>@f.VehicleType</td>
+                                        <td>@f.FuelType</td>
+                                        <td class="text-muted">@(f.EuroClass ?? "—")</td>
+                                        <td class="text-end fw-semibold">@f.Value.ToString("F4")</td>
+                                        <td class="text-muted">@f.Unit</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-footer py-1 text-muted small">
+                        @_detail.Factors.Count factor(es)
+                        @if (!string.IsNullOrWhiteSpace(_detail.Publisher))
+                        {
+                            <span class="ms-2">· @_detail.Publisher</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+    </div>
+}
+
+@* ── Confirmación de activación ──────────────────────────────────────────── *@
+@if (_confirmActivateSet is not null)
+{
+    <div class="modal-backdrop">
+        <div class="modal" style="max-width:480px;">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Activar set
+                </h5>
+                <button type="button" class="btn-close" @onclick="() => _confirmActivateSet = null"></button>
+            </div>
+            <div class="modal-body small">
+                <p>¿Desactivar el set actual y activar
+                   <strong>@_confirmActivateSet.FactorSetName v@_confirmActivateSet.Version</strong>?</p>
+                <p class="text-muted mb-0">
+                    Solo un set puede estar activo a la vez. El cálculo de emisiones de nuevos
+                    traslados usará los factores de este set.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm"
+                        @onclick="() => _confirmActivateSet = null">Cancelar</button>
+                <button class="btn btn-success btn-sm"
+                        disabled="@_activating"
+                        @onclick="ActivateSetAsync">
+                    @if (_activating)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Sí, activar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Modal: Crear nuevo set ──────────────────────────────────────────────── *@
+@if (_showCreateForm)
+{
+    <div class="modal-backdrop">
+        <div class="modal modal-lg" style="max-width:760px;">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle me-2"></i>Nuevo set de factores de emisión
+                </h5>
+                <button type="button" class="btn-close" @onclick="CloseCreateForm"></button>
+            </div>
+            <div class="modal-body" style="overflow-y:auto; max-height:70vh;">
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label form-label-sm">Nombre del set *</label>
+                        <input class="form-control form-control-sm" @bind="_newSet.FactorSetName"
+                               placeholder="Ej. MITECO 2024" />
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label form-label-sm">Versión *</label>
+                        <input class="form-control form-control-sm" @bind="_newSet.Version"
+                               placeholder="Ej. 1.0" />
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label form-label-sm">Válido desde *</label>
+                        <input type="date" class="form-control form-control-sm"
+                               @bind="_newSet.ValidFrom" />
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label form-label-sm">Válido hasta</label>
+                        <input type="date" class="form-control form-control-sm"
+                               @bind="_newSet.ValidTo" />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label form-label-sm">Publicador</label>
+                        <input class="form-control form-control-sm" @bind="_newSet.Publisher"
+                               placeholder="Ej. MITECO" />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label form-label-sm">Referencia</label>
+                        <input class="form-control form-control-sm" @bind="_newSet.Reference" />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label form-label-sm">Metodología</label>
+                        <input class="form-control form-control-sm" @bind="_newSet.Methodology" />
+                    </div>
+                </div>
+
+                @* ── Líneas de factores ─────────────────────────────────── *@
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="fw-semibold small">Líneas de factores</span>
+                    <button class="btn btn-outline-primary btn-sm py-0" @onclick="AddFactorLine">
+                        <i class="bi bi-plus me-1"></i>Añadir línea
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered" style="font-size:.8rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tipo vehículo</th>
+                                <th>Combustible</th>
+                                <th>Euro class</th>
+                                <th>Unidad</th>
+                                <th>Valor</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var (line, idx) in _newSet.Lines.Select((l, i) => (l, i)))
+                            {
+                                <tr>
+                                    <td><input class="form-control form-control-sm" @bind="line.VehicleType"
+                                               placeholder="Camión, Furgón…" /></td>
+                                    <td><input class="form-control form-control-sm" @bind="line.FuelType"
+                                               placeholder="Diesel, GNC…" /></td>
+                                    <td><input class="form-control form-control-sm" @bind="line.EuroClass"
+                                               placeholder="Euro VI" /></td>
+                                    <td><input class="form-control form-control-sm" @bind="line.Unit"
+                                               placeholder="kgCO2e/km" /></td>
+                                    <td><input type="number" class="form-control form-control-sm"
+                                               @bind="line.Value" min="0" step="0.0001" /></td>
+                                    <td>
+                                        <button class="btn btn-outline-danger btn-sm py-0 px-1"
+                                                @onclick="() => RemoveFactorLine(idx)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (_createError is not null)
+                {
+                    <div class="alert alert-danger mt-2 py-1 small">@_createError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" @onclick="CloseCreateForm">Cancelar</button>
+                <button class="btn btn-primary btn-sm" @onclick="SaveNewSetAsync"
+                        disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Crear set
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private List<EmissionFactorSetDto>  _sets    = [];
+    private EmissionFactorSetDetailDto? _detail;
+    private Guid?                       _selectedSetId;
+    private bool                        _loading = true;
+    private bool                        _isAdmin;
+
+    // Activación
+    private EmissionFactorSetDto? _confirmActivateSet;
+    private bool                  _activating;
+
+    // Crear set
+    private bool           _showCreateForm;
+    private bool           _saving;
+    private string?        _createError;
+    private NewSetModel    _newSet = new();
+
+    // ── Ciclo de vida ─────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        _isAdmin = CurrentUser.UserProfile == "ADMIN";
+        await LoadSetsAsync();
+    }
+
+    private async Task LoadSetsAsync()
+    {
+        _loading = true;
+        _sets    = [.. await Mediator.Send(new GetEmissionFactorSetsQuery())];
+        _loading = false;
+    }
+
+    private async Task SelectSetAsync(Guid setId)
+    {
+        _selectedSetId = setId;
+        _detail        = await Mediator.Send(new GetEmissionFactorSetByIdQuery(setId));
+    }
+
+    // ── Activación ────────────────────────────────────────────────────────────
+    private void ConfirmActivate(EmissionFactorSetDto s)
+        => _confirmActivateSet = s;
+
+    private async Task ActivateSetAsync()
+    {
+        if (_confirmActivateSet is null) return;
+        _activating = true;
+        try
+        {
+            await Mediator.Send(new ActivateEmissionFactorSetCommand(_confirmActivateSet.Id));
+            _confirmActivateSet = null;
+            await LoadSetsAsync();
+            if (_selectedSetId.HasValue)
+                _detail = await Mediator.Send(new GetEmissionFactorSetByIdQuery(_selectedSetId.Value));
+        }
+        finally
+        {
+            _activating = false;
+        }
+    }
+
+    // ── Crear set ─────────────────────────────────────────────────────────────
+    private void OpenCreateForm()
+    {
+        _newSet       = new();
+        _createError  = null;
+        _showCreateForm = true;
+        AddFactorLine(); // Comenzar con una línea vacía
+    }
+
+    private void CloseCreateForm()
+    {
+        _showCreateForm = false;
+        _createError    = null;
+    }
+
+    private void AddFactorLine()
+        => _newSet.Lines.Add(new FactorLineModel { Unit = "kgCO2e/km" });
+
+    private void RemoveFactorLine(int idx)
+        => _newSet.Lines.RemoveAt(idx);
+
+    private async Task SaveNewSetAsync()
+    {
+        _saving      = true;
+        _createError = null;
+        try
+        {
+            var lines = _newSet.Lines
+                .Select(l => new EmissionFactorLineDto(
+                    l.VehicleType, l.FuelType, l.EuroClass, l.Unit, l.Value))
+                .ToList();
+
+            var cmd = new CreateEmissionFactorSetCommand(
+                _newSet.FactorSetName,
+                _newSet.Version,
+                _newSet.ValidFrom,
+                _newSet.ValidTo == default ? null : _newSet.ValidTo,
+                _newSet.Publisher,
+                _newSet.Reference,
+                _newSet.Methodology,
+                lines);
+
+            await Mediator.Send(cmd);
+            CloseCreateForm();
+            await LoadSetsAsync();
+        }
+        catch (Exception ex)
+        {
+            _createError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static string StatusBadge(string status) => status switch
+    {
+        "Active"   => "bg-success",
+        "Inactive" => "bg-secondary",
+        _          => "bg-light text-dark border"
+    };
+
+    // ── Modelos internos ──────────────────────────────────────────────────────
+    private sealed class NewSetModel
+    {
+        public string             FactorSetName { get; set; } = "";
+        public string             Version       { get; set; } = "";
+        public DateTime           ValidFrom     { get; set; } = DateTime.UtcNow.Date;
+        public DateTime?          ValidTo       { get; set; }
+        public string?            Publisher     { get; set; }
+        public string?            Reference     { get; set; }
+        public string?            Methodology   { get; set; }
+        public List<FactorLineModel> Lines      { get; set; } = [];
+    }
+
+    private sealed class FactorLineModel
+    {
+        public string   VehicleType { get; set; } = "";
+        public string   FuelType    { get; set; } = "";
+        public string?  EuroClass   { get; set; }
+        public string   Unit        { get; set; } = "kgCO2e/km";
+        public decimal  Value       { get; set; }
+    }
+}

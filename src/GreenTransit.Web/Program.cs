@@ -79,6 +79,15 @@ try
     // ── Servicios de dominio (Infrastructure) ─────────────────────────────────
     builder.Services.AddScoped<IDumZoneService, GreenTransit.Infrastructure.Services.DumZoneService>();
 
+    // ── Objetivos regulatorios por defecto ────────────────────────────────────
+    builder.Services.AddSingleton<GreenTransit.Application.Common.Interfaces.IRegulatoryTargetDefaults,
+        GreenTransit.Web.Services.RegulatoryTargetDefaults>();
+
+    // ── Opciones de configuración ─────────────────────────────────────────────
+    builder.Services.Configure<GreenTransit.Application.Features.PlantEnergies.Queries.PlantEnergyOptions>(
+        builder.Configuration.GetSection(
+            GreenTransit.Application.Features.PlantEnergies.Queries.PlantEnergyOptions.Section));
+
     // ── Caché en memoria (catálogos geográficos y otros estáticos) ───────────
     builder.Services.AddMemoryCache();
 

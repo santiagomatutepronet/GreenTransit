@@ -37,7 +37,7 @@ public sealed class GetEntitiesForSelectorQueryHandler
         return await q
             .OrderBy(e => e.EntityRole)
             .ThenBy(e => e.Name)
-            .Select(e => new EntitySelectorDto(e.Id, e.Name, e.EntityRole, e.NationalId))
+            .Select(e => new EntitySelectorDto(e.Id, e.Name, e.EntityRole, e.NationalId, e.CenterCode))
             .ToListAsync(ct);
     }
 }

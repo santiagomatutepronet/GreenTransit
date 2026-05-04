@@ -71,6 +71,7 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<Incident> Incidents => Set<Incident>();
     public DbSet<DumZone> DumZones => Set<DumZone>();
     public DbSet<DumRestrictionRule> DumRestrictionRules => Set<DumRestrictionRule>();
+    public DbSet<RegulatoryTarget> RegulatoryTargets => Set<RegulatoryTarget>();
 
     // ── Geografía ─────────────────────────────────────────────────────────────
     public DbSet<Country> Countries => Set<Country>();

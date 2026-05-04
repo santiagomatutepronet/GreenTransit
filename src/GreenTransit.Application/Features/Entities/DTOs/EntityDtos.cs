@@ -17,7 +17,8 @@ public sealed record EntitySelectorDto(
     Guid    Id,
     string  Name,
     string  EntityRole,
-    string? NationalId
+    string? NationalId,
+    string? CenterCode
 );
 
 /// <summary>DTO de detalle con todos los campos de la entidad.</summary>

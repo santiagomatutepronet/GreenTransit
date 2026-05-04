@@ -1,0 +1,185 @@
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Features.Search.DTOs
+@using GreenTransit.Application.Features.Search.Queries
+@using MediatR
+
+@inject IMediator         Mediator
+@inject NavigationManager Nav
+
+<div class="global-search @(_open ? "global-search--open" : "")" @ref="_containerRef">
+
+    <div class="global-search__input-wrap">
+        <i class="bi bi-search global-search__icon"></i>
+        <input type="search"
+               class="global-search__input"
+               placeholder="Buscar traslado, DI, NT, entidad…"
+               autocomplete="off"
+               @oninput="OnInput"
+               @onkeydown="OnKeyDown"
+               @onfocus="OnFocus"
+               aria-label="Buscador global"
+               aria-haspopup="listbox"
+               aria-expanded="@_open" />
+        @if (_loading)
+        {
+            <span class="global-search__spinner spinner-border spinner-border-sm text-muted"></span>
+        }
+    </div>
+
+    @if (_open && _result is not null)
+    {
+        <div class="global-search__dropdown" role="listbox">
+
+            @if (_result.Items.Count == 0)
+            {
+                <div class="global-search__empty">Sin resultados para "<strong>@_term</strong>"</div>
+            }
+            else
+            {
+                @foreach (var group in _result.Items
+                    .GroupBy(i => i.Type)
+                    .OrderBy(g => (int)g.Key))
+                {
+                    <div class="global-search__group-title">
+                        @GroupIcon(group.Key) @GroupLabel(group.Key)
+                    </div>
+                    @foreach (var item in group)
+                    {
+                        var item2     = item;
+                        var itemIndex = _result.Items.ToList().IndexOf(item2);
+                        <div class="global-search__item @(itemIndex == _cursor ? "global-search__item--active" : "")"
+                             role="option"
+                             aria-selected="@(itemIndex == _cursor)"
+                             @onclick="() => Navigate(item2.NavigationUrl)"
+                             @onmouseenter="() => _cursor = itemIndex">
+                            <span class="global-search__item-main">@item2.DisplayText</span>
+                            <span class="global-search__item-secondary">@item2.SecondaryText</span>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string  _term    = string.Empty;
+    private bool    _open;
+    private bool    _loading;
+    private int     _cursor  = -1;
+    private GlobalSearchResultDto? _result;
+
+    private CancellationTokenSource? _debounce;
+    private ElementReference         _containerRef;
+
+    // ── Eventos de entrada ────────────────────────────────────────────────────
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        _term = e.Value?.ToString() ?? string.Empty;
+
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        var token = _debounce.Token;
+
+        try
+        {
+            await Task.Delay(300, token);
+            await ExecuteSearchAsync();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private void OnFocus()
+    {
+        if (_result is not null) _open = true;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                Close();
+                break;
+            case "ArrowDown":
+                if (_result is not null)
+                    _cursor = Math.Min(_cursor + 1, _result.Items.Count - 1);
+                break;
+            case "ArrowUp":
+                _cursor = Math.Max(_cursor - 1, 0);
+                break;
+            case "Enter":
+                if (_result is not null && _cursor >= 0 && _cursor < _result.Items.Count)
+                    Navigate(_result.Items[_cursor].NavigationUrl);
+                break;
+        }
+    }
+
+    // ── Búsqueda ──────────────────────────────────────────────────────────────
+
+    private async Task ExecuteSearchAsync()
+    {
+        if (_term.Length < 3)
+        {
+            _result = null;
+            _open   = false;
+            return;
+        }
+
+        _loading = true;
+        StateHasChanged();
+
+        _result  = await Mediator.Send(new GlobalSearchQuery(_term));
+        _loading = false;
+        _open    = true;
+        _cursor  = -1;
+
+        StateHasChanged();
+    }
+
+    // ── Navegación ────────────────────────────────────────────────────────────
+
+    private void Navigate(string url)
+    {
+        Close();
+        Nav.NavigateTo(url);
+    }
+
+    private void Close()
+    {
+        _open   = false;
+        _cursor = -1;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static string GroupIcon(GlobalSearchItemType t) => t switch
+    {
+        GlobalSearchItemType.WasteMove    => "🚛",
+        GlobalSearchItemType.ServiceOrder => "📋",
+        GlobalSearchItemType.EntryPlant   => "🎫",
+        GlobalSearchItemType.Agreement    => "💶",
+        GlobalSearchItemType.Entity       => "🏭",
+        _                                 => "🔍"
+    };
+
+    private static string GroupLabel(GlobalSearchItemType t) => t switch
+    {
+        GlobalSearchItemType.WasteMove    => "Traslados",
+        GlobalSearchItemType.ServiceOrder => "Órdenes de Servicio",
+        GlobalSearchItemType.EntryPlant   => "Tickets de Báscula",
+        GlobalSearchItemType.Agreement    => "Acuerdos",
+        GlobalSearchItemType.Entity       => "Entidades",
+        _                                 => "Otros"
+    };
+
+    public ValueTask DisposeAsync()
+    {
+        _debounce?.Cancel();
+        _debounce?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

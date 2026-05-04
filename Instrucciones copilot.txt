@@ -7,6 +7,7 @@ Adjunto los documentos de referencia de mi proyecto, que se encuentran en el dir
 4. Mapa_Funcionalidades_GreenTransit.md  → Conjunto de funcionalidades del proyecto
 
 Lee los cuatro documentos y confirma que entiendes el stack, la arquitectura y el mapa de funcionalidades.
+Todas las nuevas funcionalidades que te pida que añadas, inclúyelas en el documento Mapa_Funcionalidades_GreenTransit.md, modificándolo en consecuencia
 
 
 Cada vez que completes un paso, actualiza las líneas de estado del archivo cambiando ⬜ Pendiente ejecutar por ✅ Completado  para que la próxima sesión sepa exactamente dónde dejaste el trabajo.
