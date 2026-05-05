@@ -26,7 +26,14 @@
 }
 else if (_detail is null)
 {
-    <div class="alert alert-warning">Declaración no encontrada.</div>
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-danger">@_errorMessage</div>
+    }
+    else
+    {
+        <div class="alert alert-warning">Declaración no encontrada.</div>
+    }
     <button class="btn btn-outline-neutral btn-sm"
             @onclick='() => Nav.NavigateTo("/product-declarations")'>
         <i class="bi bi-arrow-left me-1"></i>Volver
@@ -187,7 +194,7 @@ else
                                 <td>@(p.ResidueName ?? "—")</td>
                                 <td class="cell-muted">@(p.ResidueCategory ?? "—")</td>
                                 <td class="cell-muted">@(p.Reference ?? "—")</td>
-                                <td class="cell-muted">@(p.Source ?? "—")</td>
+                                <td class="cell-muted">@(p.SourceDescription ?? p.Source ?? "—")</td>
                                 <td class="cell-number">@(p.Quantity?.ToString("N2") ?? "—")</td>
                                 <td class="cell-muted">@(p.MeasureUnit ?? "—")</td>
                                 <td class="cell-number">@(p.Units?.ToString() ?? "—")</td>

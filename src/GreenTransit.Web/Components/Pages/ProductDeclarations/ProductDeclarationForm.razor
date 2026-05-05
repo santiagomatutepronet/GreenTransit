@@ -5,8 +5,6 @@
 
 @using GreenTransit.Application.Features.Entities.DTOs
 @using GreenTransit.Application.Features.Entities.Queries
-@using GreenTransit.Application.Features.Residues.DTOs
-@using GreenTransit.Application.Features.Residues.Queries
 @using GreenTransit.Application.Features.ProductDeclarations.Commands
 @using GreenTransit.Application.Features.ProductDeclarations.DTOs
 @using GreenTransit.Application.Features.ProductDeclarations.Queries
@@ -16,10 +14,12 @@
 @using GreenTransit.Domain.Entities
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Caching.Memory
 
 @inject IMediator           Mediator
 @inject NavigationManager   Nav
 @inject ICurrentUserService CurrentUser
+@inject IMemoryCache        Cache
 
 <PageTitle>@(_isEdit ? "Editar Declaración" : "Nueva Declaración de Producción")</PageTitle>
 
@@ -177,7 +177,7 @@ else
                                             <datalist id="dicProducts-@idx">
                                                 @foreach (var dp in _dicProducts)
                                                 {
-                                                    <option value="@dp.Ref">@dp.Description</option>
+                                                    <option value="@dp.Description">@dp.Description</option>
                                                 }
                                             </datalist>
                                         }
@@ -307,7 +307,6 @@ else
 
     // Catálogos
     private List<EntityDto>                          _producers  = [];
-    private List<ResidueDto>                          _residues   = [];
     private List<DicProductDeclarationTypeDto>        _dicTypes   = [];
     private List<DicProductDeclarationProductDto>     _dicProducts = [];
     private List<DicProductDeclarationSourceDto>      _dicSources = [];
@@ -323,7 +322,6 @@ else
             if (!CurrentUser.IsInProfile(ProfileConstants.Producer))
                 _producers = await LoadProducersAsync();
 
-            _residues    = await LoadResiduesAsync();
             _dicTypes    = await Mediator.Send(new GetDicProductDeclarationTypesQuery());
             _dicProducts = await Mediator.Send(new GetDicProductDeclarationProductsQuery());
             _dicSources  = await Mediator.Send(new GetDicProductDeclarationSourcesQuery());
@@ -369,17 +367,20 @@ else
 
     private async Task<List<EntityDto>> LoadProducersAsync()
     {
+        var cacheKey = $"form:producers:{CurrentUser.OwnerId}";
+        if (Cache.TryGetValue(cacheKey, out List<EntityDto>? cached) && cached is not null)
+            return cached;
+
         var result = await Mediator.Send(new GetEntitiesQuery(
             EntityRole: GreenTransit.Domain.Constants.EntityRoles.Producer,
             PageSize: 500));
-        return result.Items.ToList();
-    }
+        var list = result.Items.ToList();
 
-    private async Task<List<ResidueDto>> LoadResiduesAsync()
-    {
-        var result = await Mediator.Send(new GetResiduesQuery(
-            ResidueType: "Product", PageSize: 500));
-        return result.Items.ToList();
+        Cache.Set(cacheKey, list, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
+        });
+        return list;
     }
 
     private void AddEmptyLine() => _lines.Add(new LineModel());
@@ -387,29 +388,19 @@ else
     private void OnDicProductInput(int idx, string? value)
     {
         _lines[idx].DicProductSearch = value ?? "";
-        // Buscar coincidencia exacta por Ref en el diccionario
+        // Buscar coincidencia exacta por Description en el diccionario
         var match = _dicProducts.FirstOrDefault(dp =>
-            string.Equals(dp.Ref, value, StringComparison.OrdinalIgnoreCase));
+            string.Equals(dp.Description, value, StringComparison.OrdinalIgnoreCase));
         if (match is not null)
         {
             _lines[idx].ResidueName     = match.Description;
+            _lines[idx].DicProductRef   = match.Ref;
             _lines[idx].ProductCategory = match.CategoryDescription ?? "";
         }
         else
         {
-            // Limpiar categoría si el texto no coincide
+            _lines[idx].DicProductRef   = null;
             _lines[idx].ProductCategory = "";
-        }
-    }
-
-    private void OnResidueSelected(int idx, ChangeEventArgs e)
-    {
-        if (Guid.TryParse(e.Value?.ToString(), out var id))
-        {
-            _lines[idx].IdResidue = id;
-            var residue = _residues.FirstOrDefault(r => r.Id == id);
-            if (residue is not null)
-                _lines[idx].ResidueName = residue.Name;
         }
     }
 
@@ -485,24 +476,14 @@ else
             if (string.IsNullOrWhiteSpace(line.DicProductSearch) && line.IdResidue == Guid.Empty)
                 continue; // línea vacía
 
-            // Intentar resolver IdResidue a partir del producto del diccionario
             var idResidue = line.IdResidue != Guid.Empty ? line.IdResidue : (Guid?)null;
-            if (idResidue is null && !string.IsNullOrWhiteSpace(line.DicProductSearch))
-            {
-                var dicProd = _dicProducts.FirstOrDefault(dp =>
-                    string.Equals(dp.Ref, line.DicProductSearch, StringComparison.OrdinalIgnoreCase));
-                if (dicProd is not null)
-                {
-                    var residue = _residues.FirstOrDefault(r =>
-                        string.Equals(r.Reference, dicProd.Ref, StringComparison.OrdinalIgnoreCase));
-                    idResidue = residue?.Id;
-                }
-            }
 
             await Mediator.Send(new AddProductToDeclarationCommand(
                 declarationId, idResidue, line.Reference, line.Source,
                 line.ProductUse, line.ProductCategory,
-                line.Quantity ?? 0, line.MeasureUnit, line.Units, line.Price));
+                line.Quantity ?? 0, line.MeasureUnit, line.Units, line.Price,
+                ProductName:   string.IsNullOrWhiteSpace(line.ResidueName) ? null : line.ResidueName,
+                DicProductRef: string.IsNullOrWhiteSpace(line.DicProductRef)  ? null : line.DicProductRef));
         }
     }
 
@@ -520,6 +501,7 @@ else
         public Guid     Id               { get; set; }
         public Guid     IdResidue        { get; set; }
         public string?  ResidueName      { get; set; }
+        public string?  DicProductRef    { get; set; }
         public string   DicProductSearch { get; set; } = "";
         public string?  ProductCategory  { get; set; }
         public string?  Reference        { get; set; }

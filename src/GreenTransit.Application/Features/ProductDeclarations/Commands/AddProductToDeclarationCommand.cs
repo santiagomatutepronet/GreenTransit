@@ -19,7 +19,9 @@ public sealed record AddProductToDeclarationCommand(
     decimal  Quantity,
     string?  MeasureUnit,
     int?     Units,
-    decimal? Price
+    decimal? Price,
+    string?  ProductName    = null,
+    string?  DicProductRef  = null
 ) : IRequest<Guid>;
 
 public sealed class AddProductToDeclarationCommandHandler
@@ -53,21 +55,32 @@ public sealed class AddProductToDeclarationCommandHandler
             throw new UnauthorizedAccessException(
                 "No tienes permiso para modificar esta declaración.");
 
-        // Validar residuo solo si se proporciona
-        if (request.IdResidue.HasValue && request.IdResidue.Value != Guid.Empty)
+        // Validar residuo solo si se proporciona directamente
+        // Resolver IdResidue desde DicProductRef si no se proporcionó directamente
+        var resolvedIdResidue = request.IdResidue;
+        if (resolvedIdResidue is null && !string.IsNullOrWhiteSpace(request.DicProductRef))
+        {
+            var residue = await _context.Residues
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Reference == request.DicProductRef
+                                       && r.ResidueType == "Product", ct);
+            resolvedIdResidue = residue?.Id;
+        }
+        else if (resolvedIdResidue.HasValue && resolvedIdResidue.Value != Guid.Empty)
         {
             var residueExists = await _context.Residues
-                .AnyAsync(r => r.Id == request.IdResidue.Value && r.ResidueType == "Product", ct);
+                .AnyAsync(r => r.Id == resolvedIdResidue.Value && r.ResidueType == "Product", ct);
             if (!residueExists)
                 throw new KeyNotFoundException(
-                    $"Residuo {request.IdResidue} no encontrado o no es de tipo 'Product'.");
+                    $"Residuo {resolvedIdResidue} no encontrado o no es de tipo 'Product'.");
         }
 
         var product = new Product
         {
             Id                    = Guid.NewGuid(),
             IdProductDeclaration  = request.IdProductDeclaration,
-            IdResidue             = request.IdResidue,
+            IdResidue             = resolvedIdResidue,
+            ProductName           = string.IsNullOrWhiteSpace(request.ProductName) ? null : request.ProductName,
             Reference             = request.Reference,
             Source                = request.Source,
             ProductUse            = request.ProductUse,

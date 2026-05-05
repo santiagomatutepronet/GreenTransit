@@ -56,16 +56,33 @@ public sealed class GetProductDeclarationDetailQueryHandler
             }
         }
 
+        // Cargar diccionario de fuentes para resolver descripciones
+        var sourceRefs = pd.Products
+            .Where(p => !string.IsNullOrEmpty(p.Source))
+            .Select(p => p.Source!)
+            .Distinct()
+            .ToList();
+
+        Dictionary<string, string> sourceLookup = [];
+        if (sourceRefs.Count > 0)
+        {
+            sourceLookup = await _context.DicProductDeclarationSources
+                .AsNoTracking()
+                .Where(s => sourceRefs.Contains(s.Ref))
+                .ToDictionaryAsync(s => s.Ref, s => s.Description, ct);
+        }
+
         var products = pd.Products
             .Select(p => new ProductLineDto(
                 p.Id,
                 p.IdProductDeclaration,
                 p.IdResidue,
-                p.Residue?.Name,
+                p.Residue?.Name ?? p.ProductName,
                 p.Residue?.Reference,
                 p.Residue?.ProductCategory ?? p.ProductCategory,
                 p.Reference,
                 p.Source,
+                p.Source != null && sourceLookup.TryGetValue(p.Source, out var srcDesc) ? srcDesc : p.Source,
                 p.ProductUse,
                 p.ProductCategory,
                 p.Quantity,

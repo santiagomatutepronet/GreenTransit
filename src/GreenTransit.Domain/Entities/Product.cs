@@ -6,6 +6,7 @@ public class Product
     public Guid Id { get; set; }
     public Guid IdProductDeclaration { get; set; }
     public Guid? IdResidue { get; set; }
+    public string? ProductName { get; set; }
     public string? Reference { get; set; }
     public string? Source { get; set; }
     public string? ProductUse { get; set; }

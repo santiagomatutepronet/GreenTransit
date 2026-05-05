@@ -39,9 +39,9 @@ public sealed class GetProductDeclarationForExportQueryHandler
         var products = pd.Products
             .Select(p => new ProductLineDto(
                 p.Id, p.IdProductDeclaration, p.IdResidue,
-                p.Residue?.Name, p.Residue?.Reference,
+                p.Residue?.Name ?? p.ProductName, p.Residue?.Reference,
                 p.Residue?.ProductCategory ?? p.ProductCategory,
-                p.Reference, p.Source, p.ProductUse, p.ProductCategory,
+                p.Reference, p.Source, null, p.ProductUse, p.ProductCategory,
                 p.Quantity, p.MeasureUnit, p.Units, p.Price))
             .ToList();
 

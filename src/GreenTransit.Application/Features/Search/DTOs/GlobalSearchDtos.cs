@@ -7,7 +7,8 @@ public enum GlobalSearchItemType
     ServiceOrder,
     EntryPlant,
     Agreement,
-    Entity
+    Entity,
+    ProductDeclaration
 }
 
 /// <summary>Resultado individual del buscador global.</summary>

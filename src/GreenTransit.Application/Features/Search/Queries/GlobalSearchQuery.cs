@@ -46,6 +46,7 @@ public sealed class GlobalSearchQueryHandler
         items.AddRange(await SearchDiNtAsync(term, ownerId, ct));
         items.AddRange(await SearchAgreementsAsync(term, ownerId, ct));
         items.AddRange(await SearchEntitiesAsync(term, ownerId, ct));
+        items.AddRange(await SearchProductDeclarationsAsync(term, ownerId, ct));
 
         return new GlobalSearchResultDto(items);
     }
@@ -175,8 +176,30 @@ public sealed class GlobalSearchQueryHandler
             $"/agreements/{a.Id}")).ToList();
     }
 
-    // ── BusinessEntities ──────────────────────────────────────────────────────
+    // ── ProductDeclarations ───────────────────────────────────────────────────
 
+    private async Task<IReadOnlyList<GlobalSearchItemDto>> SearchProductDeclarationsAsync(
+        string term, Guid ownerId, CancellationToken ct)
+    {
+        var rows = await _db.ProductDeclarations
+            .AsNoTracking()
+            .Where(p => (ownerId == Guid.Empty || p.OwnerId == ownerId)
+                     && (p.Reference != null && p.Reference.Contains(term)
+                      || p.Type      != null && p.Type.Contains(term)))
+            .OrderByDescending(p => p.DateCreate)
+            .Take(5)
+            .Select(p => new { p.Id, p.Reference, p.Year, p.Period, p.State, p.Type })
+            .ToListAsync(ct);
+
+        return rows.Select(p => new GlobalSearchItemDto(
+            p.Id.ToString(),
+            p.Reference ?? p.Id.ToString(),
+            $"Declaración · {p.Year}/{p.Period} · {p.State ?? "—"}",
+            GlobalSearchItemType.ProductDeclaration,
+            $"/product-declarations/{p.Id}")).ToList();
+    }
+
+    // ── BusinessEntities ──────────────────────────────────────────────────────
     private async Task<IReadOnlyList<GlobalSearchItemDto>> SearchEntitiesAsync(
         string term, Guid ownerId, CancellationToken ct)
     {

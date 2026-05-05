@@ -14,7 +14,7 @@
         <i class="bi bi-search global-search__icon"></i>
         <input type="search"
                class="global-search__input"
-               placeholder="Buscar traslado, DI, NT, entidad…"
+               placeholder="Buscar traslado, DI, NT, entidad, declaración…"
                autocomplete="off"
                @oninput="OnInput"
                @onkeydown="OnKeyDown"
@@ -162,8 +162,9 @@
         GlobalSearchItemType.ServiceOrder => "📋",
         GlobalSearchItemType.EntryPlant   => "🎫",
         GlobalSearchItemType.Agreement    => "💶",
-        GlobalSearchItemType.Entity       => "🏭",
-        _                                 => "🔍"
+        GlobalSearchItemType.Entity              => "🏭",
+        GlobalSearchItemType.ProductDeclaration  => "📦",
+        _                                        => "🔍"
     };
 
     private static string GroupLabel(GlobalSearchItemType t) => t switch
@@ -172,8 +173,9 @@
         GlobalSearchItemType.ServiceOrder => "Órdenes de Servicio",
         GlobalSearchItemType.EntryPlant   => "Tickets de Báscula",
         GlobalSearchItemType.Agreement    => "Acuerdos",
-        GlobalSearchItemType.Entity       => "Entidades",
-        _                                 => "Otros"
+        GlobalSearchItemType.Entity              => "Entidades",
+        GlobalSearchItemType.ProductDeclaration  => "Declaraciones de Producción",
+        _                                        => "Otros"
     };
 
     public ValueTask DisposeAsync()

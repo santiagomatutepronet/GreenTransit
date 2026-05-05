@@ -59,6 +59,7 @@ public sealed record ProductLineDto(
     string?  ResidueCategory,
     string?  Reference,
     string?  Source,
+    string?  SourceDescription,
     string?  ProductUse,
     string?  ProductCategory,
     decimal? Quantity,
