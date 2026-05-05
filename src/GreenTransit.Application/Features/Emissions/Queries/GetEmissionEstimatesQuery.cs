@@ -1,5 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.WasteMoves.DTOs;
+using GreenTransit.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,11 +34,17 @@ public sealed class GetEmissionEstimatesQueryHandler
         if (residues.Count == 0)
             return [];
 
-        var activeSet = await _context.EmissionFactorSets
-            .AsNoTracking()
-            .Where(s => s.Status == "Active" && s.ValidFrom <= DateTime.UtcNow)
-            .OrderByDescending(s => s.ValidFrom)
-            .FirstOrDefaultAsync(ct);
+        _context.IgnoreTenantFilter();
+        EmissionFactorSet? activeSet;
+        try
+        {
+            activeSet = await _context.EmissionFactorSets
+                .AsNoTracking()
+                .Where(s => s.Status == "Active" && s.ValidFrom <= DateTime.UtcNow)
+                .OrderByDescending(s => s.ValidFrom)
+                .FirstOrDefaultAsync(ct);
+        }
+        finally { _context.RestoreTenantFilter(); }
 
         if (activeSet is null)
             return [];

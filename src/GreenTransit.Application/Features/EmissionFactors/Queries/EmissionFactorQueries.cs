@@ -1,5 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.EmissionFactors.DTOs;
+using GreenTransit.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,6 +22,9 @@ public sealed class GetEmissionFactorSetsQueryHandler
     public async Task<IReadOnlyList<EmissionFactorSetDto>> Handle(
         GetEmissionFactorSetsQuery request, CancellationToken ct)
     {
+        _context.IgnoreTenantFilter();
+        try
+        {
         return await _context.EmissionFactorSets
             .AsNoTracking()
             .OrderByDescending(s => s.ValidFrom)
@@ -37,10 +41,12 @@ public sealed class GetEmissionFactorSetsQueryHandler
                 s.EmissionFactors.Count,
                 s.CreatedAt))
             .ToListAsync(ct);
+        }
+        finally { _context.RestoreTenantFilter(); }
     }
 }
 
-// ── GetEmissionFactorSetByIdQuery ─────────────────────────────────────────────
+// ── GetEmissionFactorSetByIdQuery
 
 /// <summary>Devuelve el detalle completo de un set (cabecera + líneas).</summary>
 public sealed record GetEmissionFactorSetByIdQuery(Guid SetId)
@@ -57,10 +63,16 @@ public sealed class GetEmissionFactorSetByIdQueryHandler
     public async Task<EmissionFactorSetDetailDto?> Handle(
         GetEmissionFactorSetByIdQuery request, CancellationToken ct)
     {
-        var set = await _context.EmissionFactorSets
-            .AsNoTracking()
-            .Include(s => s.EmissionFactors)
-            .FirstOrDefaultAsync(s => s.Id == request.SetId, ct);
+        _context.IgnoreTenantFilter();
+        EmissionFactorSet? set;
+        try
+        {
+            set = await _context.EmissionFactorSets
+                .AsNoTracking()
+                .Include(s => s.EmissionFactors)
+                .FirstOrDefaultAsync(s => s.Id == request.SetId, ct);
+        }
+        finally { _context.RestoreTenantFilter(); }
 
         if (set is null) return null;
 
@@ -99,10 +111,16 @@ public sealed class GetActiveEmissionFactorsQueryHandler
     public async Task<EmissionFactorSetDetailDto?> Handle(
         GetActiveEmissionFactorsQuery request, CancellationToken ct)
     {
-        var set = await _context.EmissionFactorSets
-            .AsNoTracking()
-            .Include(s => s.EmissionFactors)
-            .FirstOrDefaultAsync(s => s.Status == "Active", ct);
+        _context.IgnoreTenantFilter();
+        EmissionFactorSet? set;
+        try
+        {
+            set = await _context.EmissionFactorSets
+                .AsNoTracking()
+                .Include(s => s.EmissionFactors)
+                .FirstOrDefaultAsync(s => s.Status == "Active", ct);
+        }
+        finally { _context.RestoreTenantFilter(); }
 
         if (set is null) return null;
 

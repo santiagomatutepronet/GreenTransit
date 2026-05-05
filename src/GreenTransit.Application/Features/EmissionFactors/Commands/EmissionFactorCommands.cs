@@ -150,6 +150,9 @@ public sealed class ActivateEmissionFactorSetCommandHandler
     public async Task<Unit> Handle(
         ActivateEmissionFactorSetCommand request, CancellationToken ct)
     {
+        _context.IgnoreTenantFilter();
+        try
+        {
         var target = await _context.EmissionFactorSets
             .FirstOrDefaultAsync(s => s.Id == request.SetId, ct)
             ?? throw new InvalidOperationException("Set de factores no encontrado.");
@@ -173,5 +176,7 @@ public sealed class ActivateEmissionFactorSetCommandHandler
 
         await _context.SaveChangesAsync(ct);
         return Unit.Value;
+        }
+        finally { _context.RestoreTenantFilter(); }
     }
 }

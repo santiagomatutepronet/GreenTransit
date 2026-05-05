@@ -1,0 +1,302 @@
+@page "/emissions"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Emissions.Commands
+@using GreenTransit.Application.Features.Emissions.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Emissions.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator                                                       Mediator
+@inject GreenTransit.Application.Common.Interfaces.ICurrentUserService CurrentUser
+
+<PageTitle>Emisiones CO₂</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-cloud-haze2-fill me-2 text-secondary"></i>Emisiones CO₂ — Traslados
+        </h1>
+        <p class="page-subtitle text-muted small mb-0">
+            Huella de carbono (Scope 3) de los traslados de residuos calculada con el set de factores activo
+        </p>
+    </div>
+    @if (_isAdmin)
+    {
+        <div class="page-header-actions">
+            <button class="btn btn-outline-warning btn-sm" @onclick="ConfirmRecalculate"
+                    disabled="@_recalculating">
+                @if (_recalculating)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-arrow-repeat me-1"></i>
+                }
+                Recalcular todo
+            </button>
+        </div>
+    }
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-3">
+                <label class="form-label form-label-sm mb-1">Desde</label>
+                <input type="date" class="form-control form-control-sm" @bind="_dateFrom" />
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label form-label-sm mb-1">Hasta</label>
+                <input type="date" class="form-control form-control-sm" @bind="_dateTo" />
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary btn-sm" @onclick="LoadDataAsync">
+                    <i class="bi bi-search me-1"></i>Filtrar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── KPI cards ────────────────────────────────────────────────────────────── *@
+@if (_summary is not null)
+{
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-sm-4">
+            <div class="card border-0 bg-light h-100">
+                <div class="card-body text-center py-3">
+                    <div class="text-muted small mb-1">Total CO₂e</div>
+                    <div class="fw-bold fs-4 text-danger">
+                        @(_summary.TotalKgCO2e >= 1000
+                            ? $"{_summary.TotalKgCO2e / 1000:N2} tCO₂e"
+                            : $"{_summary.TotalKgCO2e:N1} kgCO₂e")
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-4">
+            <div class="card border-0 bg-light h-100">
+                <div class="card-body text-center py-3">
+                    <div class="text-muted small mb-1">Traslados con emisión</div>
+                    <div class="fw-bold fs-4">@_summary.TotalMoves</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-4">
+            <div class="card border-0 bg-light h-100">
+                <div class="card-body text-center py-3">
+                    <div class="text-muted small mb-1">Líneas de residuo</div>
+                    <div class="fw-bold fs-4">@_summary.TotalLines</div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Tabla ────────────────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-secondary" role="status">
+            <span class="visually-hidden">Cargando…</span>
+        </div>
+    </div>
+}
+else if (_summary is null || _summary.Lines.Count == 0)
+{
+    <div class="alert alert-light text-center">
+        Sin traslados con emisiones calculadas para los filtros seleccionados.
+        <br />
+        <span class="text-muted small">
+            Las emisiones se calculan al confirmar la recogida de un traslado.
+            @if (_isAdmin)
+            {
+                <span> Usa <strong>Recalcular todo</strong> para forzar el cálculo de traslados existentes.</span>
+            }
+        </span>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Referencia</th>
+                            <th>Estado</th>
+                            <th>Fecha recogida</th>
+                            <th class="text-end">Distancia (km)</th>
+                            <th class="text-end">CO₂e (kg)</th>
+                            <th class="text-end">CO₂e (t)</th>
+                            <th>Set factores</th>
+                            <th>Líneas</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in _summary.Lines)
+                        {
+                            <tr>
+                                <td class="small fw-semibold">
+                                    @(line.WasteMoveReference ?? line.WasteMoveId.ToString("N")[..8].ToUpper())
+                                </td>
+                                <td>
+                                    <span class="badge @StatusBadge(line.ServiceStatus)">
+                                        @line.ServiceStatus
+                                    </span>
+                                </td>
+                                <td class="small text-muted">
+                                    @(line.GatheredDate.HasValue
+                                        ? line.GatheredDate.Value.ToString("dd/MM/yyyy")
+                                        : "—")
+                                </td>
+                                <td class="text-end small">@line.TotalDistanceKm.ToString("N0")</td>
+                                <td class="text-end small fw-semibold text-danger">
+                                    @line.TotalKgCO2e.ToString("N2")
+                                </td>
+                                <td class="text-end small text-muted">
+                                    @((line.TotalKgCO2e / 1000m).ToString("N4"))
+                                </td>
+                                <td class="small text-muted">v@line.EmissionFactorVersion</td>
+                                <td class="small text-center">@line.ResidueLines</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-light fw-semibold small">
+                        <tr>
+                            <td colspan="4" class="text-end">Total</td>
+                            <td class="text-end text-danger">@_summary.TotalKgCO2e.ToString("N2")</td>
+                            <td class="text-end text-muted">@((_summary.TotalKgCO2e / 1000m).ToString("N4"))</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer py-1 text-muted small">
+            @_summary.Lines.Count traslado(s) mostrados
+        </div>
+    </div>
+}
+
+@* ── Confirmación de recálculo (ADMIN) ───────────────────────────────────── *@
+@if (_showRecalcConfirm)
+{
+    <div class="modal-backdrop">
+        <div class="modal" style="max-width:480px;">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+                    Recalcular emisiones
+                </h5>
+                <button type="button" class="btn-close"
+                        @onclick="() => _showRecalcConfirm = false"></button>
+            </div>
+            <div class="modal-body small">
+                <p>
+                    Se recalcularán las emisiones de <strong>todos los traslados</strong> en estado
+                    RECOGIDO o posterior usando el set de factores activo.
+                </p>
+                <p class="text-muted mb-0">Esta operación puede tardar unos segundos.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm"
+                        @onclick="() => _showRecalcConfirm = false">Cancelar</button>
+                <button class="btn btn-warning btn-sm"
+                        disabled="@_recalculating"
+                        @onclick="RunRecalculateAsync">
+                    @if (_recalculating)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Sí, recalcular
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Resultado del recálculo ──────────────────────────────────────────────── *@
+@if (_recalcResult is not null)
+{
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div class="toast show align-items-center text-bg-success border-0" role="alert">
+            <div class="d-flex">
+                <div class="toast-body small">
+                    <i class="bi bi-check-circle me-2"></i>
+                    Recalculadas <strong>@_recalcResult.LinesUpdated</strong> líneas
+                    (@_recalcResult.LinesProcessed procesadas,
+                    @_recalcResult.LinesSkipped omitidas).
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        @onclick="() => _recalcResult = null"></button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private EmissionsSummaryDto? _summary;
+    private bool                 _loading  = true;
+    private bool                 _isAdmin;
+
+    // Filtros
+    private DateTime? _dateFrom = new DateTime(DateTime.UtcNow.Year, 1, 1);
+    private DateTime? _dateTo;
+
+    // Recalcular
+    private bool                        _showRecalcConfirm;
+    private bool                        _recalculating;
+    private RecalculateAllEmissionsResult? _recalcResult;
+
+    // ── Ciclo de vida ─────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        _isAdmin = CurrentUser.UserProfile == "ADMIN";
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _summary = await Mediator.Send(new GetEmissionsSummaryQuery(
+            DateFrom: _dateFrom,
+            DateTo:   _dateTo));
+        _loading = false;
+    }
+
+    // ── Recalcular ────────────────────────────────────────────────────────────
+    private void ConfirmRecalculate() => _showRecalcConfirm = true;
+
+    private async Task RunRecalculateAsync()
+    {
+        _recalculating     = true;
+        _showRecalcConfirm = false;
+        try
+        {
+            _recalcResult = await Mediator.Send(new RecalculateAllEmissionsCommand());
+            await LoadDataAsync();
+        }
+        finally
+        {
+            _recalculating = false;
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static string StatusBadge(string? status) => status switch
+    {
+        "RECOGIDO"    => "bg-info text-dark",
+        "EN_CAC"      => "bg-warning text-dark",
+        "EN_PLANTA"   => "bg-primary",
+        "CLASIFICADO" => "bg-success",
+        _             => "bg-secondary"
+    };
+}

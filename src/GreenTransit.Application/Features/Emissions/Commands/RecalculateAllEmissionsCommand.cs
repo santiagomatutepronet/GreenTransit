@@ -1,5 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
+using GreenTransit.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -51,12 +52,18 @@ public sealed class RecalculateAllEmissionsCommandHandler
     public async Task<RecalculateAllEmissionsResult> Handle(
         RecalculateAllEmissionsCommand request, CancellationToken ct)
     {
-        // ── Obtener EmissionFactorSet activo ──────────────────────────────────
-        var activeSet = await _context.EmissionFactorSets
-            .AsNoTracking()
-            .Where(s => s.Status == "Active" && s.ValidFrom <= DateTime.UtcNow)
-            .OrderByDescending(s => s.ValidFrom)
-            .FirstOrDefaultAsync(ct);
+        // ── Obtener EmissionFactorSet activo (catálogo global, sin filtro de tenant) ──
+        _context.IgnoreTenantFilter();
+        EmissionFactorSet? activeSet;
+        try
+        {
+            activeSet = await _context.EmissionFactorSets
+                .AsNoTracking()
+                .Where(s => s.Status == "Active" && s.ValidFrom <= DateTime.UtcNow)
+                .OrderByDescending(s => s.ValidFrom)
+                .FirstOrDefaultAsync(ct);
+        }
+        finally { _context.RestoreTenantFilter(); }
 
         if (activeSet is null)
         {

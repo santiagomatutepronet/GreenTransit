@@ -1,4 +1,5 @@
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -39,12 +40,18 @@ public sealed class CalculateEmissionsCommandHandler
 
         if (residues.Count == 0) return;
 
-        // ── Obtener el EmissionFactorSet activo más reciente ──────────────────
-        var activeSet = await _context.EmissionFactorSets
-            .AsNoTracking()
-            .Where(s => s.Status == "Active" && s.ValidFrom <= DateTime.UtcNow)
-            .OrderByDescending(s => s.ValidFrom)
-            .FirstOrDefaultAsync(ct);
+        // ── Obtener el EmissionFactorSet activo más reciente (catálogo global) ──
+        _context.IgnoreTenantFilter();
+        EmissionFactorSet? activeSet;
+        try
+        {
+            activeSet = await _context.EmissionFactorSets
+                .AsNoTracking()
+                .Where(s => s.Status == "Active" && s.ValidFrom <= DateTime.UtcNow)
+                .OrderByDescending(s => s.ValidFrom)
+                .FirstOrDefaultAsync(ct);
+        }
+        finally { _context.RestoreTenantFilter(); }
 
         if (activeSet is null)
         {
