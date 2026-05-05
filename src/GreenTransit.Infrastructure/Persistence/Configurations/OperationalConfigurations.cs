@@ -537,7 +537,9 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.ToTable("Products");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Reference).HasMaxLength(128);
-        builder.Property(e => e.Source).HasMaxLength(64);
+        builder.Property(e => e.Source).HasMaxLength(128);
+        builder.Property(e => e.ProductUse).HasMaxLength(128);
+        builder.Property(e => e.ProductCategory).HasMaxLength(256);
         builder.Property(e => e.Quantity).HasColumnType("decimal(18,2)");
         builder.Property(e => e.Price).HasColumnType("decimal(18,0)");
         builder.Property(e => e.MeasureUnit).HasMaxLength(64);

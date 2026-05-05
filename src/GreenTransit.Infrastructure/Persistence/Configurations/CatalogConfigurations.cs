@@ -120,3 +120,76 @@ public class TreatmentOperationConfiguration : IEntityTypeConfiguration<Treatmen
         builder.HasIndex(e => e.OperationType).HasDatabaseName("IX_TreatmentOperations_OperationType");
     }
 }
+
+// ── Diccionarios de Declaraciones de Producción ───────────────────────────────
+
+public class DicProductDeclarationCategoryConfiguration
+    : IEntityTypeConfiguration<DicProductDeclarationCategory>
+{
+    public void Configure(EntityTypeBuilder<DicProductDeclarationCategory> builder)
+    {
+        builder.ToTable("dicProductDeclarationCategory");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Ref).HasMaxLength(128).IsRequired();
+    }
+}
+
+public class DicProductDeclarationPeriodConfiguration
+    : IEntityTypeConfiguration<DicProductDeclarationPeriod>
+{
+    public void Configure(EntityTypeBuilder<DicProductDeclarationPeriod> builder)
+    {
+        builder.ToTable("dicProductDeclarationPeriods");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Ref).HasMaxLength(128).IsRequired();
+    }
+}
+
+public class DicProductDeclarationProductConfiguration
+    : IEntityTypeConfiguration<DicProductDeclarationProduct>
+{
+    public void Configure(EntityTypeBuilder<DicProductDeclarationProduct> builder)
+    {
+        builder.ToTable("dicProductDeclarationProducts");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Ref).HasMaxLength(128).IsRequired();
+
+        builder.HasOne(e => e.Category)
+            .WithMany(c => c.Products)
+            .HasForeignKey(e => e.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class DicProductDeclarationSourceConfiguration
+    : IEntityTypeConfiguration<DicProductDeclarationSource>
+{
+    public void Configure(EntityTypeBuilder<DicProductDeclarationSource> builder)
+    {
+        builder.ToTable("dicProductDeclarationSource");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Ref).HasMaxLength(128).IsRequired();
+    }
+}
+
+public class DicProductDeclarationTypeConfiguration
+    : IEntityTypeConfiguration<DicProductDeclarationType>
+{
+    public void Configure(EntityTypeBuilder<DicProductDeclarationType> builder)
+    {
+        builder.ToTable("dicProductDeclarationType");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Ref).HasMaxLength(128).IsRequired();
+    }
+}
+
+public class DicProductDeclarationUseConfiguration
+    : IEntityTypeConfiguration<DicProductDeclarationUse>
+{
+    public void Configure(EntityTypeBuilder<DicProductDeclarationUse> builder)
+    {
+        builder.ToTable("dicProductDeclarationUse");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Ref).HasMaxLength(128).IsRequired();
+    }
+}

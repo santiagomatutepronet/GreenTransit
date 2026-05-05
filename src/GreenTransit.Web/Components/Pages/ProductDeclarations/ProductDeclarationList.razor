@@ -1,0 +1,363 @@
+@page "/product-declarations"
+@attribute [Authorize(Policy = PolicyConstants.CanViewProductDeclarations)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.ProductDeclarations.Commands
+@using GreenTransit.Application.Features.ProductDeclarations.DTOs
+@using GreenTransit.Application.Features.ProductDeclarations.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Entities
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
+
+<PageTitle>Declaraciones de Producción</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-box-seam me-2"></i>Declaraciones de Producción
+    </h1>
+    <AuthorizeView Policy="@PolicyConstants.CanManageProductDeclarations">
+        <Authorized>
+            <button class="btn btn-primary btn-sm"
+                    @onclick='() => Nav.NavigateTo("/product-declarations/new")'>
+                <i class="bi bi-plus-lg me-1"></i>Nueva declaración
+            </button>
+        </Authorized>
+    </AuthorizeView>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="ExportXlsxAsync">
+        <i class="bi bi-file-earmark-excel me-1"></i>Exportar
+    </button>
+</div>
+
+@* ── Filtros ────────────────────────────────────────────────────────────────── *@
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Estado</label>
+        <select class="form-control" @bind="_filterState">
+            <option value="">— Todos —</option>
+            @foreach (var s in ProductDeclaration.States.All)
+            {
+                <option value="@s">@s</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Año</label>
+        <input type="number" class="form-control" style="width:90px"
+               @bind="_filterYear" placeholder="Año" />
+    </div>
+    <div class="filter-group">
+        <label>Periodo</label>
+        <select class="form-control" @bind="_filterPeriod">
+            <option value="">— Todos —</option>
+            @for (int p = 1; p <= 4; p++)
+            {
+                var pv = p;
+                <option value="@pv">T@(pv)</option>
+            }
+        </select>
+    </div>
+    @if (!CurrentUser.IsInProfile(ProfileConstants.Producer))
+    {
+        <div class="filter-group">
+            <label>Tipo</label>
+            <input class="form-control" placeholder="Tipo..." @bind="_filterType" />
+        </div>
+    }
+    <div class="filter-group">
+        <label>Desde</label>
+        <input type="date" class="form-control" @bind="_dateFrom" @bind:format="yyyy-MM-dd" />
+    </div>
+    <div class="filter-group">
+        <label>Hasta</label>
+        <input type="date" class="form-control" @bind="_dateTo" @bind:format="yyyy-MM-dd" />
+    </div>
+    <div class="filter-actions">
+        <button class="btn btn-primary btn-sm" @onclick="SearchAsync">
+            <i class="bi bi-search me-1"></i>Buscar
+        </button>
+        <button class="btn btn-ghost btn-sm" @onclick="ResetFilters">Limpiar</button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
+}
+else if (_result is null || _result.Items.Count == 0)
+{
+    <div class="alert alert-info">No se encontraron declaraciones de producción.</div>
+}
+else
+{
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Referencia</th>
+                    <th>Productor</th>
+                    <th>Año</th>
+                    <th>Periodo</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                    <th class="cell-number">Importe</th>
+                    <th>Creación</th>
+                    <th>Emisión</th>
+                    <th style="width:120px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var pd in _result.Items)
+                {
+                    <tr>
+                        <td>
+                            <a href="/product-declarations/@pd.Id" class="font-semibold">
+                                @(pd.Reference ?? pd.Id.ToString()[..8])
+                            </a>
+                        </td>
+                        <td class="cell-muted">@(pd.ProducerName ?? "—")</td>
+                        <td class="cell-muted">@(pd.Year?.ToString() ?? "—")</td>
+                        <td class="cell-muted">@(pd.Period.HasValue ? $"T{pd.Period}" : "—")</td>
+                        <td class="cell-muted">@(pd.Type ?? "—")</td>
+                        <td><span class="@StateBadge(pd.State)">@(pd.State ?? "—")</span></td>
+                        <td class="cell-number">
+                            @(pd.Amount.HasValue ? $"{pd.Amount:N2} {pd.Currency}" : "—")
+                        </td>
+                        <td class="cell-muted">@(pd.DateCreate?.ToString("dd/MM/yyyy") ?? "—")</td>
+                        <td class="cell-muted">@(pd.DateEmit?.ToString("dd/MM/yyyy") ?? "—")</td>
+                        <td>
+                            @{
+                                var detailUrl = "/product-declarations/" + pd.Id;
+                                var editUrl   = "/product-declarations/" + pd.Id + "/edit";
+                                var isEditable = ProductDeclaration.States.Editable.Contains(pd.State ?? "");
+                                var canManage  = CurrentUser.IsInAnyProfile(ProfileConstants.Admin, ProfileConstants.Producer);
+                                var isAdmin    = CurrentUser.IsInProfile(ProfileConstants.Admin);
+                            }
+                            <div class="btn-group">
+                                <button class="btn btn-ghost btn-sm btn-icon-only" title="Ver"
+                                        @onclick="() => Nav.NavigateTo(detailUrl)">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                @if (isEditable && canManage)
+                                {
+                                    <button class="btn btn-ghost btn-sm btn-icon-only" title="Editar"
+                                            @onclick="() => Nav.NavigateTo(editUrl)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                }
+                                @if (pd.State == ProductDeclaration.States.Draft && canManage)
+                                {
+                                    <button class="btn btn-ghost btn-sm btn-icon-only" title="Emitir"
+                                            @onclick="() => EmitAsync(pd.Id)">
+                                        <i class="bi bi-send"></i>
+                                    </button>
+                                }
+                                @if (pd.State == ProductDeclaration.States.Issued && isAdmin)
+                                {
+                                    <button class="btn btn-ghost btn-sm btn-icon-only" title="Validar"
+                                            @onclick="() => ValidateAsync(pd.Id)">
+                                        <i class="bi bi-check-circle"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm btn-icon-only" title="Rechazar"
+                                            @onclick="() => OpenRejectAsync(pd)">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @* ── Paginación ──────────────────────────────────────────────────── *@
+        @if (_result.TotalPages > 1)
+        {
+            <div class="pagination">
+                <span class="pagination-info">
+                    @((_page - 1) * PageSize + 1)–@(Math.Min(_page * PageSize, _result.TotalCount))
+                    de @_result.TotalCount resultados
+                </span>
+                <button class="pagination-btn" disabled="@(!_result.HasPrevious)"
+                        @onclick="() => GoPageAsync(_page - 1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                @for (var i = 1; i <= _result.TotalPages; i++)
+                {
+                    var pg = i;
+                    <button class="pagination-btn @(pg == _page ? "active" : "")"
+                            @onclick="() => GoPageAsync(pg)">@pg</button>
+                }
+                <button class="pagination-btn" disabled="@(!_result.HasNext)"
+                        @onclick="() => GoPageAsync(_page + 1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@* ── Modal rechazo ──────────────────────────────────────────────────────────── *@
+@if (_showRejectModal)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal d-block" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Rechazar declaración</h5>
+                    <button class="btn-close" @onclick="CloseRejectModal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label">Motivo de rechazo <span class="text-danger">*</span></label>
+                    <textarea class="form-control" rows="4" @bind="_rejectReason"
+                              placeholder="Indica el motivo del rechazo (mínimo 10 caracteres)…"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" @onclick="CloseRejectModal">Cancelar</button>
+                    <button class="btn btn-danger btn-sm" @onclick="ConfirmRejectAsync">
+                        <i class="bi bi-x-circle me-1"></i>Confirmar rechazo
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger mt-3">@_errorMessage</div>
+}
+
+@code {
+    private const int PageSize = 20;
+
+    private bool      _loading     = true;
+    private int       _page        = 1;
+    private string    _filterState = "";
+    private int?      _filterYear;
+    private int?      _filterPeriod;
+    private string    _filterType  = "";
+    private DateTime? _dateFrom;
+    private DateTime? _dateTo;
+    private string?   _errorMessage;
+
+    private bool   _showRejectModal = false;
+    private Guid   _rejectTargetId;
+    private string _rejectReason    = "";
+
+    private GreenTransit.Application.Common.Models.PaginatedResult<ProductDeclarationDto>? _result;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task SearchAsync() { _page = 1; await LoadAsync(); }
+    private async Task GoPageAsync(int page) { _page = page; await LoadAsync(); }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            _result = await Mediator.Send(new GetProductDeclarationsQuery(
+                Year:       _filterYear,
+                Period:     _filterPeriod,
+                State:      string.IsNullOrEmpty(_filterState) ? null : _filterState,
+                Type:       string.IsNullOrEmpty(_filterType)  ? null : _filterType,
+                DateFrom:   _dateFrom,
+                DateTo:     _dateTo,
+                PageNumber: _page,
+                PageSize:   PageSize));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void ResetFilters()
+    {
+        _filterState = ""; _filterYear = null; _filterPeriod = null;
+        _filterType = ""; _dateFrom = null; _dateTo = null; _page = 1;
+        _ = LoadAsync();
+    }
+
+    private async Task EmitAsync(Guid id)
+    {
+        try
+        {
+            await Mediator.Send(new EmitProductDeclarationCommand(id));
+            await LoadAsync();
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+
+    private async Task ValidateAsync(Guid id)
+    {
+        try
+        {
+            await Mediator.Send(new ValidateProductDeclarationCommand(id));
+            await LoadAsync();
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+
+    private void OpenRejectAsync(ProductDeclarationDto pd)
+    {
+        _rejectTargetId  = pd.Id;
+        _rejectReason    = "";
+        _showRejectModal = true;
+    }
+
+    private void CloseRejectModal() => _showRejectModal = false;
+
+    private async Task ConfirmRejectAsync()
+    {
+        if (_rejectReason.Length < 10)
+        {
+            _errorMessage = "El motivo debe tener al menos 10 caracteres.";
+            return;
+        }
+        try
+        {
+            await Mediator.Send(new RejectProductDeclarationCommand(_rejectTargetId, _rejectReason));
+            _showRejectModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+
+    private static string StateBadge(string? state) => state switch
+    {
+        ProductDeclaration.States.Draft     => "badge bg-secondary",
+        ProductDeclaration.States.Issued    => "badge bg-primary",
+        ProductDeclaration.States.Validated => "badge bg-success",
+        ProductDeclaration.States.Rejected  => "badge bg-danger",
+        _                                   => "badge bg-light text-dark"
+    };
+
+    private async Task ExportXlsxAsync()
+    {
+        try
+        {
+            var (bytes, name) = await Mediator.Send(new ExportProductDeclarationsToExcelQuery(
+                Year:   _filterYear,
+                Period: _filterPeriod,
+                State:  string.IsNullOrEmpty(_filterState) ? null : _filterState,
+                Type:   string.IsNullOrEmpty(_filterType)  ? null : _filterType,
+                DateFrom: _dateFrom,
+                DateTo:   _dateTo));
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadBase64File", b64, name,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+}

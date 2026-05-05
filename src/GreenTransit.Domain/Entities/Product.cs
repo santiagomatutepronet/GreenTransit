@@ -8,6 +8,8 @@ public class Product
     public Guid? IdResidue { get; set; }
     public string? Reference { get; set; }
     public string? Source { get; set; }
+    public string? ProductUse { get; set; }
+    public string? ProductCategory { get; set; }
     public decimal? Quantity { get; set; }
     public string? MeasureUnit { get; set; }
     public int? Units { get; set; }

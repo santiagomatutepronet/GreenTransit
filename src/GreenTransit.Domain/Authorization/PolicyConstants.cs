@@ -92,4 +92,18 @@ public static class PolicyConstants
 
     /// <summary>Lectura restringida de usuarios del propio ámbito: SCRAP.</summary>
     public const string CanViewOwnUsers = "CanViewOwnUsers";
+
+    // ─── Declaraciones de Producción ─────────────────────────────────────────
+
+    /// <summary>Ver declaraciones: ADMIN, PRODUCER, SCRAP, COORDINATOR.</summary>
+    public const string CanViewProductDeclarations = "CanViewProductDeclarations";
+
+    /// <summary>Crear/editar propias declaraciones: PRODUCER, ADMIN.</summary>
+    public const string CanManageProductDeclarations = "CanManageProductDeclarations";
+
+    /// <summary>Validar o rechazar declaraciones: solo ADMIN.</summary>
+    public const string CanValidateProductDeclarations = "CanValidateProductDeclarations";
+
+    /// <summary>Gestión de diccionarios de declaraciones: solo ADMIN.</summary>
+    public const string CanManageDeclarationDicts = "CanManageDeclarationDicts";
 }

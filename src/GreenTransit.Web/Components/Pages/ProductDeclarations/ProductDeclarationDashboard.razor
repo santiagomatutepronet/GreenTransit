@@ -1,0 +1,221 @@
+@page "/product-declarations/dashboard"
+@attribute [Authorize(Policy = PolicyConstants.CanViewProductDeclarations)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.ProductDeclarations.DTOs
+@using GreenTransit.Application.Features.ProductDeclarations.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Entities
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>Dashboard Declaraciones</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-bar-chart-line me-2"></i>Dashboard Declaraciones de Producción
+    </h1>
+</div>
+
+@* ── Filtros ────────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <input type="number" class="form-control" style="width:90px"
+               @bind="_year" placeholder="Año" />
+    </div>
+    <div class="filter-group">
+        <label>Periodo</label>
+        <select class="form-select" @bind="_period">
+            <option value="">— Todos —</option>
+            @for (int p = 1; p <= 4; p++)
+            {
+                var pv = p;
+                <option value="@pv">T@(pv)</option>
+            }
+        </select>
+    </div>
+    <div class="filter-actions">
+        <button class="btn btn-primary btn-sm" @onclick="LoadAsync">
+            <i class="bi bi-search me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_data is not null)
+{
+    @* ── Cards KPI ──────────────────────────────────────────────────────────── *@
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="fs-1 fw-bold text-primary">
+                        @_data.DeclarationsByState.Values.Sum()
+                    </div>
+                    <div class="text-muted">Total declaraciones</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="fs-1 fw-bold text-success">
+                        @(_data.TotalDeclaredAmount.ToString("N2"))
+                    </div>
+                    <div class="text-muted">Importe total declarado</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="fs-1 fw-bold text-info">
+                        @(_data.TotalDeclaredQuantity.ToString("N2"))
+                    </div>
+                    <div class="text-muted">Cantidad total declarada</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center @(_data.ProducersWithoutDeclaration > 0 ? "border-warning" : "")">
+                <div class="card-body">
+                    <div class="fs-1 fw-bold @(_data.ProducersWithoutDeclaration > 0 ? "text-warning" : "text-secondary")">
+                        @_data.ProducersWithoutDeclaration
+                    </div>
+                    <div class="text-muted">Productores sin declaración</div>
+                    @if (_data.ProducersWithoutDeclaration > 0)
+                    {
+                        <a href="/product-declarations" class="btn btn-outline-warning btn-sm mt-2">
+                            Ver listado
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Estado de declaraciones ─────────────────────────────────────────────── *@
+    <div class="row g-4 mb-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-pie-chart me-2"></i>Declaraciones por estado
+                </div>
+                <div class="card-body">
+                    @foreach (var kv in _data.DeclarationsByState.OrderByDescending(x => x.Value))
+                    {
+                        var total = _data.DeclarationsByState.Values.Sum();
+                        var pct   = total > 0 ? (double)kv.Value / total * 100 : 0;
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>
+                                    <span class="@StateBadge(kv.Key)">@kv.Key</span>
+                                </span>
+                                <span class="text-muted">@kv.Value (@pct.ToString("N0")%)</span>
+                            </div>
+                            <div class="progress" style="height:8px">
+                                <div class="progress-bar @StateBarCss(kv.Key)"
+                                     style="width:@pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%">
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ── Top 10 productos ────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-trophy me-2"></i>Top 10 productos por volumen
+                </div>
+                <div class="card-body p-0">
+                    @if (!_data.TopProducts.Any())
+                    {
+                        <p class="text-muted p-3">Sin datos.</p>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Producto</th>
+                                    <th class="cell-number">Σ Cantidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{
+                                    int rank = 1;
+                                    foreach (var tp in _data.TopProducts)
+                                    {
+                                        <tr>
+                                            <td class="text-muted">@rank</td>
+                                            <td>@(tp.ResidueName ?? "—")</td>
+                                            <td class="cell-number">@tp.TotalQuantity.ToString("N2")</td>
+                                        </tr>
+                                        rank++;
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
+
+@code {
+    private bool   _loading = true;
+    private int?   _year    = DateTime.Today.Year;
+    private int?   _period;
+    private string? _errorMessage;
+    private ProductDeclarationDashboardDto? _data;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            _data = await Mediator.Send(new GetProductDeclarationDashboardQuery(
+                Year: _year, Period: _period));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private static string StateBadge(string? state) => state switch
+    {
+        ProductDeclaration.States.Draft     => "badge bg-secondary",
+        ProductDeclaration.States.Issued    => "badge bg-primary",
+        ProductDeclaration.States.Validated => "badge bg-success",
+        ProductDeclaration.States.Rejected  => "badge bg-danger",
+        _                                   => "badge bg-light text-dark"
+    };
+
+    private static string StateBarCss(string? state) => state switch
+    {
+        ProductDeclaration.States.Draft     => "bg-secondary",
+        ProductDeclaration.States.Issued    => "bg-primary",
+        ProductDeclaration.States.Validated => "bg-success",
+        ProductDeclaration.States.Rejected  => "bg-danger",
+        _                                   => "bg-light"
+    };
+}

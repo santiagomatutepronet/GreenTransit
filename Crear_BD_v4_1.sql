@@ -788,11 +788,11 @@ GO
 -- ============================================================
 -- Tabla: Products  (líneas de declaración de producto)
 -- CAMBIOS v3: IdResidue (FK -> Residues, ResidueType='Product')
---   Eliminados: Description, ProductUse, ProductCategory,
---   WeightPerUnitKg, ReparabilityIndex, RecycledContentPercent,
---   MaterialsJson  (todos en Residues)
+--   Eliminados: Description, WeightPerUnitKg, ReparabilityIndex,
+--   RecycledContentPercent, MaterialsJson  (todos en Residues)
 --   Se mantienen: Quantity, MeasureUnit, Units, Price, Source,
---   Reference (datos de instancia de la línea de declaración).
+--   Reference, ProductUse, ProductCategory
+--   (datos de instancia de la línea de declaración).
 -- ============================================================
 SET ANSI_NULLS ON
 GO
@@ -805,12 +805,14 @@ CREATE TABLE [dbo].[Products](
 	[IdResidue]                 [uniqueidentifier] NULL,   -- FK -> Residues (ResidueType='Product')
 	-- Datos de instancia de la línea declarada
 	[Reference]                 [nvarchar](512) NULL,
-	[Source]                    [nvarchar](512) NULL,
+	[Source]                    [nvarchar](128) NULL,
+	[ProductUse]                [nvarchar](128) NULL,
+	[ProductCategory]           [nvarchar](256) NULL,
 	[Quantity]                  [decimal](18,2) NULL,
 	[MeasureUnit]               [nvarchar](64)  NULL,
 	[Units]                     [int]           NULL,
 	[Price]                     [decimal](18,0) NULL,
- CONSTRAINT [PK_Products] PRIMARY KEY CLUSTERED 
+ CONSTRAINT [PK_Products] PRIMARY KEY CLUSTERED
 (
 	[Id] ASC
 )WITH (STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]

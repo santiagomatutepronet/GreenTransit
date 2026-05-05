@@ -421,6 +421,29 @@ try
             policy.AddRequirements(new OwnDataRequirement(
                 requiresEntityLink: false,
                 ProfileConstants.Scrap)));
+
+        // ── DECLARACIONES DE PRODUCCIÓN ───────────────────────────────────────
+
+        // Ver declaraciones: ADMIN, PRODUCER, SCRAP, COORDINATOR.
+        options.AddPolicy(PolicyConstants.CanViewProductDeclarations, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Admin, ProfileConstants.Producer,
+                ProfileConstants.Scrap, ProfileConstants.Coordinator)));
+
+        // Crear/editar declaraciones: PRODUCER (propias) y ADMIN.
+        options.AddPolicy(PolicyConstants.CanManageProductDeclarations, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Producer, ProfileConstants.Admin)));
+
+        // Validar o rechazar: solo ADMIN.
+        options.AddPolicy(PolicyConstants.CanValidateProductDeclarations, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Admin)));
+
+        // Gestión de diccionarios de declaraciones: solo ADMIN.
+        options.AddPolicy(PolicyConstants.CanManageDeclarationDicts, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Admin)));
     });
 
     // ClaimsTransformation: enriquece el principal con IdUser, OwnerId y Profile desde la BD
@@ -452,8 +475,13 @@ try
     builder.Services.AddScoped<IUnitOfWork, GreenTransit.Infrastructure.Persistence.UnitOfWork>();
     builder.Services.AddScoped<IUserRepository, GreenTransit.Infrastructure.Persistence.Repositories.UserRepository>();
 
+    // ── Servicios de dominio ──────────────────────────────────────────────────
+    builder.Services.AddScoped<GreenTransit.Domain.Services.ProductDeclarationStateService>();
+
     // ── Servicios de dominio (Infrastructure) ─────────────────────────────────
     builder.Services.AddScoped<IDumZoneService, GreenTransit.Infrastructure.Services.DumZoneService>();
+    builder.Services.AddScoped<GreenTransit.Application.Common.Interfaces.IProductDeclarationNotificationService,
+        GreenTransit.Infrastructure.Services.ProductDeclarationNotificationStub>();
     builder.Services.AddScoped<IEntityUserProvisioningService,
         GreenTransit.Infrastructure.Services.EntityUserProvisioningService>();
     builder.Services.AddScoped<IDataScopeService, GreenTransit.Infrastructure.Services.DataScopeService>();

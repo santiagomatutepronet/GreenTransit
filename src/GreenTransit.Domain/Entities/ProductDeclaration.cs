@@ -5,6 +5,19 @@ namespace GreenTransit.Domain.Entities;
 /// <summary>Declaraciones periódicas de producto puesto en mercado. Tabla: ProductDeclaration</summary>
 public class ProductDeclaration : ITenantEntity
 {
+    // ── Constantes de estado ──────────────────────────────────────────────────
+    public static class States
+    {
+        public const string Draft     = "Borrador";
+        public const string Issued    = "Emitido";
+        public const string Validated = "Validado";
+        public const string Rejected  = "Rechazado";
+
+        public static readonly IReadOnlyList<string> All = [Draft, Issued, Validated, Rejected];
+
+        public static readonly IReadOnlyList<string> Editable = [Draft, Rejected];
+    }
+
     public Guid Id { get; set; }
     public Guid? OwnerId { get; set; }
     public int? Period { get; set; }

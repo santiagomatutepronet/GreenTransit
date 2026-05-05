@@ -1,0 +1,3 @@
+ProductReference;Source;Quantity;MeasureUnit;Units;Price;Reference
+REF-PRODUCTO-001;Comercialización;1000.00;kg;50;2.50;REF-INTERNA-001
+REF-PRODUCTO-002;Importación;500.00;unidades;10;15.00;REF-INTERNA-002

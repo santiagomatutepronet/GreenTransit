@@ -1,0 +1,534 @@
+@page "/product-declarations/new"
+@page "/product-declarations/{DeclarationId:guid}/edit"
+@attribute [Authorize(Policy = PolicyConstants.CanManageProductDeclarations)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Features.Residues.DTOs
+@using GreenTransit.Application.Features.Residues.Queries
+@using GreenTransit.Application.Features.ProductDeclarations.Commands
+@using GreenTransit.Application.Features.ProductDeclarations.DTOs
+@using GreenTransit.Application.Features.ProductDeclarations.Queries
+@using GreenTransit.Application.Features.ProductDeclarations.Queries.Dictionaries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Entities
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>@(_isEdit ? "Editar Declaración" : "Nueva Declaración de Producción")</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-box-seam me-2"></i>
+        @(_isEdit ? "Editar Declaración" : "Nueva Declaración de Producción")
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else
+{
+    @* ── Sección 1: Cabecera ────────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-card-text me-2"></i>Datos de la declaración</div>
+        <div class="card-body row g-3">
+
+            @* Productor *@
+            @if (CurrentUser.IsInProfile(ProfileConstants.Producer))
+            {
+                <div class="col-md-6">
+                    <label class="form-label">Productor</label>
+                    <input class="form-control" readonly value="@(_producerName ?? CurrentUser.UserName)" />
+                </div>
+            }
+            else
+            {
+                <div class="col-md-6">
+                    <label class="form-label">Productor <span class="text-danger">*</span></label>
+                    <select class="form-select" @bind="_idProducer">
+                        <option value="">— Seleccionar productor —</option>
+                        @foreach (var e in _producers)
+                        {
+                            <option value="@e.Id">@e.Name</option>
+                        }
+                    </select>
+                </div>
+            }
+
+            <div class="col-md-2">
+                <label class="form-label">Año <span class="text-danger">*</span></label>
+                <input type="number" class="form-control" @bind="_year" min="2020" max="2100" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Periodo <span class="text-danger">*</span></label>
+                <select class="form-select" @bind="_period">
+                    <option value="">—</option>
+                    @for (int p = 1; p <= 4; p++)
+                    {
+                        var pv = p;
+                        <option value="@pv">T@(pv)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Mes</label>
+                <select class="form-select" @bind="_month">
+                    <option value="">—</option>
+                    @for (int m = 1; m <= 12; m++)
+                    {
+                        var mv = m;
+                        <option value="@mv">@mv</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Tipo <span class="text-danger">*</span></label>
+                <select class="form-select" @bind="_type">
+                    <option value="">— Seleccionar tipo —</option>
+                    @foreach (var t in _dicTypes)
+                    {
+                        <option value="@t.Ref">@t.Description</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Moneda</label>
+                <select class="form-select" @bind="_currency">
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Referencia</label>
+                <input class="form-control" @bind="_reference" placeholder="Referencia interna (opcional)" />
+            </div>
+            @if (_isEdit)
+            {
+                <div class="col-md-2">
+                    <label class="form-label">Estado</label>
+                    <span class="form-control-plaintext">
+                        <span class="@StateBadge(_state)">@_state</span>
+                    </span>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Sección 2: Líneas de producto ──────────────────────────────────────── *@
+    @if (_isEdit)
+    {
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-list-ul me-2"></i>Líneas de producto</span>
+                <button type="button" class="btn btn-outline-primary btn-sm"
+                        @onclick="AddEmptyLine">
+                    <i class="bi bi-plus-lg me-1"></i>Añadir línea
+                </button>
+            </div>
+            <div class="card-body p-0">
+                @if (_lines.Count == 0)
+                {
+                    <p class="text-muted p-3">No hay líneas. Añade al menos una antes de emitir.</p>
+                }
+                else
+                {
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th style="min-width:200px">Producto</th>
+                                <th style="min-width:120px">Categoría</th>
+                                <th style="min-width:120px">Origen</th>
+                                <th style="min-width:120px">Uso</th>
+                                <th>Referencia</th>
+                                <th class="cell-number">Cantidad</th>
+                                <th style="min-width:80px">Unidad</th>
+                                <th class="cell-number">Unidades</th>
+                                <th class="cell-number">Precio</th>
+                                <th class="cell-number">Subtotal</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < _lines.Count; i++)
+                            {
+                                var idx = i;
+                                var line = _lines[idx];
+                                <tr>
+                                    <td style="min-width:200px">
+                                        @if (line.IsPersisted)
+                                        {
+                                            <span>@(line.ResidueName ?? line.Reference ?? line.IdResidue.ToString())</span>
+                                        }
+                                        else
+                                        {
+                                            <input class="form-control form-control-sm"
+                                                   list="dicProducts-@idx"
+                                                   placeholder="Buscar producto…"
+                                                   value="@line.DicProductSearch"
+                                                   @oninput="e => OnDicProductInput(idx, e.Value?.ToString())" />
+                                            <datalist id="dicProducts-@idx">
+                                                @foreach (var dp in _dicProducts)
+                                                {
+                                                    <option value="@dp.Ref">@dp.Description</option>
+                                                }
+                                            </datalist>
+                                        }
+                                    </td>
+                                    <td>
+                                        <input class="form-control form-control-sm" readonly
+                                               value="@line.ProductCategory" style="min-width:100px" />
+                                    </td>
+                                    <td>
+                                        <select class="form-select form-select-sm" @bind="line.Source" style="min-width:110px">
+                                            <option value="">—</option>
+                                            @foreach (var s in _dicSources)
+                                            {
+                                                <option value="@s.Ref">@s.Description</option>
+                                            }
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <select class="form-select form-select-sm" @bind="line.ProductUse" style="min-width:110px">
+                                            <option value="">—</option>
+                                            @foreach (var u in _dicUses)
+                                            {
+                                                <option value="@u.Ref">@u.Description</option>
+                                            }
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input class="form-control form-control-sm" @bind="line.Reference"
+                                               placeholder="Ref." style="min-width:90px" />
+                                    </td>
+                                    <td>
+                                        <input type="number" class="form-control form-control-sm"
+                                               step="0.01" @bind="line.Quantity" style="width:80px" />
+                                    </td>
+                                    <td>
+                                        <select class="form-select form-select-sm" @bind="line.MeasureUnit" style="width:75px">
+                                            <option value="">—</option>
+                                            <option value="Kg">Kg</option>
+                                            <option value="Tm">Tm</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input type="number" class="form-control form-control-sm"
+                                               @bind="line.Units" style="width:70px" />
+                                    </td>
+                                    <td>
+                                        <input type="number" class="form-control form-control-sm"
+                                               step="0.01" @bind="line.Price" style="width:90px" />
+                                    </td>
+                                    <td class="cell-number">
+                                        @(((line.Quantity ?? 0) * (line.Price ?? 0)).ToString("N2"))
+                                    </td>
+                                    <td>
+                                        <button type="button"
+                                                class="btn btn-outline-danger btn-sm btn-icon-only"
+                                                @onclick="() => RemoveLineAsync(idx)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-light fw-bold">
+                                <td colspan="5">Total</td>
+                                <td class="cell-number">
+                                    @(_lines.Sum(l => l.Quantity ?? 0).ToString("N2"))
+                                </td>
+                                <td colspan="3"></td>
+                                <td class="cell-number">
+                                    @(_lines.Sum(l => (l.Quantity ?? 0) * (l.Price ?? 0)).ToString("N2"))
+                                </td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+
+    @* ── Acciones ───────────────────────────────────────────────────────────── *@
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-danger">@_errorMessage</div>
+    }
+
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-primary" @onclick="SaveDraftAsync" disabled="@_saving">
+            @if (_saving)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            <i class="bi bi-floppy me-1"></i>Guardar borrador
+        </button>
+        @if (_isEdit && _lines.Count > 0 && _state == ProductDeclaration.States.Draft)
+        {
+            <button type="button" class="btn btn-success" @onclick="SaveAndEmitAsync" disabled="@_saving">
+                <i class="bi bi-send me-1"></i>Guardar y emitir
+            </button>
+        }
+        <button type="button" class="btn btn-ghost"
+                @onclick='() => Nav.NavigateTo("/product-declarations")'>
+            Cancelar
+        </button>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? DeclarationId { get; set; }
+
+    private bool _isEdit  => DeclarationId.HasValue;
+    private bool _loading = true;
+    private bool _saving  = false;
+    private string? _errorMessage;
+
+    // Cabecera
+    private Guid?   _idProducer;
+    private int?    _year       = DateTime.Today.Year;
+    private int?    _period;
+    private int?    _month;
+    private string  _type       = "";
+    private string  _currency   = "EUR";
+    private string? _reference;
+    private string? _state;
+    private string? _producerName;
+
+    // Catálogos
+    private List<EntityDto>                          _producers  = [];
+    private List<ResidueDto>                          _residues   = [];
+    private List<DicProductDeclarationTypeDto>        _dicTypes   = [];
+    private List<DicProductDeclarationProductDto>     _dicProducts = [];
+    private List<DicProductDeclarationSourceDto>      _dicSources = [];
+    private List<DicProductDeclarationUseDto>         _dicUses    = [];
+
+    // Líneas
+    private List<LineModel> _lines = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (!CurrentUser.IsInProfile(ProfileConstants.Producer))
+                _producers = await LoadProducersAsync();
+
+            _residues    = await LoadResiduesAsync();
+            _dicTypes    = await Mediator.Send(new GetDicProductDeclarationTypesQuery());
+            _dicProducts = await Mediator.Send(new GetDicProductDeclarationProductsQuery());
+            _dicSources  = await Mediator.Send(new GetDicProductDeclarationSourcesQuery());
+            _dicUses     = await Mediator.Send(new GetDicProductDeclarationUsesQuery());
+
+            if (_isEdit)
+            {
+                var detail = await Mediator.Send(
+                    new GetProductDeclarationDetailQuery(DeclarationId!.Value));
+                if (detail is not null)
+                {
+                _idProducer   = detail.IdProducer;
+                _producerName = detail.ProducerName;
+                _year         = detail.Year;
+                _period       = detail.Period;
+                _month        = detail.Month;
+                _type         = detail.Type ?? "";
+                _currency     = detail.Currency ?? "EUR";
+                _reference    = detail.Reference;
+                _state        = detail.State;
+                _lines        = detail.Products.Select(p => new LineModel
+                {
+                    Id              = p.Id,
+                    IdResidue       = p.IdResidue ?? Guid.Empty,
+                    ResidueName     = p.ResidueName,
+                    DicProductSearch= p.ResidueName ?? p.Reference ?? "",
+                    ProductCategory = p.ProductCategory,
+                    Reference       = p.Reference,
+                    Source          = p.Source,
+                    ProductUse      = p.ProductUse,
+                    Quantity        = p.Quantity,
+                    MeasureUnit     = p.MeasureUnit,
+                    Units           = p.Units,
+                    Price           = p.Price,
+                    IsPersisted     = true
+                }).ToList();
+                }
+            }
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task<List<EntityDto>> LoadProducersAsync()
+    {
+        var result = await Mediator.Send(new GetEntitiesQuery(
+            EntityRole: GreenTransit.Domain.Constants.EntityRoles.Producer,
+            PageSize: 500));
+        return result.Items.ToList();
+    }
+
+    private async Task<List<ResidueDto>> LoadResiduesAsync()
+    {
+        var result = await Mediator.Send(new GetResiduesQuery(
+            ResidueType: "Product", PageSize: 500));
+        return result.Items.ToList();
+    }
+
+    private void AddEmptyLine() => _lines.Add(new LineModel());
+
+    private void OnDicProductInput(int idx, string? value)
+    {
+        _lines[idx].DicProductSearch = value ?? "";
+        // Buscar coincidencia exacta por Ref en el diccionario
+        var match = _dicProducts.FirstOrDefault(dp =>
+            string.Equals(dp.Ref, value, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+        {
+            _lines[idx].ResidueName     = match.Description;
+            _lines[idx].ProductCategory = match.CategoryDescription ?? "";
+        }
+        else
+        {
+            // Limpiar categoría si el texto no coincide
+            _lines[idx].ProductCategory = "";
+        }
+    }
+
+    private void OnResidueSelected(int idx, ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var id))
+        {
+            _lines[idx].IdResidue = id;
+            var residue = _residues.FirstOrDefault(r => r.Id == id);
+            if (residue is not null)
+                _lines[idx].ResidueName = residue.Name;
+        }
+    }
+
+    private async Task RemoveLineAsync(int idx)
+    {
+        var line = _lines[idx];
+        if (line.IsPersisted && line.Id != Guid.Empty)
+        {
+            try
+            {
+                await Mediator.Send(new RemoveProductFromDeclarationCommand(line.Id));
+            }
+            catch (Exception ex) { _errorMessage = ex.Message; return; }
+        }
+        _lines.RemoveAt(idx);
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        _saving = true;
+        _errorMessage = null;
+        try
+        {
+            var id = await UpsertHeaderAsync();
+            await SaveNewLinesAsync(id);
+            Nav.NavigateTo("/product-declarations");
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task SaveAndEmitAsync()
+    {
+        _saving = true;
+        _errorMessage = null;
+        try
+        {
+            var id = await UpsertHeaderAsync();
+            await SaveNewLinesAsync(id);
+            await Mediator.Send(new EmitProductDeclarationCommand(id));
+            Nav.NavigateTo($"/product-declarations/{id}");
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task<Guid> UpsertHeaderAsync()
+    {
+        if (_isEdit)
+        {
+            await Mediator.Send(new UpdateProductDeclarationCommand(
+                DeclarationId!.Value, _year, _period, _month,
+                string.IsNullOrEmpty(_type) ? null : _type,
+                _currency, _reference));
+            return DeclarationId!.Value;
+        }
+        else
+        {
+            var producerId = CurrentUser.IsInProfile(ProfileConstants.Producer)
+                ? (CurrentUser.LinkedEntityId ?? Guid.Empty)
+                : (_idProducer ?? Guid.Empty);
+
+            return await Mediator.Send(new CreateProductDeclarationCommand(
+                producerId, _year ?? DateTime.Today.Year,
+                _period ?? 1, _month, _type, _currency, _reference));
+        }
+    }
+
+    private async Task SaveNewLinesAsync(Guid declarationId)
+    {
+        foreach (var line in _lines.Where(l => !l.IsPersisted))
+        {
+            if (string.IsNullOrWhiteSpace(line.DicProductSearch) && line.IdResidue == Guid.Empty)
+                continue; // línea vacía
+
+            // Intentar resolver IdResidue a partir del producto del diccionario
+            var idResidue = line.IdResidue != Guid.Empty ? line.IdResidue : (Guid?)null;
+            if (idResidue is null && !string.IsNullOrWhiteSpace(line.DicProductSearch))
+            {
+                var dicProd = _dicProducts.FirstOrDefault(dp =>
+                    string.Equals(dp.Ref, line.DicProductSearch, StringComparison.OrdinalIgnoreCase));
+                if (dicProd is not null)
+                {
+                    var residue = _residues.FirstOrDefault(r =>
+                        string.Equals(r.Reference, dicProd.Ref, StringComparison.OrdinalIgnoreCase));
+                    idResidue = residue?.Id;
+                }
+            }
+
+            await Mediator.Send(new AddProductToDeclarationCommand(
+                declarationId, idResidue, line.Reference, line.Source,
+                line.ProductUse, line.ProductCategory,
+                line.Quantity ?? 0, line.MeasureUnit, line.Units, line.Price));
+        }
+    }
+
+    private static string StateBadge(string? state) => state switch
+    {
+        ProductDeclaration.States.Draft     => "badge bg-secondary",
+        ProductDeclaration.States.Issued    => "badge bg-primary",
+        ProductDeclaration.States.Validated => "badge bg-success",
+        ProductDeclaration.States.Rejected  => "badge bg-danger",
+        _                                   => "badge bg-light text-dark"
+    };
+
+    private class LineModel
+    {
+        public Guid     Id               { get; set; }
+        public Guid     IdResidue        { get; set; }
+        public string?  ResidueName      { get; set; }
+        public string   DicProductSearch { get; set; } = "";
+        public string?  ProductCategory  { get; set; }
+        public string?  Reference        { get; set; }
+        public string?  Source           { get; set; }
+        public string?  ProductUse       { get; set; }
+        public decimal? Quantity         { get; set; }
+        public string?  MeasureUnit      { get; set; }
+        public int?     Units            { get; set; }
+        public decimal? Price            { get; set; }
+        public bool     IsPersisted      { get; set; }
+    }
+}

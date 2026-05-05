@@ -1,0 +1,386 @@
+@page "/product-declarations/{DeclarationId:guid}"
+@attribute [Authorize(Policy = PolicyConstants.CanViewProductDeclarations)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.ProductDeclarations.Commands
+@using GreenTransit.Application.Features.ProductDeclarations.DTOs
+@using GreenTransit.Application.Features.ProductDeclarations.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Entities
+@using GreenTransit.Web.Services
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
+
+<PageTitle>Detalle Declaración</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Declaración no encontrada.</div>
+    <button class="btn btn-outline-neutral btn-sm"
+            @onclick='() => Nav.NavigateTo("/product-declarations")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver
+    </button>
+}
+else
+{
+    var d        = _detail;
+    var editUrl  = "/product-declarations/" + d.Id + "/edit";
+    var isAdmin  = CurrentUser.IsInProfile(ProfileConstants.Admin);
+    var canManage= CurrentUser.IsInAnyProfile(ProfileConstants.Admin, ProfileConstants.Producer);
+    var isEditable = ProductDeclaration.States.Editable.Contains(d.State ?? "");
+
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">
+                <i class="bi bi-box-seam me-2"></i>
+                @(d.Reference ?? d.Id.ToString()[..8])
+            </h1>
+            <div class="d-flex gap-2 mt-1">
+                <span class="@StateBadge(d.State)">@(d.State ?? "—")</span>
+            </div>
+        </div>
+        <div class="page-header-actions">
+            @if (isEditable && canManage)
+            {
+                <button class="btn btn-outline btn-sm" @onclick="() => Nav.NavigateTo(editUrl)">
+                    <i class="bi bi-pencil me-1"></i>Editar
+                </button>
+            }
+            @if (d.State == ProductDeclaration.States.Draft && canManage)
+            {
+                <button class="btn btn-primary btn-sm" @onclick="EmitAsync">
+                    <i class="bi bi-send me-1"></i>Emitir
+                </button>
+            }
+            @if (d.State == ProductDeclaration.States.Issued && isAdmin)
+            {
+                <button class="btn btn-success btn-sm" @onclick="ValidateAsync">
+                    <i class="bi bi-check-circle me-1"></i>Validar
+                </button>
+                <button class="btn btn-outline-danger btn-sm" @onclick="() => _showRejectModal = true">
+                    <i class="bi bi-x-circle me-1"></i>Rechazar
+                </button>
+            }
+            <button class="btn btn-outline-secondary btn-sm" @onclick="ExportPdfAsync">
+                <i class="bi bi-file-pdf me-1"></i>PDF
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="ExportXlsxAsync">
+                <i class="bi bi-file-earmark-excel me-1"></i>XLSX
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-danger">@_errorMessage</div>
+    }
+
+    @* ── Cabecera ───────────────────────────────────────────────────────────── *@
+    <div class="row g-4 mb-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-building me-2"></i>Productor</div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Nombre</dt>
+                        <dd class="col-sm-8">@(d.ProducerName ?? "—")</dd>
+                        <dt class="col-sm-4">NIF</dt>
+                        <dd class="col-sm-8">@(d.ProducerNationalId ?? "—")</dd>
+                        <dt class="col-sm-4">Centro</dt>
+                        <dd class="col-sm-8">@(d.ProducerCenterCode ?? "—")</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-card-list me-2"></i>Datos de la declaración</div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Año / Periodo</dt>
+                        <dd class="col-sm-8">@(d.Year?.ToString() ?? "—") / T@(d.Period ?? 0)</dd>
+                        <dt class="col-sm-4">Tipo</dt>
+                        <dd class="col-sm-8">@(d.Type ?? "—")</dd>
+                        <dt class="col-sm-4">Importe total</dt>
+                        <dd class="col-sm-8 fw-bold">
+                            @(d.Amount.HasValue ? $"{d.Amount:N2} {d.Currency}" : "—")
+                        </dd>
+                        <dt class="col-sm-4">Referencia</dt>
+                        <dd class="col-sm-8">@(d.Reference ?? "—")</dd>
+                        <dt class="col-sm-4">Fecha creación</dt>
+                        <dd class="col-sm-8">@(d.DateCreate?.ToString("dd/MM/yyyy") ?? "—")</dd>
+                        <dt class="col-sm-4">Fecha emisión</dt>
+                        <dd class="col-sm-8">@(d.DateEmit?.ToString("dd/MM/yyyy") ?? "—")</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Timeline de estados ────────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-diagram-2 me-2"></i>Estado del proceso</div>
+        <div class="card-body">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                @foreach (var step in GetSteps(d.State))
+                {
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge @step.Css fs-6">@step.Label</span>
+                        @if (!step.IsLast)
+                        {
+                            <i class="bi bi-arrow-right text-muted"></i>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ── Líneas de producto ─────────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-list-ul me-2"></i>Líneas de producto</span>
+                @if (isEditable && canManage)
+                {
+                    <button class="btn btn-outline-secondary btn-sm"
+                            @onclick="() => _showImportModal = true">
+                        <i class="bi bi-file-earmark-arrow-up me-1"></i>Importar
+                    </button>
+                }
+            </div>
+        <div class="card-body p-0">
+            @if (!d.Products.Any())
+            {
+                <p class="text-muted p-3">No hay líneas de producto registradas.</p>
+            }
+            else
+            {
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Categoría</th>
+                            <th>Referencia</th>
+                            <th>Fuente</th>
+                            <th class="cell-number">Cantidad</th>
+                            <th>Unidad</th>
+                            <th class="cell-number">Unidades</th>
+                            <th class="cell-number">Precio</th>
+                            <th class="cell-number">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in d.Products)
+                        {
+                            <tr>
+                                <td>@(p.ResidueName ?? "—")</td>
+                                <td class="cell-muted">@(p.ResidueCategory ?? "—")</td>
+                                <td class="cell-muted">@(p.Reference ?? "—")</td>
+                                <td class="cell-muted">@(p.Source ?? "—")</td>
+                                <td class="cell-number">@(p.Quantity?.ToString("N2") ?? "—")</td>
+                                <td class="cell-muted">@(p.MeasureUnit ?? "—")</td>
+                                <td class="cell-number">@(p.Units?.ToString() ?? "—")</td>
+                                <td class="cell-number">@(p.Price?.ToString("N2") ?? "—")</td>
+                                <td class="cell-number">
+                                    @(((p.Quantity ?? 0) * (p.Price ?? 0)).ToString("N2"))
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-light fw-bold">
+                            <td colspan="4">Total</td>
+                            <td class="cell-number">
+                                @(d.Products.Sum(p => p.Quantity ?? 0).ToString("N2"))
+                            </td>
+                            <td colspan="3"></td>
+                            <td class="cell-number">
+                                @(d.Products.Sum(p => (p.Quantity ?? 0) * (p.Price ?? 0)).ToString("N2"))
+                                @d.Currency
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            }
+        </div>
+    </div>
+
+    @* ── Modal rechazo ──────────────────────────────────────────────────────── *@
+    @if (_showRejectModal)
+    {
+        <div class="modal-backdrop fade show"></div>
+        <div class="modal d-block" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Rechazar declaración</h5>
+                        <button class="btn-close" @onclick='() => _showRejectModal = false'></button>
+                    </div>
+                    <div class="modal-body">
+                        <label class="form-label">Motivo <span class="text-danger">*</span></label>
+                        <textarea class="form-control" rows="4" @bind="_rejectReason"
+                                  placeholder="Motivo del rechazo (mín. 10 caracteres)…"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost btn-sm"
+                                @onclick='() => _showRejectModal = false'>Cancelar</button>
+                        <button class="btn btn-danger btn-sm" @onclick="ConfirmRejectAsync">
+                            <i class="bi bi-x-circle me-1"></i>Confirmar rechazo
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="mt-3">
+        <button class="btn btn-ghost btn-sm"
+                @onclick='() => Nav.NavigateTo("/product-declarations")'>
+            <i class="bi bi-arrow-left me-1"></i>Volver al listado
+        </button>
+    </div>
+}
+
+<ImportProductsDialog IsVisible="_showImportModal"
+                      IdProductDeclaration="DeclarationId"
+                      OnImported="OnImportedAsync"
+                      OnClose="() => _showImportModal = false" />
+
+@code {
+    [Parameter] public Guid DeclarationId { get; set; }
+
+    private bool   _loading         = true;
+    private string? _errorMessage;
+    private bool   _showRejectModal = false;
+    private bool   _showImportModal = false;
+    private string _rejectReason    = "";
+
+    private ProductDeclarationDetailDto? _detail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _detail = await Mediator.Send(
+                new GetProductDeclarationDetailQuery(DeclarationId));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task EmitAsync()
+    {
+        try
+        {
+            await Mediator.Send(new EmitProductDeclarationCommand(DeclarationId));
+            _detail = await Mediator.Send(new GetProductDeclarationDetailQuery(DeclarationId));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+
+    private async Task ValidateAsync()
+    {
+        try
+        {
+            await Mediator.Send(new ValidateProductDeclarationCommand(DeclarationId));
+            _detail = await Mediator.Send(new GetProductDeclarationDetailQuery(DeclarationId));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+
+    private async Task ConfirmRejectAsync()
+    {
+        if (_rejectReason.Length < 10)
+        {
+            _errorMessage = "El motivo debe tener al menos 10 caracteres.";
+            return;
+        }
+        try
+        {
+            await Mediator.Send(new RejectProductDeclarationCommand(DeclarationId, _rejectReason));
+            _showRejectModal = false;
+            _detail = await Mediator.Send(new GetProductDeclarationDetailQuery(DeclarationId));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+
+    private async Task OnImportedAsync()
+    {
+        _showImportModal = false;
+        _detail = await Mediator.Send(new GetProductDeclarationDetailQuery(DeclarationId));
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        try
+        {
+            var dto   = await Mediator.Send(new GetProductDeclarationForExportQuery(DeclarationId));
+            var bytes = ProductDeclarationPdfGenerator.Generate(dto);
+            var b64   = Convert.ToBase64String(bytes);
+            var name  = $"declaracion_{dto.Reference ?? DeclarationId.ToString()[..8]}_{DateTime.Today:yyyyMMdd}.pdf";
+            await JS.InvokeVoidAsync("downloadBase64File", b64, name, "application/pdf");
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+
+    private async Task ExportXlsxAsync()
+    {
+        try
+        {
+            var (bytes, name) = await Mediator.Send(
+                new ExportProductDeclarationDetailToExcelQuery(DeclarationId));
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadBase64File", b64, name,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+    }
+
+    private static string StateBadge(string? state) => state switch
+    {
+        ProductDeclaration.States.Draft     => "badge bg-secondary",
+        ProductDeclaration.States.Issued    => "badge bg-primary",
+        ProductDeclaration.States.Validated => "badge bg-success",
+        ProductDeclaration.States.Rejected  => "badge bg-danger",
+        _                                   => "badge bg-light text-dark"
+    };
+
+    private static IEnumerable<StepModel> GetSteps(string? currentState)
+    {
+        var flow = new[]
+        {
+            (ProductDeclaration.States.Draft,     "Borrador"),
+            (ProductDeclaration.States.Issued,    "Emitido"),
+            (currentState == ProductDeclaration.States.Rejected
+                ? ProductDeclaration.States.Rejected
+                : ProductDeclaration.States.Validated,
+             currentState == ProductDeclaration.States.Rejected ? "Rechazado" : "Validado")
+        };
+
+        var reachedOrder = Array.FindIndex(flow, s => s.Item1 == currentState);
+
+        for (int i = 0; i < flow.Length; i++)
+        {
+            var (state, label) = flow[i];
+            var isActive  = state == currentState;
+            var isPast    = i < reachedOrder;
+            var css = isActive
+                ? StateBadge(state)
+                : isPast ? "badge bg-success opacity-50" : "badge bg-light text-muted";
+            yield return new StepModel(label, css, i == flow.Length - 1);
+        }
+    }
+
+    private record StepModel(string Label, string Css, bool IsLast);
+}

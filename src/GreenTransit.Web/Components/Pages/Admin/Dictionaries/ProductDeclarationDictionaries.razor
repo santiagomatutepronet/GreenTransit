@@ -1,0 +1,270 @@
+@page "/admin/dictionaries/product-declarations"
+@attribute [Authorize(Policy = PolicyConstants.CanManageDeclarationDicts)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.ProductDeclarations.Commands.Dictionaries
+@using GreenTransit.Application.Features.ProductDeclarations.Queries.Dictionaries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator         Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Diccionarios Declaraciones</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-sliders me-2"></i>Diccionarios Declaraciones de Producción
+    </h1>
+</div>
+
+@* ── Tabs ───────────────────────────────────────────────────────────────────── *@
+<ul class="nav nav-tabs mb-4">
+    @foreach (var tab in _tabs)
+    {
+        var t = tab;
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == t.Key ? "active" : "")"
+                    @onclick="() => SelectTab(t.Key)">
+                @t.Value
+            </button>
+        </li>
+    }
+</ul>
+
+@* ── Barra de búsqueda + botón nuevo ───────────────────────────────────────── *@
+<div class="d-flex gap-2 mb-3">
+    <input class="form-control" style="max-width:300px"
+           placeholder="Buscar por Ref o descripción…"
+           @bind="_search" @bind:event="oninput" />
+    <button class="btn btn-primary btn-sm" @onclick="SearchAsync">
+        <i class="bi bi-search me-1"></i>Buscar
+    </button>
+    <button class="btn btn-outline-primary btn-sm" @onclick="OpenNew">
+        <i class="bi bi-plus-lg me-1"></i>Nuevo
+    </button>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-4"><div class="spinner"></div></div>
+}
+else if (!_rows.Any())
+{
+    <div class="alert alert-info">No se encontraron entradas.</div>
+}
+else
+{
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="width:60px">Id</th>
+                    <th>Ref</th>
+                    <th>Descripción</th>
+                    @if (_activeTab == "products")
+                    {
+                        <th>Categoría</th>
+                    }
+                    <th style="width:80px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    <tr>
+                        <td class="cell-muted">@row.Id</td>
+                        <td class="font-semibold">@row.Ref</td>
+                        <td class="cell-muted">@row.Description</td>
+                        @if (_activeTab == "products")
+                        {
+                            <td class="cell-muted">@(row.Extra ?? "—")</td>
+                        }
+                        <td>
+                            <button class="btn btn-ghost btn-sm btn-icon-only" title="Editar"
+                                    @onclick="() => OpenEdit(row)">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@* ── Modal edición ──────────────────────────────────────────────────────────── *@
+@if (_showModal)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal d-block" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        @(_editId.HasValue ? "Editar" : "Nuevo") — @_tabs[_activeTab]
+                    </h5>
+                    <button class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Ref <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="_editRef" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Descripción <span class="text-danger">*</span></label>
+                        <textarea class="form-control" rows="3" @bind="_editDescription"></textarea>
+                    </div>
+                    @if (_activeTab == "products")
+                    {
+                        <div class="col-12">
+                            <label class="form-label">Categoría</label>
+                            <select class="form-select" @bind="_editCategoryId">
+                                <option value="">— Sin categoría —</option>
+                                @foreach (var c in _categories)
+                                {
+                                    <option value="@c.Id">@c.Description</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" @onclick="CloseModal">Cancelar</button>
+                    <button class="btn btn-primary btn-sm" @onclick="SaveAsync" disabled="@_saving">
+                        @if (_saving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-floppy me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger mt-3">@_errorMessage</div>
+}
+
+@code {
+    private record RowModel(int Id, string Ref, string Description, string? Extra = null);
+
+    private static readonly Dictionary<string, string> _tabs = new()
+    {
+        ["categories"] = "Categorías",
+        ["periods"]    = "Periodos",
+        ["products"]   = "Productos declarables",
+        ["sources"]    = "Fuentes",
+        ["types"]      = "Tipos",
+        ["uses"]       = "Usos"
+    };
+
+    private string  _activeTab   = "categories";
+    private string  _search      = "";
+    private bool    _loading     = true;
+    private bool    _saving      = false;
+    private string? _errorMessage;
+    private List<RowModel> _rows = [];
+    private List<DicProductDeclarationCategoryDto> _categories = [];
+
+    // Modal
+    private bool    _showModal      = false;
+    private int?    _editId;
+    private string  _editRef         = "";
+    private string  _editDescription = "";
+    private int?    _editCategoryId;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task SelectTab(string tab)
+    {
+        _activeTab = tab;
+        _search    = "";
+        await LoadAsync();
+    }
+
+    private async Task SearchAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading      = true;
+        _errorMessage = null;
+        try
+        {
+            _rows = _activeTab switch
+            {
+                "categories" => (await Mediator.Send(new GetDicProductDeclarationCategoriesQuery(_search)))
+                    .Select(x => new RowModel(x.Id, x.Ref, x.Description)).ToList(),
+                "periods"    => (await Mediator.Send(new GetDicProductDeclarationPeriodsQuery(_search)))
+                    .Select(x => new RowModel(x.Id, x.Ref, x.Description)).ToList(),
+                "products"   => (await Mediator.Send(new GetDicProductDeclarationProductsQuery(_search)))
+                    .Select(x => new RowModel(x.Id, x.Ref, x.Description, x.CategoryDescription)).ToList(),
+                "sources"    => (await Mediator.Send(new GetDicProductDeclarationSourcesQuery(_search)))
+                    .Select(x => new RowModel(x.Id, x.Ref, x.Description)).ToList(),
+                "types"      => (await Mediator.Send(new GetDicProductDeclarationTypesQuery(_search)))
+                    .Select(x => new RowModel(x.Id, x.Ref, x.Description)).ToList(),
+                "uses"       => (await Mediator.Send(new GetDicProductDeclarationUsesQuery(_search)))
+                    .Select(x => new RowModel(x.Id, x.Ref, x.Description)).ToList(),
+                _            => []
+            };
+
+            if (_activeTab == "products" && !_categories.Any())
+                _categories = await Mediator.Send(new GetDicProductDeclarationCategoriesQuery());
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void OpenNew()
+    {
+        _editId = null; _editRef = ""; _editDescription = ""; _editCategoryId = null;
+        _showModal = true;
+    }
+
+    private void OpenEdit(RowModel row)
+    {
+        _editId = row.Id; _editRef = row.Ref; _editDescription = row.Description;
+        _editCategoryId = null;
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editRef) || string.IsNullOrWhiteSpace(_editDescription))
+        {
+            _errorMessage = "Ref y Descripción son obligatorios.";
+            return;
+        }
+        _saving = true;
+        _errorMessage = null;
+        try
+        {
+            _ = _activeTab switch
+            {
+                "categories" => await Mediator.Send(new UpsertDicProductDeclarationCategoryCommand(
+                    _editId, _editRef, _editDescription)),
+                "periods"    => await Mediator.Send(new UpsertDicProductDeclarationPeriodCommand(
+                    _editId, _editRef, _editDescription)),
+                "products"   => await Mediator.Send(new UpsertDicProductDeclarationProductCommand(
+                    _editId, _editRef, _editDescription, _editCategoryId)),
+                "sources"    => await Mediator.Send(new UpsertDicProductDeclarationSourceCommand(
+                    _editId, _editRef, _editDescription)),
+                "types"      => await Mediator.Send(new UpsertDicProductDeclarationTypeCommand(
+                    _editId, _editRef, _editDescription)),
+                "uses"       => await Mediator.Send(new UpsertDicProductDeclarationUseCommand(
+                    _editId, _editRef, _editDescription)),
+                _            => 0
+            };
+            _showModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _saving = false; }
+    }
+}

@@ -36,6 +36,11 @@
             <i class="bi bi-gear-fill nav-icon"></i>
             <span class="nav-label">Operaciones R/D</span>
         </NavLink>
+        <NavLink class="nav-item nav-item--child"
+                 href="/admin/dictionaries/product-declarations">
+            <i class="bi bi-sliders nav-icon"></i>
+            <span class="nav-label">Diccionarios Declaración</span>
+        </NavLink>
     </div>
 
     @* ── Operaciones ─────────────────────────────────────────────────────── *@
@@ -111,6 +116,34 @@
             <span class="nav-label">Cuotas</span>
         </NavLink>
     </div> *@
+
+    @* ── Declaraciones de Producción ────────────────────────────────────── *@
+    <ProfileAuthorizeView Profiles="@_profilesDeclarations">
+        <Authorized>
+            <div class="nav-group">
+                <div class="nav-group-title">
+                    <i class="bi bi-box-seam-fill nav-icon"></i>
+                    <span class="nav-label">Declaraciones</span>
+                </div>
+                <NavLink class="nav-item nav-item--child" href="/product-declarations">
+                    <i class="bi bi-list-check nav-icon"></i>
+                    <span class="nav-label">Listado</span>
+                </NavLink>
+                <NavLink class="nav-item nav-item--child" href="/product-declarations/dashboard">
+                    <i class="bi bi-bar-chart-line nav-icon"></i>
+                    <span class="nav-label">Dashboard</span>
+                </NavLink>
+                <ProfileAuthorizeView Profiles="@_profilesManageDeclarations">
+                    <Authorized>
+                        <NavLink class="nav-item nav-item--child" href="/product-declarations/new">
+                            <i class="bi bi-plus-circle nav-icon"></i>
+                            <span class="nav-label">Nueva declaración</span>
+                        </NavLink>
+                    </Authorized>
+                </ProfileAuthorizeView>
+            </div>
+        </Authorized>
+    </ProfileAuthorizeView>
 
     @* ── Sostenibilidad ──────────────────────────────────────────────────── *@
     <div class="nav-group">
@@ -220,9 +253,9 @@
                     <i class="bi bi-person-badge-fill nav-icon"></i>
                     <span class="nav-label">Perfiles</span>
                 </NavLink>
-            </div>
-        </Authorized>
-    </ProfileAuthorizeView>
+                        </div>
+                    </Authorized>
+                </ProfileAuthorizeView>
 
 </nav>
 
@@ -300,5 +333,18 @@
     private static readonly string[] _profilesSecurity =
     [
         ProfileConstants.Admin, ProfileConstants.Scrap
+    ];
+
+    // Declaraciones: ADMIN, PRODUCER, SCRAP, COORDINATOR
+    private static readonly string[] _profilesDeclarations =
+    [
+        ProfileConstants.Admin, ProfileConstants.Producer,
+        ProfileConstants.Scrap, ProfileConstants.Coordinator
+    ];
+
+    // Crear/editar declaraciones: PRODUCER, ADMIN
+    private static readonly string[] _profilesManageDeclarations =
+    [
+        ProfileConstants.Producer, ProfileConstants.Admin
     ];
 }

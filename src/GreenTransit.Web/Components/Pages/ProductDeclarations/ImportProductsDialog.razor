@@ -1,0 +1,155 @@
+@using GreenTransit.Application.Features.ProductDeclarations.Commands
+@using MediatR
+@inject IMediator Mediator
+@if (IsVisible)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal d-block" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-file-earmark-arrow-up me-2"></i>
+                        Importar líneas de producto
+                    </h5>
+                    <button class="btn-close" @onclick="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_result is null)
+                    {
+                        <p class="text-muted mb-3">
+                            Selecciona un archivo CSV (separador <code>;</code>) o XLSX con las columnas:
+                            <strong>ProductReference, Source, Quantity, MeasureUnit, Units, Price, Reference</strong>.
+                        </p>
+                        <a href="/templates/product-import-template.csv"
+                           download class="btn btn-outline-secondary btn-sm mb-3">
+                            <i class="bi bi-download me-1"></i>Descargar plantilla CSV
+                        </a>
+                        <div>
+                            <label class="form-label">Archivo <span class="text-danger">*</span></label>
+                            <InputFile OnChange="OnFileSelected" accept=".csv,.xlsx,.xls"
+                                       class="form-control" />
+                        </div>
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <div class="alert alert-danger mt-3">@_errorMessage</div>
+                        }
+                    }
+                    else
+                    {
+                        @* Preview de resultados *@
+                        <div class="d-flex gap-3 mb-3">
+                            <span class="badge bg-secondary fs-6">Total: @_result.TotalRows</span>
+                            <span class="badge bg-success fs-6">OK: @_result.SuccessRows</span>
+                            @if (_result.ErrorRows > 0)
+                            {
+                                <span class="badge bg-danger fs-6">Errores: @_result.ErrorRows</span>
+                            }
+                        </div>
+                        @if (_result.Errors.Any())
+                        {
+                            <div class="table-wrapper" style="max-height:300px;overflow-y:auto">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Fila</th>
+                                            <th>Columna</th>
+                                            <th>Error</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var err in _result.Errors)
+                                        {
+                                            <tr class="table-danger">
+                                                <td>@err.LineNumber</td>
+                                                <td><code>@err.Column</code></td>
+                                                <td>@err.ErrorMessage</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-success">
+                                <i class="bi bi-check-circle-fill me-2"></i>
+                                Importación completada sin errores.
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-footer">
+                    @if (_result is null)
+                    {
+                        <button class="btn btn-ghost btn-sm" @onclick="Close">Cancelar</button>
+                        <button class="btn btn-primary btn-sm"
+                                @onclick="ImportAsync"
+                                disabled="@(_fileContent is null || _importing)">
+                            @if (_importing)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-upload me-1"></i>Importar
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-primary btn-sm" @onclick="Close">
+                            <i class="bi bi-check me-1"></i>Cerrar
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsVisible           { get; set; }
+    [Parameter] public Guid IdProductDeclaration { get; set; }
+    [Parameter] public EventCallback OnImported  { get; set; }
+    [Parameter] public EventCallback OnClose     { get; set; }
+
+    private byte[]?          _fileContent;
+    private string?          _fileName;
+    private bool             _importing    = false;
+    private string?          _errorMessage;
+    private ImportResultDto? _result;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _errorMessage = null;
+        var file = e.File;
+        if (file.Size > 5 * 1024 * 1024)
+        {
+            _errorMessage = "El archivo no puede superar 5 MB.";
+            return;
+        }
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(5 * 1024 * 1024).CopyToAsync(ms);
+        _fileContent = ms.ToArray();
+        _fileName    = file.Name;
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_fileContent is null) return;
+        _importing    = true;
+        _errorMessage = null;
+        try
+        {
+            _result = await Mediator.Send(new ImportProductsFromFileCommand(
+                IdProductDeclaration, _fileContent, _fileName!));
+            await OnImported.InvokeAsync();
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _importing = false; }
+    }
+
+    private async Task Close()
+    {
+        _fileContent = null; _fileName = null; _result = null; _errorMessage = null;
+        await OnClose.InvokeAsync();
+    }
+}

@@ -66,6 +66,14 @@ public interface IApplicationDbContext
     DbSet<AppUser>     AppUsers     { get; }
     DbSet<UserProfile> UserProfiles { get; }
 
+    // ── Diccionarios declaraciones ────────────────────────────────────────────
+    DbSet<DicProductDeclarationCategory> DicProductDeclarationCategories { get; }
+    DbSet<DicProductDeclarationPeriod>   DicProductDeclarationPeriods    { get; }
+    DbSet<DicProductDeclarationProduct>  DicProductDeclarationProducts   { get; }
+    DbSet<DicProductDeclarationSource>   DicProductDeclarationSources    { get; }
+    DbSet<DicProductDeclarationType>     DicProductDeclarationTypes      { get; }
+    DbSet<DicProductDeclarationUse>      DicProductDeclarationUses       { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
