@@ -11,13 +11,16 @@
 @using GreenTransit.Application.Features.ServiceOrders.Queries
 @using GreenTransit.Application.Features.LerCodes.DTOs
 @using GreenTransit.Application.Features.LerCodes.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using System.Text.Json
 
-@inject IMediator        Mediator
-@inject NavigationManager Nav
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
 
 <PageTitle>@(_isEdit ? "Editar Orden de Servicio" : "Nueva Orden de Servicio")</PageTitle>
 
@@ -105,16 +108,27 @@ else
                         <div class="accordion-body row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Emisor (Entidad)</label>
-                                <select class="form-select" @bind="_model.IdIssuedBy">
-                                    <option value="">— Sin asignar —</option>
-                                    @foreach (var e in _allEntities)
-                                    {
-                                        <option value="@e.Id">
-                                            @e.Name — @EntityRoles.Label(e.EntityRole)
-                                            @(e.NationalId is null ? "" : $" ({e.NationalId})")
-                                        </option>
-                                    }
-                                </select>
+                                @if (_issuedByReadOnly)
+                                {
+                                    @* PRODUCER: emisor fijo — solo lectura *@
+                                    var issuedByEntity = _allEntities.FirstOrDefault(e => e.Id == _model.IdIssuedBy);
+                                    <input class="form-control" readonly
+                                           value="@(issuedByEntity is null ? "— Sin entidad vinculada —" : $"{issuedByEntity.Name} ({issuedByEntity.NationalId})")" />
+                                    <small class="text-muted">Asignado automáticamente a tu entidad.</small>
+                                }
+                                else
+                                {
+                                    <select class="form-select" @bind="_model.IdIssuedBy">
+                                        <option value="">— Sin asignar —</option>
+                                        @foreach (var e in _allEntities)
+                                        {
+                                            <option value="@e.Id">
+                                                @e.Name — @EntityRoles.Label(e.EntityRole)
+                                                @(e.NationalId is null ? "" : $" ({e.NationalId})")
+                                            </option>
+                                        }
+                                    </select>
+                                }
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Nombre emisor (texto libre)</label>
@@ -217,7 +231,6 @@ else
                                             <tr>
                                                 <th style="width:260px">Código LER</th>
                                                 <th style="width:120px">Peso est. (kg)</th>
-                                                <th style="width:90px">Ud. medida</th>
                                                 <th style="width:80px">Unidades</th>
                                                 <th style="width:40px"></th>
                                             </tr>
@@ -260,12 +273,6 @@ else
                                                     <td>
                                                         <input type="number" class="form-control form-control-sm"
                                                                min="0" step="1" placeholder="0"
-                                                               value="@line.MeasureUnit"
-                                                               @onchange="e => line.MeasureUnit = int.TryParse(e.Value?.ToString(), out var mv) ? mv : null" />
-                                                    </td>
-                                                    <td>
-                                                        <input type="number" class="form-control form-control-sm"
-                                                               min="0" step="1" placeholder="0"
                                                                value="@line.Units"
                                                                @onchange="e => line.Units = int.TryParse(e.Value?.ToString(), out var uv) ? uv : null" />
                                                     </td>
@@ -304,8 +311,14 @@ else
                                         {
                                             <tr>
                                                 <td>
-                                                    <input class="form-control form-control-sm"
-                                                           @bind="c.Type" placeholder="Tipo contenedor" />
+                                                    <select class="form-select form-select-sm" @bind="c.Type">
+                                                        <option value="">— Seleccionar —</option>
+                                                        <option value="Bigbag">Big Bag</option>
+                                                        <option value="Contenedor">Contenedor</option>
+                                                        <option value="Palet">Palé</option>
+                                                        <option value="Granel">Granel</option>
+                                                        <option value="Otro">Otro</option>
+                                                    </select>
                                                 </td>
                                                 <td>
                                                     <input type="number" class="form-control form-control-sm"
@@ -466,11 +479,16 @@ else
     private List<LerChapterDto>              _lerChapters = [];
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
+    private bool _issuedByReadOnly;
+
     protected override async Task OnInitializedAsync()
     {
         // Carga secuencial: el DbContext de Blazor Server no soporta operaciones concurrentes.
         _allEntities = await Mediator.Send(new GetEntitiesForSelectorQuery());
         _lerChapters = await Mediator.Send(new GetLerCodesQuery());
+
+        // PRODUCER y PUBLIC_ENT: el emisor es siempre su propia entidad
+        _issuedByReadOnly = CurrentUser.IsInAnyProfile(ProfileConstants.Producer, ProfileConstants.PublicEnt);
 
         if (_isEdit)
         {
@@ -480,6 +498,8 @@ else
         else
         {
             _residueLines.Add(new ResidueLineModel());
+            if (_issuedByReadOnly)
+                _model.IdIssuedBy = CurrentUser.LinkedEntityId;
         }
 
         _loading = false;
@@ -582,7 +602,7 @@ else
                 ProductUse      : r.ProductUse,
                 ProductCategory : r.ProductCategory,
                 EstimatedWeight : r.EstimatedWeight,
-                MeasureUnit     : r.MeasureUnit,
+                MeasureUnit     : 1,   // siempre Kg
                 Units           : r.Units))
             .ToArray();
 

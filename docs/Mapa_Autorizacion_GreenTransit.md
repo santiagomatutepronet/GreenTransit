@@ -127,6 +127,34 @@ Cuando un permiso indica **"Propios"**, el filtro adicional depende del perfil:
 | `CAC_OP` | `EntryCACs` de su entidad | Solo su CAC |
 | `COORDINATOR` | `Agreements` donde figura como `IdCoordinator` | Lectura transversal del ámbito del acuerdo |
 
+#### ✅ Implementación del filtrado en `ServiceOrders`
+
+El filtro se aplica en **servidor** a través de `GetServiceOrdersQuery.IdIssuedBy`:
+
+- **`ServiceOrderList.razor`**: al cargar la lista, si el perfil es `PRODUCER` o `PUBLIC_ENT`, se pasa automáticamente `IdIssuedBy = CurrentUser.LinkedEntityId`. El usuario no puede anularlo desde la UI.
+- **`ServiceOrderForm.razor`**: al crear una nueva SO, el campo **Emisor** se autocompleta con `CurrentUser.LinkedEntityId` y se muestra como campo de solo lectura. En edición, el valor ya existe en BD y no se modifica.
+- **Componentes implicados**: `ServiceOrderList.razor`, `ServiceOrderForm.razor`, `GetServiceOrdersQuery.cs`.
+- **Servicio de contexto**: `ICurrentUserService.LinkedEntityId` + `ICurrentUserService.IsInAnyProfile(...)`.
+
+#### ✅ Implementación del filtrado en `Incidents`
+
+- **`GetIncidentsQuery.cs`**: si el perfil es `PRODUCER`, se filtra `i.ServiceOrderId != null && i.ServiceOrder.IdIssuedBy == LinkedEntityId`. Solo ve incidencias cuya SO fue emitida por su entidad.
+- **`IncidentForm.razor`**: el campo de traslado vinculado se convierte en un `<select>` cargado con `GetWasteMovesQuery(ServiceOrderIssuedBy: LinkedEntityId)`. El productor solo puede vincular incidencias a traslados propios.
+- **Componentes implicados**: `IncidentList.razor`, `IncidentForm.razor`, `GetIncidentsQuery.cs`, `GetWasteMovesQuery.cs`.
+
+#### ✅ Implementación del filtrado en `Dashboard`
+
+El `GetDashboardSummaryQuery` adapta todos sus KPIs al perfil `PRODUCER`:
+
+| KPI | Filtro adicional para PRODUCER |
+|---|---|
+| WasteMoves by status | `WasteMove.ServiceOrder.IdIssuedBy == LinkedEntityId` |
+| Kg recogidos (mes) | WasteMoveResidues de los traslados anteriores |
+| CO₂ (mes actual y anterior) | WasteMoveResidues de los traslados anteriores |
+| Incidencias abiertas | `Incident.ServiceOrder.IdIssuedBy == LinkedEntityId` |
+| Próximas recogidas | `ServiceOrders.IdIssuedBy == LinkedEntityId` |
+| Kg recogidos vs tratados (6 meses) | WasteMoveResidues de los traslados anteriores |
+
 ### 3.3. Regla de creación
 
 **Toda pantalla que muestra datos debe tener al menos un perfil con capacidad de creación.** Esta regla garantiza que no existan pantallas "huérfanas" donde nadie puede generar registros.
@@ -287,27 +315,6 @@ Cuando un permiso indica **"Propios"**, el filtro adicional depende del perfil:
 | Entradas Planta | PLANT_OP, ADMIN | ✅ |
 | Entradas CAC | CAC_OP, ADMIN | ✅ |
 | Tratamiento | PLANT_OP, ADMIN | ✅ |
-
----
-
-## 8. Estado de implementación
-
-Todos los componentes del sistema de autorización han sido implementados en el **Paso 8**:
-
-| Componente | Archivo | Estado |
-|---|---|---|
-| Constantes de perfiles y policies | `Domain/Authorization/ProfileConstants.cs`, `PolicyConstants.cs` | ✅ |
-| Requirements de autorización | `Infrastructure/Authorization/ProfileRequirement.cs`, `OwnDataRequirement.cs` | ✅ |
-| Handlers de autorización | `Infrastructure/Authorization/ProfileAuthorizationHandler.cs`, `OwnDataAuthorizationHandler.cs` | ✅ |
-| Registro de 24 policies | `Web/Program.cs` | ✅ |
-| Filtrado por perfil en queries | `Infrastructure/Services/DataScopeService.cs` | ✅ |
-| Componente Blazor `ProfileAuthorizeView` | `Web/Components/Authorization/ProfileAuthorizeView.razor` | ✅ |
-| Menú con visibilidad por perfil | `Web/Components/Layout/NavMenu.razor` | ✅ |
-| Behavior MediatR `AuthorizationBehavior` | `Application/Common/Behaviours/AuthorizationBehavior.cs` | ✅ |
-| Tests unitarios (40 tests) | `Tests/Authorization/` | ✅ |
-
-Guía de implementación en páginas: [`PATRON_AUTORIZACION_PAGINAS.md`](./PATRON_AUTORIZACION_PAGINAS.md)
-
 | Incidencias | Todos (apertura), DISPATCH_OFFICE + ADMIN (resolución) | ✅ |
 | Zonas DUM | ADMIN | ✅ |
 | Emisiones | Automático (backend) + ADMIN (re-cálculo) | ✅ |

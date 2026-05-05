@@ -76,29 +76,6 @@ try
         options.AccessDeniedPath    = "/acceso-denegado";
         options.ExpireTimeSpan      = TimeSpan.FromHours(8);
         options.SlidingExpiration   = true;
-        // ── Reducir tamaño de la cookie ───────────────────────────────────────
-        // SaveTokens=true almacena access_token + id_token en la cookie (2-4 KB de JWTs).
-        // Combinados con los claims gt_*, la cookie puede superar el límite del navegador
-        // (4 KB), truncarse y perder el claim gt_user_found → fallo de autorización.
-        // Los tokens se eliminan del ticket antes de que se escriba la cookie;
-        // los claims gt_* (añadidos en OnTokenValidated) ya contienen todo lo necesario.
-        options.Events.OnSigningIn = ctx =>
-        {
-            ctx.Properties.StoreTokens([]);
-            return Task.CompletedTask;
-        };
-        // ── DIAGNÓSTICO: volcar claims leídos de la cookie en cada request ──
-        options.Events.OnValidatePrincipal = ctx =>
-        {
-            var diagLogger = ctx.HttpContext.RequestServices
-                .GetRequiredService<ILogger<Program>>();
-            var claims = ctx.Principal?.Claims.ToList() ?? new List<Claim>();
-            var userFound = ctx.Principal?.FindFirstValue(AuthClaims.UserFound);
-            diagLogger.LogInformation(
-                "🍪 OnValidatePrincipal Path={Path} | TotalClaims={N} | gt_user_found='{UF}'",
-                ctx.Request.Path, claims.Count, userFound ?? "*** AUSENTE ***");
-            return Task.CompletedTask;
-        };
         // Devolver 401 en lugar de redirect para conexiones SignalR/AJAX,
         // evitando que Blazor lance un Challenge en cada negociación del WebSocket.
         options.Events.OnRedirectToLogin = context =>
@@ -287,18 +264,11 @@ try
 
     builder.Services.AddAuthorization(options =>
     {
-        // Política por defecto: requiere autenticación OIDC + usuario registrado en BD.
-        // La comprobación de gt_user_found (añadido por OnTokenValidated a la cookie)
-        // se hace aquí vía RequireAssertion; las páginas con [AllowAnonymous] la omiten
-        // por completo, evitando bucles en /acceso-denegado y /account/*.
-        // NOTA: usamos RequireAssertion en lugar de RequireClaim porque AuthorizeRouteView
-        // en Blazor SSR (.NET 10) tiene problemas para evaluar RequireClaim contra el
-        // ClaimsPrincipal que viene en el AuthenticationState (incluso cuando el claim
-        // está claramente presente). RequireAssertion evalúa directamente con HasClaim().
+        // Política por defecto: autenticado OIDC Y usuario encontrado en la BD.
+        // Usuarios autenticados sin registro en Users → redirigen a /acceso-denegado.
         options.DefaultPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
             .RequireAuthenticatedUser()
-            .RequireAssertion(ctx => ctx.User.HasClaim(
-                GreenTransit.Application.Common.AuthClaims.UserFound, "true"))
+            .RequireClaim(GreenTransit.Application.Common.AuthClaims.UserFound, "true")
             .Build();
 
         // ── MAESTROS ─────────────────────────────────────────────────────────

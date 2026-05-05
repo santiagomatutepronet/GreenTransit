@@ -45,9 +45,12 @@ public sealed class GetDashboardSummaryQueryHandler
         var yearStart        = new DateTime(now.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var yearEnd          = yearStart.AddYears(1);
 
-        var ownerId     = _currentUser.OwnerId;
-        var userProfile = _currentUser.UserProfile;
-        var isCarrier   = string.Equals(userProfile, "CARRIER", StringComparison.OrdinalIgnoreCase);
+        var ownerId        = _currentUser.OwnerId;
+        var userProfile    = _currentUser.UserProfile;
+        var isCarrier      = string.Equals(userProfile, "CARRIER",  StringComparison.OrdinalIgnoreCase);
+        var isProducer     = string.Equals(userProfile, "PRODUCER", StringComparison.OrdinalIgnoreCase);
+        var isScrap        = string.Equals(userProfile, "SCRAP",    StringComparison.OrdinalIgnoreCase);
+        var linkedEntityId = _currentUser.LinkedEntityId;
 
         // ── Helpers para filtro de tenant ─────────────────────────────────────
         bool HasOwner(Guid? entityOwnerId) => ownerId == Guid.Empty || entityOwnerId == ownerId;
@@ -61,6 +64,19 @@ public sealed class GetDashboardSummaryQueryHandler
             wmQuery = wmQuery.Where(wm =>
                 wm.WasteMoveResidues.Any(r => r.IdCarrier != null));
 
+        // PRODUCER: solo traslados cuya SO fue emitida por su entidad
+        if (isProducer && linkedEntityId.HasValue)
+            wmQuery = wmQuery.Where(wm =>
+                wm.ServiceOrderId != null &&
+                wm.ServiceOrder != null &&
+                wm.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
+
+        // SCRAP: solo traslados donde figure como IdScrap o IdScrap2
+        if (isScrap && linkedEntityId.HasValue)
+            wmQuery = wmQuery.Where(wm =>
+                wm.IdScrap == linkedEntityId.Value ||
+                wm.IdScrap2 == linkedEntityId.Value);
+
         var wasteMovesByStatus = (await wmQuery
             .GroupBy(wm => wm.ServiceStatus ?? "DESCONOCIDO")
             .Select(g => new { Status = g.Key, Count = g.Count() })
@@ -68,29 +84,57 @@ public sealed class GetDashboardSummaryQueryHandler
             .ToDictionary(x => x.Status, x => x.Count);
 
         // ── 2. Kg recogidos este mes ──────────────────────────────────────────
-        var kgCollectedThisMonth = await _context.WasteMoveResidues
+        var wmrBase = _context.WasteMoveResidues
             .AsNoTracking()
+            .Where(r => ownerId == Guid.Empty || r.WasteMove.OwnerId == ownerId);
+
+        // PRODUCER: solo residuos de traslados vinculados a sus SOs
+        if (isProducer && linkedEntityId.HasValue)
+            wmrBase = wmrBase.Where(r =>
+                r.WasteMove.ServiceOrderId != null &&
+                r.WasteMove.ServiceOrder != null &&
+                r.WasteMove.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
+
+        // SCRAP: solo residuos de traslados donde figure como IdScrap o IdScrap2
+        if (isScrap && linkedEntityId.HasValue)
+            wmrBase = wmrBase.Where(r =>
+                r.WasteMove.IdScrap == linkedEntityId.Value ||
+                r.WasteMove.IdScrap2 == linkedEntityId.Value);
+
+        // ── Base de residuos de tratamiento (secciones 3, 4 y 9) ──────────────
+        var tpResiduesBase = _context.TreatmentPlantResidues
+            .AsNoTracking()
+            .Where(r => ownerId == Guid.Empty || r.TreatmentPlant.OwnerId == ownerId);
+
+        if (isProducer && linkedEntityId.HasValue)
+            tpResiduesBase = tpResiduesBase.Where(r =>
+                r.TreatmentPlant.WasteMove != null &&
+                r.TreatmentPlant.WasteMove.ServiceOrder != null &&
+                r.TreatmentPlant.WasteMove.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
+
+        if (isScrap && linkedEntityId.HasValue)
+            tpResiduesBase = tpResiduesBase.Where(r =>
+                r.TreatmentPlant.WasteMove != null &&
+                (r.TreatmentPlant.WasteMove.IdScrap == linkedEntityId.Value ||
+                 r.TreatmentPlant.WasteMove.IdScrap2 == linkedEntityId.Value));
+
+        var kgCollectedThisMonth = await wmrBase
             .Where(r =>
-                (ownerId == Guid.Empty || r.WasteMove.OwnerId == ownerId) &&
                 CollectedStatuses.Contains(r.WasteMove.ServiceStatus) &&
                 r.WasteMove.ActualPickupStart >= firstOfMonth &&
                 r.WasteMove.ActualPickupStart < firstOfNextMonth)
             .SumAsync(r => r.Weight ?? 0m, ct);
 
         // ── 3. Kg tratados este mes ───────────────────────────────────────────
-        var kgTreatedThisMonth = await _context.TreatmentPlantResidues
-            .AsNoTracking()
+        var kgTreatedThisMonth = await tpResiduesBase
             .Where(r =>
-                (ownerId == Guid.Empty || r.TreatmentPlant.OwnerId == ownerId) &&
                 r.TreatmentPlant.PlantTreatmentDate >= firstOfMonth &&
                 r.TreatmentPlant.PlantTreatmentDate < firstOfNextMonth)
             .SumAsync(r => r.WeightTotal ?? 0m, ct);
 
         // ── 4. Tasas de tratamiento (mes en curso) ────────────────────────────
-        var treatmentData = await _context.TreatmentPlantResidues
-            .AsNoTracking()
+        var treatmentData = await tpResiduesBase
             .Where(r =>
-                (ownerId == Guid.Empty || r.TreatmentPlant.OwnerId == ownerId) &&
                 r.TreatmentPlant.PlantTreatmentDate >= firstOfMonth &&
                 r.TreatmentPlant.PlantTreatmentDate < firstOfNextMonth &&
                 r.TreatmentPlant.TreatmentOperation != null)
@@ -118,28 +162,41 @@ public sealed class GetDashboardSummaryQueryHandler
         var reuseRate      = SafeRate(reusedWeight);
 
         // ── 5. Huella CO₂ mes actual y mes anterior ───────────────────────────
-        var co2Base = _context.WasteMoveResidues
-            .AsNoTracking()
-            .Where(r => ownerId == Guid.Empty || r.WasteMove.OwnerId == ownerId);
-
-        var totalCo2ThisMonth = await co2Base
+        var totalCo2ThisMonth = await wmrBase
             .Where(r =>
                 r.WasteMove.ActualPickupStart >= firstOfMonth &&
                 r.WasteMove.ActualPickupStart < firstOfNextMonth)
             .SumAsync(r => r.TransportInfo_TransportCarbonEmissions ?? 0m, ct);
 
-        var co2PrevMonth = await co2Base
+        var co2PrevMonth = await wmrBase
             .Where(r =>
                 r.WasteMove.ActualPickupStart >= firstOfPrevMonth &&
                 r.WasteMove.ActualPickupStart < firstOfMonth)
             .SumAsync(r => r.TransportInfo_TransportCarbonEmissions ?? 0m, ct);
 
         // ── 6. Incidencias abiertas por severidad ─────────────────────────────
-        var openIncidentsBySeverity = (await _context.Incidents
+        var incidentBase = _context.Incidents
             .AsNoTracking()
             .Where(i =>
                 (ownerId == Guid.Empty || i.OwnerId == ownerId) &&
-                i.ClosedAt == null)
+                i.ClosedAt == null);
+
+        // PRODUCER: solo incidencias de sus SOs
+        if (isProducer && linkedEntityId.HasValue)
+            incidentBase = incidentBase.Where(i =>
+                i.ServiceOrderId != null &&
+                i.ServiceOrder != null &&
+                i.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
+
+        // SCRAP: solo incidencias de traslados donde figure como IdScrap o IdScrap2
+        if (isScrap && linkedEntityId.HasValue)
+            incidentBase = incidentBase.Where(i =>
+                i.WasteMoveReference != null &&
+                _context.WasteMoves.Any(wm =>
+                    wm.WasteMoveReference == i.WasteMoveReference &&
+                    (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value)));
+
+        var openIncidentsBySeverity = (await incidentBase
             .GroupBy(i => i.Severity)
             .Select(g => new { Severity = g.Key, Count = g.Count() })
             .ToListAsync(ct))
@@ -194,6 +251,18 @@ public sealed class GetDashboardSummaryQueryHandler
         if (isCarrier)
             soQuery = soQuery.Where(so => so.IdCarrier != null);
 
+        // PRODUCER: solo sus propias SOs
+        if (isProducer && linkedEntityId.HasValue)
+            soQuery = soQuery.Where(so => so.IdIssuedBy == linkedEntityId.Value);
+
+        // SCRAP: solo SOs vinculadas a traslados donde figure como IdScrap o IdScrap2
+        if (isScrap && linkedEntityId.HasValue)
+            soQuery = soQuery.Where(so =>
+                so.WasteMoveReference != null &&
+                _context.WasteMoves.Any(wm =>
+                    wm.WasteMoveReference == so.WasteMoveReference &&
+                    (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value)));
+
         var upcomingPickups = (await soQuery
             .OrderBy(so => so.PlannedPickupStart)
             .Take(5)
@@ -215,10 +284,8 @@ public sealed class GetDashboardSummaryQueryHandler
             .ToList();
 
         // ── 9. Últimos 6 meses: kg recogidos vs tratados ──────────────────────
-        var collectedByMonth = await _context.WasteMoveResidues
-            .AsNoTracking()
+        var collectedByMonth = await wmrBase
             .Where(r =>
-                (ownerId == Guid.Empty || r.WasteMove.OwnerId == ownerId) &&
                 CollectedStatuses.Contains(r.WasteMove.ServiceStatus) &&
                 r.WasteMove.ActualPickupStart >= first6MonthsAgo &&
                 r.WasteMove.ActualPickupStart < firstOfNextMonth)
@@ -230,10 +297,8 @@ public sealed class GetDashboardSummaryQueryHandler
             .Select(g => new { g.Key.Year, g.Key.Month, Weight = g.Sum(r => r.Weight ?? 0m) })
             .ToListAsync(ct);
 
-        var treatedByMonth = await _context.TreatmentPlantResidues
-            .AsNoTracking()
+        var treatedByMonth = await tpResiduesBase
             .Where(r =>
-                (ownerId == Guid.Empty || r.TreatmentPlant.OwnerId == ownerId) &&
                 r.TreatmentPlant.PlantTreatmentDate >= first6MonthsAgo &&
                 r.TreatmentPlant.PlantTreatmentDate < firstOfNextMonth)
             .GroupBy(r => new

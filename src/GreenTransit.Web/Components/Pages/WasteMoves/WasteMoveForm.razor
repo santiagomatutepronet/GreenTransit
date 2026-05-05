@@ -12,11 +12,14 @@
 @using GreenTransit.Application.Features.Residues.Queries
 @using GreenTransit.Application.Common.Models
 @using GreenTransit.Domain.Constants
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Application.Common.Interfaces
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 
-@inject IMediator        Mediator
-@inject NavigationManager Nav
+@inject IMediator              Mediator
+@inject NavigationManager      Nav
+@inject ICurrentUserService    CurrentUser
 
 <PageTitle>Nuevo Traslado de Residuos</PageTitle>
 
@@ -194,14 +197,6 @@ else
                                            @onchange="e => line.Weight = ParseDecimal(e.Value?.ToString())" />
                                 </div>
 
-                                @* Unidad de medida *@
-                                <div class="col-md-2">
-                                    <label>Unidad medida</label>
-                                    <input class="form-control"
-                                           placeholder="kg, t, ud…"
-                                           @bind="line.MeasureUnit" />
-                                </div>
-
                                 @* Unidades *@
                                 <div class="col-md-2">
                                     <label>Unidades</label>
@@ -259,13 +254,21 @@ else
 
                 <div class="col-md-4">
                     <label>SCRAP <span class="required">*</span></label>
-                    <select class="form-control" @bind="_formModel.IdScrap">
-                        <option value="">— Seleccionar —</option>
-                        @foreach (var e in _scrapEntities)
-                        {
-                            <option value="@e.Id">@e.Name</option>
-                        }
-                    </select>
+                    @if (_isScrapProfile)
+                    {
+                        <input class="form-control" readonly
+                               value="@(_scrapEntities.FirstOrDefault(e => e.Id == _formModel.IdScrap)?.Name ?? "—")" />
+                    }
+                    else
+                    {
+                        <select class="form-control" @bind="_formModel.IdScrap">
+                            <option value="">— Seleccionar —</option>
+                            @foreach (var e in _scrapEntities)
+                            {
+                                <option value="@e.Id">@e.Name</option>
+                            }
+                        </select>
+                    }
                     <FieldMessage Field="IdScrap" Errors="_validationErrors" />
                 </div>
 
@@ -393,6 +396,8 @@ else
     // Caché de residuos por LER code para no recargar si ya se cargaron
     private readonly Dictionary<Guid, List<ResidueDto>> _residueCache = new();
 
+    private bool _isScrapProfile;
+
     private IReadOnlyList<ServiceOrderDto>   _eligibleSOs         = [];
     private IReadOnlyList<EntitySelectorDto> _sourceEntities      = [];
     private IReadOnlyList<EntitySelectorDto> _destinationEntities = [];
@@ -412,6 +417,11 @@ else
         _sourceEntities      = allEntities.Where(e => WasteMoveSourceRoles.Valid.Contains(e.EntityRole)).ToList();
         _destinationEntities = allEntities.Where(e => WasteMoveDestinationRoles.Valid.Contains(e.EntityRole)).ToList();
         _scrapEntities       = allEntities.Where(e => e.EntityRole == EntityRoles.SCRAP).ToList();
+
+        // Perfil SCRAP: prefijar entidad vinculada y bloquear el campo
+        _isScrapProfile = CurrentUser.IsInProfile(ProfileConstants.Scrap);
+        if (_isScrapProfile && CurrentUser.LinkedEntityId.HasValue)
+            _formModel.IdScrap = CurrentUser.LinkedEntityId.Value;
 
         _loading = false;
     }
@@ -437,10 +447,14 @@ else
             LerCodeDescription = so.LerCodeDescription,
             LoadingResidues    = true,
             Weight             = so.EstimatedWeight,
-            MeasureUnit        = so.MeasureUnit?.ToString(),
+            MeasureUnit        = "Kg",
             Units              = null
         };
         _lines.Add(line);
+
+        // Autocompletar Origen con el punto de recogida de la SO (primera SO seleccionada)
+        if (_formModel.IdSource is null && so.IdPickupPoint.HasValue)
+            _formModel.IdSource = so.IdPickupPoint.Value;
 
         // Cargar residuos para el LER de esta SO
         await LoadResiduesForLineAsync(line);
@@ -478,12 +492,7 @@ else
         line.IdResidue = Guid.TryParse(value, out var id) ? id : null;
 
         // Precargar medida del residuo seleccionado si el usuario no ha tocado el campo
-        if (line.IdResidue.HasValue)
-        {
-            var residue = line.AvailableResidues.FirstOrDefault(r => r.Id == line.IdResidue.Value);
-            if (residue is not null && string.IsNullOrEmpty(line.MeasureUnit))
-                line.MeasureUnit = residue.LerCode; // fallback — no hay DefaultMeasureUnit en ResidueDto
-        }
+        // MeasureUnit siempre fijo a Kg, no se sobreescribe
     }
 
     private async Task SaveAsync()

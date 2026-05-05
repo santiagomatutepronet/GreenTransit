@@ -45,11 +45,19 @@ public sealed class GetEntryPlantsQueryHandler
     public async Task<GetEntryPlantsResult> Handle(
         GetEntryPlantsQuery request, CancellationToken ct)
     {
-        var ownerId = _currentUser.OwnerId;
+        var ownerId        = _currentUser.OwnerId;
+        var isScrap        = _currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap);
+        var linkedEntityId = _currentUser.LinkedEntityId;
 
         var query = _context.EntryPlants
             .AsNoTracking()
             .Where(e => ownerId == Guid.Empty || e.OwnerId == ownerId);
+
+        // SCRAP: solo entradas en planta cuyo traslado lo tiene asignado
+        if (isScrap && linkedEntityId.HasValue)
+            query = query.Where(e =>
+                e.WasteMove.IdScrap == linkedEntityId.Value ||
+                e.WasteMove.IdScrap2 == linkedEntityId.Value);
 
         if (!string.IsNullOrWhiteSpace(request.WasteMoveReference))
             query = query.Where(e =>

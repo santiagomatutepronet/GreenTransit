@@ -1,0 +1,263 @@
+@page "/users"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Common.Models
+@using GreenTransit.Application.Features.Security.Commands
+@using GreenTransit.Application.Features.Security.DTOs
+@using GreenTransit.Application.Features.Security.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator          Mediator
+@inject NavigationManager  Nav
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>Gestión de Usuarios</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        @if (!_isAdmin)
+        {
+            <div class="alert alert-danger">
+                <i class="bi bi-shield-x me-2"></i>Acceso restringido a administradores.
+            </div>
+        }
+        else
+        {
+            <div class="page-header">
+                <h1 class="page-title"><i class="bi bi-people-fill me-2"></i>Usuarios</h1>
+                <button class="btn btn-primary btn-sm" @onclick="CreateNew">
+                    <i class="bi bi-plus-lg me-1"></i>Nuevo Usuario
+                </button>
+            </div>
+
+            @* ── Barra de filtros ──────────────────────────────────────────── *@
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Búsqueda</label>
+                    <input class="form-control"
+                           placeholder="Login, Email…"
+                           @bind="_searchTerm" @bind:event="oninput"
+                           @onkeyup="@(async e => { if (e.Key == "Enter") await LoadAsync(); })" />
+                </div>
+                <div class="filter-group">
+                    <label>Perfil</label>
+                    <select class="form-control" @bind="_filterProfileId">
+                        <option value="0">— Todos —</option>
+                        @foreach (var p in _profiles)
+                        {
+                            <option value="@p.Id">@p.Reference</option>
+                        }
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Estado</label>
+                    <select class="form-control" @bind="_filterActive">
+                        <option value="">— Todos —</option>
+                        <option value="true">Activo</option>
+                        <option value="false">Inactivo</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <button class="btn btn-primary btn-sm" @onclick="ApplyFilters">
+                        <i class="bi bi-search me-1"></i>Buscar
+                    </button>
+                    <button class="btn btn-ghost btn-sm" @onclick="ResetFilters">Limpiar</button>
+                </div>
+            </div>
+
+            @* ── Tabla ─────────────────────────────────────────────────────── *@
+            @if (_loading)
+            {
+                <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+            }
+            else if (_result is null || _result.Items.Count == 0)
+            {
+                <div class="alert alert-info">No se encontraron usuarios con los filtros aplicados.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Login</th>
+                                <th>Email</th>
+                                <th>Perfil</th>
+                                <th>Estado</th>
+                                <th>Entidad vinculada</th>
+                                <th class="text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var u in _result.Items)
+                            {
+                                <tr>
+                                    <td>
+                                        <a class="fw-semibold text-decoration-none"
+                                           href="/users/@u.Id">@u.Login</a>
+                                    </td>
+                                    <td>@(u.Email ?? "—")</td>
+                                    <td><span class="badge @ProfileBadgeClass(u.ProfileReference)">@u.ProfileReference</span></td>
+                                    <td>
+                                        @if (u.IsActive)
+                                        { <span class="badge bg-success">Activo</span> }
+                                        else
+                                        { <span class="badge bg-secondary">Inactivo</span> }
+                                    </td>
+                                    <td>
+                                        @* Entidad vinculada se muestra desde el detalle *@
+                                        <span class="text-muted small">—</span>
+                                    </td>
+                                    <td class="text-end">
+                                        <a class="btn btn-outline-secondary btn-xs me-1"
+                                           href="/users/@u.Id" title="Ver detalle">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <a class="btn btn-outline-primary btn-xs me-1"
+                                           href="/users/@u.Id/edit" title="Editar">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        @if (u.IsActive)
+                                        {
+                                            <button class="btn btn-outline-danger btn-xs"
+                                                    title="Desactivar"
+                                                    @onclick="() => ConfirmDeactivate(u)">
+                                                <i class="bi bi-person-x"></i>
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @* ── Paginación ────────────────────────────────────────────── *@
+                @if (_result.TotalPages > 1)
+                {
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <small class="text-muted">
+                            @_result.TotalCount resultado(s) — Página @_result.PageNumber de @_result.TotalPages
+                        </small>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary"
+                                    disabled="@(!_result.HasPrevious)"
+                                    @onclick="PrevPage">‹ Anterior</button>
+                            <button class="btn btn-outline-secondary"
+                                    disabled="@(!_result.HasNext)"
+                                    @onclick="NextPage">Siguiente ›</button>
+                        </div>
+                    </div>
+                }
+            }
+
+            @* ── Confirmación desactivación ────────────────────────────────── *@
+            @if (_userToDeactivate is not null)
+            {
+                <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Desactivar usuario</h5>
+                            </div>
+                            <div class="modal-body">
+                                ¿Desactivar el usuario <strong>@_userToDeactivate.Login</strong>?
+                                El usuario perderá el acceso al sistema.
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary btn-sm"
+                                        @onclick="() => _userToDeactivate = null">Cancelar</button>
+                                <button class="btn btn-danger btn-sm"
+                                        @onclick="ExecuteDeactivate">Desactivar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool                         _isAdmin   = false;
+    private bool                         _loading   = true;
+    private PaginatedResult<UserDto>?    _result;
+    private IReadOnlyList<ProfileDto>    _profiles  = [];
+    private UserDto?                     _userToDeactivate;
+
+    private string? _searchTerm;
+    private int     _filterProfileId = 0;
+    private string  _filterActive    = "";
+    private int     _page            = 1;
+    private const int PageSize       = 20;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAdmin = CurrentUser.IsInProfile(ProfileConstants.Admin);
+
+        if (!_isAdmin) return;
+
+        _profiles = await Mediator.Send(new GetProfilesQuery());
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _result  = await Mediator.Send(new GetUsersQuery(
+            IdProfile:  _filterProfileId > 0 ? _filterProfileId : null,
+            IsActive:   _filterActive == "" ? null : bool.Parse(_filterActive),
+            SearchTerm: _searchTerm,
+            PageNumber: _page,
+            PageSize:   PageSize
+        ));
+        _loading = false;
+    }
+
+    private async Task ApplyFilters()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ResetFilters()
+    {
+        _searchTerm      = null;
+        _filterProfileId = 0;
+        _filterActive    = "";
+        _page            = 1;
+        await LoadAsync();
+    }
+
+    private async Task PrevPage() { _page--; await LoadAsync(); }
+    private async Task NextPage() { _page++; await LoadAsync(); }
+
+    private void CreateNew() => Nav.NavigateTo("/users/new");
+
+    private void ConfirmDeactivate(UserDto u) => _userToDeactivate = u;
+
+    private async Task ExecuteDeactivate()
+    {
+        if (_userToDeactivate is null) return;
+        await Mediator.Send(new DeactivateUserCommand(_userToDeactivate.Id));
+        _userToDeactivate = null;
+        await LoadAsync();
+    }
+
+    private static string ProfileBadgeClass(string profile) => profile switch
+    {
+        ProfileConstants.Admin          => "badge bg-danger",
+        ProfileConstants.Scrap          => "badge bg-primary",
+        ProfileConstants.Producer       => "badge bg-success",
+        ProfileConstants.Carrier        => "badge bg-warning text-dark",
+        ProfileConstants.PlantOp        => "badge bg-info text-dark",
+        ProfileConstants.CacOp          => "badge bg-secondary",
+        ProfileConstants.Coordinator    => "badge bg-dark",
+        ProfileConstants.DispatchOffice => "badge bg-primary",
+        _                               => "badge bg-secondary"
+    };
+}

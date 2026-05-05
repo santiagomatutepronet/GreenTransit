@@ -46,11 +46,33 @@ public sealed class GetIncidentsQueryHandler
     public async Task<GetIncidentsResult> Handle(
         GetIncidentsQuery request, CancellationToken ct)
     {
-        var ownerId = _currentUser.OwnerId;
+        var ownerId        = _currentUser.OwnerId;
+        var isProducer     = _currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Producer);
+        var isScrap        = _currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap);
+        var linkedEntityId = _currentUser.LinkedEntityId;
 
         var query = _context.Incidents
             .AsNoTracking()
             .Where(i => ownerId == Guid.Empty || i.OwnerId == ownerId);
+
+        // PRODUCER: solo incidencias cuya SO fue emitida por su entidad (§3.2)
+        if (isProducer && linkedEntityId.HasValue)
+            query = query.Where(i =>
+                i.ServiceOrderId != null &&
+                i.ServiceOrder != null &&
+                i.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
+
+        // SCRAP: solo incidencias vinculadas a traslados donde figure como IdScrap o IdScrap2
+        if (isScrap && linkedEntityId.HasValue)
+            query = query.Where(i =>
+                (i.ServiceOrderId != null &&
+                 _context.WasteMoves.Any(wm =>
+                     wm.ServiceOrderId == i.ServiceOrderId &&
+                     (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value))) ||
+                (i.WasteMoveReference != null &&
+                 _context.WasteMoves.Any(wm =>
+                     wm.WasteMoveReference == i.WasteMoveReference &&
+                     (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value))));
 
         if (!string.IsNullOrWhiteSpace(request.Severity))
             query = query.Where(i => i.Severity == request.Severity);

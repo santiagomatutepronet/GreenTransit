@@ -1246,6 +1246,7 @@ Restricciones: el seed es completamente idempotente (ejecutar dos veces no dupli
 
 ---
 
+
 ## 📝 NOTAS DE USO
 
 ### Convención de estados en prompts

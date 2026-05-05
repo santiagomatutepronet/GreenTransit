@@ -45,11 +45,20 @@ public sealed class GetTreatmentPlantsQueryHandler
     public async Task<GetTreatmentPlantsResult> Handle(
         GetTreatmentPlantsQuery request, CancellationToken ct)
     {
-        var ownerId = _currentUser.OwnerId;
+        var ownerId        = _currentUser.OwnerId;
+        var isScrap        = _currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap);
+        var linkedEntityId = _currentUser.LinkedEntityId;
 
         var query = _context.TreatmentPlants
             .AsNoTracking()
             .Where(t => ownerId == Guid.Empty || t.OwnerId == ownerId);
+
+        // SCRAP: solo tratamientos cuyo traslado lo tiene asignado
+        if (isScrap && linkedEntityId.HasValue)
+            query = query.Where(t =>
+                t.WasteMove != null &&
+                (t.WasteMove.IdScrap == linkedEntityId.Value ||
+                 t.WasteMove.IdScrap2 == linkedEntityId.Value));
 
         if (!string.IsNullOrWhiteSpace(request.WasteMoveReference))
             query = query.Where(t =>

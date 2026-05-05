@@ -3,11 +3,16 @@
 @rendermode InteractiveServer
 
 @using GreenTransit.Application.Features.Incidents.Commands
+@using GreenTransit.Application.Features.WasteMoves.DTOs
+@using GreenTransit.Application.Features.WasteMoves.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 
-@inject IMediator        Mediator
-@inject NavigationManager Nav
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
 
 <PageTitle>Nueva Incidencia</PageTitle>
 
@@ -130,13 +135,35 @@
                         @* ── Traslado vinculado (opcional) ─────────────────────── *@
                         <div class="mb-3">
                             <label class="form-label fw-semibold">
-                                Referencia de traslado vinculado
+                                Traslado vinculado
                                 <span class="text-muted small fw-normal">(opcional)</span>
                             </label>
-                            <input type="text"
-                                   class="form-control"
-                                   placeholder="Ej: WM-2025-001234"
-                                   @bind="_wasteMoveReference" />
+                            @if (_isProducer)
+                            {
+                                @* PRODUCER: solo puede vincular sus propios traslados *@
+                                <select class="form-select" @bind="_selectedWasteMoveId"
+                                        @bind:after="OnWasteMoveSelected">
+                                    <option value="">— Sin traslado vinculado —</option>
+                                    @foreach (var wm in _producerWasteMoves)
+                                    {
+                                        <option value="@wm.Id">
+                                            @(wm.WasteMoveReference ?? wm.Id.ToString()[..8])
+                                            @(wm.ServiceStatus is null ? "" : $" — {wm.ServiceStatus}")
+                                        </option>
+                                    }
+                                </select>
+                                @if (_producerWasteMoves.Count == 0 && !_loadingWasteMoves)
+                                {
+                                    <small class="text-muted">No tienes traslados activos.</small>
+                                }
+                            }
+                            else
+                            {
+                                <input type="text"
+                                       class="form-control"
+                                       placeholder="Ej: WM-2025-001234"
+                                       @bind="_wasteMoveReference" />
+                            }
                             @if (_severity is "High" or "Critical" &&
                                  !string.IsNullOrWhiteSpace(_wasteMoveReference))
                             {
@@ -242,7 +269,41 @@
     private string?  _errorMessage;
     private Guid     _createdId;
 
+    // ── PRODUCER: selector de traslados propios ───────────────────────────────
+    private bool     _isProducer;
+    private bool     _loadingWasteMoves;
+    private string   _selectedWasteMoveId = "";
+    private Guid?    _linkedServiceOrderId;
+    private List<WasteMoveDto> _producerWasteMoves = [];
+
     private readonly object _model = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isProducer = CurrentUser.IsInProfile(ProfileConstants.Producer);
+        if (_isProducer && CurrentUser.LinkedEntityId.HasValue)
+        {
+            _loadingWasteMoves = true;
+            var result = await Mediator.Send(new GetWasteMovesQuery(
+                ServiceOrderIssuedBy: CurrentUser.LinkedEntityId,
+                PageSize: 200));
+            _producerWasteMoves = result.Items.ToList();
+            _loadingWasteMoves  = false;
+        }
+    }
+
+    private void OnWasteMoveSelected()
+    {
+        if (!Guid.TryParse(_selectedWasteMoveId, out var wmId))
+        {
+            _wasteMoveReference   = null;
+            _linkedServiceOrderId = null;
+            return;
+        }
+        var wm = _producerWasteMoves.FirstOrDefault(x => x.Id == wmId);
+        _wasteMoveReference   = wm?.WasteMoveReference;
+        _linkedServiceOrderId = null;   // WasteMove → ServiceOrderId se resuelve en el command si se expone
+    }
 
     private async Task SubmitAsync()
     {

@@ -1,0 +1,207 @@
+@page "/users/{UserId:int}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Security.Commands
+@using GreenTransit.Application.Features.Security.DTOs
+@using GreenTransit.Application.Features.Security.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator         Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Detalle de Usuario</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="GoBack">
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Usuario no encontrado.</div>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="GoBack">
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    var d = _detail!;
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">
+                <i class="bi bi-person-fill me-2"></i>@d.Login
+            </h1>
+            <div class="d-flex gap-2 mt-1">
+                <span class="badge bg-secondary">@d.ProfileReference</span>
+                @if (d.IsActive)
+                { <span class="badge bg-success">Activo</span> }
+                else
+                { <span class="badge bg-danger">Inactivo</span> }
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            @if (d.LinkedEntityId.HasValue)
+            {
+                <a class="btn btn-outline-info btn-sm"
+                   href="/entities/@d.LinkedEntityId">
+                    <i class="bi bi-building me-1"></i>Ir a Entidad vinculada
+                </a>
+            }
+            <a class="btn btn-outline-primary btn-sm"
+               href="/users/@d.Id/edit">
+                <i class="bi bi-pencil me-1"></i>Editar
+            </a>
+            @if (d.IsActive)
+            {
+                <button class="btn btn-outline-danger btn-sm"
+                        @onclick="ConfirmDeactivate">
+                    <i class="bi bi-person-x me-1"></i>Desactivar
+                </button>
+            }
+            <button class="btn btn-outline-secondary btn-sm" @onclick="GoBack">
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-1">
+
+        @* ── Datos básicos ─────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-person-vcard me-2"></i>Datos básicos
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="Login"          Value="@d.Login"                      Mono />
+                    <DetailRow Label="Email"          Value="@(d.Email ?? "—")"             />
+                    <DetailRow Label="Nombre"         Value="@(d.CompleteName ?? "—")"      />
+                    <DetailRow Label="Perfil"         Value="@d.ProfileReference"           />
+                    <DetailRow Label="Estado"         Value="@(d.IsActive ? "Activo" : "Inactivo")" />
+                    <DetailRow Label="Alta"           Value="@(d.CreateDate?.ToString("dd/MM/yyyy") ?? "—")" />
+                </div>
+            </div>
+        </div>
+
+        @* ── Geografía ─────────────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-geo-alt-fill me-2"></i>Geografía
+                </div>
+                <div class="card-body">
+                    <DetailRow Label="País"           Value="@(d.CountryName ?? "—")"       />
+                    <DetailRow Label="CCAA"           Value="@(d.StateName ?? "—")"         />
+                    <DetailRow Label="Municipio"      Value="@(d.MunicipalityName ?? "—")"  />
+                    <DetailRow Label="CP"             Value="@(d.ZipCode ?? "—")"           Mono />
+                    <DetailRow Label="Dirección"      Value="@(d.Address ?? "—")"           />
+                </div>
+            </div>
+        </div>
+
+        @* ── Interoperabilidad ─────────────────────────────────────────────── *@
+        @if (!string.IsNullOrEmpty(d.PortalEDCProvider) || !string.IsNullOrEmpty(d.PortalEDCConsumer))
+        {
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-plug-fill me-2"></i>Interoperabilidad
+                    </div>
+                    <div class="card-body">
+                        <DetailRow Label="Portal EDC Provider"  Value="@(d.PortalEDCProvider ?? "—")" />
+                        <DetailRow Label="Portal EDC Consumer"  Value="@(d.PortalEDCConsumer ?? "—")" />
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ── Entidad vinculada ─────────────────────────────────────────────── *@
+        @if (!string.IsNullOrEmpty(d.LinkedEntityName))
+        {
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-building me-2"></i>Entidad vinculada
+                    </div>
+                    <div class="card-body d-flex flex-column gap-2">
+                        <DetailRow Label="Nombre" Value="@d.LinkedEntityName" />
+                        <a class="btn btn-outline-info btn-sm align-self-start"
+                           href="/entities/@d.LinkedEntityId">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>Ir a la ficha de entidad
+                        </a>
+                    </div>
+                </div>
+            </div>
+        }
+
+    </div>
+
+    @* ── Confirmación desactivación ────────────────────────────────────────── *@
+    @if (_confirmDeactivate)
+    {
+        <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Desactivar usuario</h5>
+                    </div>
+                    <div class="modal-body">
+                        ¿Desactivar el usuario <strong>@d.Login</strong>?
+                        El usuario perderá el acceso al sistema.
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary btn-sm"
+                                @onclick="() => _confirmDeactivate = false">Cancelar</button>
+                        <button class="btn btn-danger btn-sm"
+                                @onclick="ExecuteDeactivate">Desactivar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int UserId { get; set; }
+
+    private bool            _loading          = true;
+    private string          _errorMessage     = "";
+    private bool            _confirmDeactivate = false;
+    private UserDetailDto?  _detail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _detail = await Mediator.Send(new GetUserByIdQuery(UserId));
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void GoBack() => Nav.NavigateTo("/users");
+
+    private void ConfirmDeactivate() => _confirmDeactivate = true;
+
+    private async Task ExecuteDeactivate()
+    {
+        _confirmDeactivate = false;
+        await Mediator.Send(new DeactivateUserCommand(UserId));
+        _detail = await Mediator.Send(new GetUserByIdQuery(UserId));
+    }
+}

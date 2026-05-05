@@ -236,7 +236,7 @@ Reglas de transición (claves):
   - Clasificación del residuo: `WasteStream`, `SubStream`, `ProductUse`, `ProductCategory`, `IdLERCode` → `LERCodes`.
   - **Punto de recogida (v4)**: `IdPickupPoint` → `Entities` (con `EntityRole ∈ {CAC, PublicEntity, Producer, OperatorTransfer}`). ⚠️ Sustituye a los campos `Point_*` de v1.
   - Ventanas planificadas: `PlannedPickupStart`, `PlannedPickupEnd`, `PlannedDeliveryStart`, `PlannedDeliveryEnd`.
-  - Estimación: `EstimatedWeight`, `MeasureUnit`, `Units`, `ContainersJson`.
+  - Estimación: `EstimatedWeight`, `MeasureUnit` (**siempre 1 = Kg**, no editable por usuario), `Units`, `ContainersJson`.
   - Asignaciones previstas: `IdCarrier` → `Entities` (Carrier), `IdPlannedPlant` → `Entities` (Plant).
   - Ejecución (se actualizan luego): `WasteMoveReference`, `TicketScalePlanned`, `ActualPickupStart/End`, `ActualDeliveryStart/End`, `TransportDistanceKm`, `TransportDurationMin`, `VehicleRegistration`, `VehicleType`, `FuelType`, `EuroClass`.
   - Auditoría: `Version`, `Hash`, `CreatedAt`, `UpdatedAt`, `IdUser`.
@@ -246,6 +246,15 @@ Reglas de transición (claves):
   - Validar cruce con `Agreements` vigente (ámbito geográfico + waste stream).
 - **Funciones**: alta rápida, duplicación de orden recurrente, adjuntar `ContainersJson` (nº y tipo de contenedores), vinculación opcional a un `Agreement`.
 - **Roles**: **Productor**, **Entidad Pública**, **Administrador**, **Gestor logístico**.
+
+#### ✅ Decisiones de implementación (UI)
+
+| Campo | Comportamiento implementado |
+|---|---|
+| **Emisor (`IdIssuedBy`)** | Para `PRODUCER` y `PUBLIC_ENT`: se autocompleta con `CurrentUser.LinkedEntityId` y es de solo lectura. Para el resto de perfiles: selector libre sobre `Entities`. |
+| **Unidad de medida (`MeasureUnit`)** | No se muestra en el formulario. Se almacena siempre como `1` (Kg) en el backend. El peso estimado se introduce siempre en kilogramos. |
+| **Tipo de contenedor (`ContainersJson[].Type`)** | Campo `<select>` con opciones fijas: `Bigbag`, `Contenedor`, `Palé`, `Granel`, `Otro`. No se permite texto libre. |
+| **Filtrado en lista** | `PRODUCER` y `PUBLIC_ENT` ven únicamente sus propias SOs (`IdIssuedBy = LinkedEntityId`). `SCRAP` ve las SOs **sin traslado asignado aún** (cualquier SCRAP del tenant puede reclamarlas) **más** las SOs cuyo traslado lo tiene como `IdScrap` o `IdScrap2`. El filtro se aplica en servidor vía `GetServiceOrdersQuery`. |
 
 ### 3.2. Paso 2 — Crear Solicitud de Traslado (`WasteMoves`) → Estado **SOLICITADO**
 
@@ -269,6 +278,13 @@ Reglas de transición (claves):
   - Heredar `IdScrap` y `IdLERCode` desde la `ServiceOrder` origen.
 - **Funciones**: agrupación multi-SO, consolidación de cargas, preview del DI/NT a generar.
 - **Roles**: **Gestor logístico**, **Administrador**.
+
+#### ✅ Decisiones de implementación (UI)
+
+| Aspecto | Comportamiento implementado |
+|---|---|
+| **Filtrado en lista SCRAP** | `SCRAP` ve únicamente los traslados donde figura como `IdScrap` o `IdScrap2`. Filtro en servidor vía `GetWasteMovesQuery` con `ICurrentUserService`. |
+| **Filtrado OwnerId** | Todos los perfiles ven solo traslados de su tenant (`OwnerId`). Filtro aplicado en el handler, no en la UI. |
 
 ### 3.3. Paso 3 — Planificación Logística → Estado **PLANIFICADO**
 
@@ -314,6 +330,12 @@ Reglas de transición (claves):
 - **Funciones**: registro rápido en terminal del CAC, etiquetado, preparación para consolidación y posterior traslado a planta.
 - **Roles**: **Operador de CAC**.
 
+#### ✅ Decisiones de implementación (UI)
+
+| Aspecto | Comportamiento implementado |
+|---|---|
+| **Filtrado en lista SCRAP** | `SCRAP` ve únicamente las entradas en CAC cuyo traslado vinculado (`IdWasteMove → WasteMoves`) tiene `IdScrap` o `IdScrap2` igual a `LinkedEntityId`. Filtro en servidor vía `GetEntryCACsQuery`. |
+
 ### 3.6. Paso 6 — Entrada y Pesaje en Planta (`EntryPlants`) → Estado **EN PLANTA**
 
 - **Lógica**: el destino pesa el residuo en báscula oficial. **El `NetWeight` es el valor oficial para la liquidación económica y el reporte regulatorio**. Puede venir directamente desde `RECOGIDO` o desde `EN CAC`.
@@ -331,6 +353,12 @@ Reglas de transición (claves):
   - Descuadre respecto a `WasteMoveResidues.Weight` ⇒ sugerir incidencia automática.
 - **Funciones**: integración directa con báscula (si hay `WeighbridgeId`), captura de ticket, conciliación automática con `WasteMoveResidues`.
 - **Roles**: **Operador de Planta**.
+
+#### ✅ Decisiones de implementación (UI)
+
+| Aspecto | Comportamiento implementado |
+|---|---|
+| **Filtrado en lista SCRAP** | `SCRAP` ve únicamente las entradas en planta cuyo traslado vinculado (`IdWasteMove → WasteMoves`) tiene `IdScrap` o `IdScrap2` igual a `LinkedEntityId`. Filtro en servidor vía `GetEntryPlantsQuery`. |
 
 ### 3.7. Paso 7 — Clasificación y Tratamiento Final (`TreatmentPlants`) → Estado **CLASIFICADO**
 
@@ -355,6 +383,12 @@ Reglas de transición (claves):
   Si falla ⇒ abrir `Incident` automática con `Severity = High`, bloqueando la transición a `CLASIFICADO`.
 - **Funciones**: formulario de clasificación con validación en tiempo real, métricas de calidad (p.ej. % contaminantes), trazabilidad completa desde la SO origen hasta cada fracción.
 - **Roles**: **Operador de Planta**.
+
+#### ✅ Decisiones de implementación (UI)
+
+| Aspecto | Comportamiento implementado |
+|---|---|
+| **Filtrado en lista SCRAP** | `SCRAP` ve únicamente los tratamientos en planta cuyo traslado vinculado (`IdWasteMove → WasteMoves`) tiene `IdScrap` o `IdScrap2` igual a `LinkedEntityId`. Filtro en servidor vía `GetTreatmentPlantsQuery`. |
 
 ### 3.8. Consulta 360º del traslado
 
@@ -400,6 +434,15 @@ Reglas de transición (claves):
 - **Tipos típicos**: descuadre de peso, residuo no conforme, retraso, avería vehículo, contaminación de fracción, documento faltante.
 - **Funciones**: apertura con foto+geolocalización, workflow de resolución, vinculación a `TreatmentPlants.IncidentId`, exportación histórica, bandeja de incidencias abiertas en dashboard.
 - **Roles**: apertura → cualquier perfil; resolución/cierre → **Administrador** o perfil responsable según `Type`.
+
+#### ✅ Decisiones de implementación (UI)
+
+| Aspecto | Comportamiento implementado |
+|---|---|
+| **Listado PRODUCER** | Solo muestra incidencias cuya `ServiceOrderId → ServiceOrder.IdIssuedBy == LinkedEntityId`. Filtro en servidor (`GetIncidentsQuery`). |
+| **Listado SCRAP** | Solo muestra incidencias vinculadas a traslados donde figura como `IdScrap` o `IdScrap2` (filtro en servidor vía `ServiceOrderId` o `WasteMoveReference` cruzado con `WasteMoves`). |
+| **Creación PRODUCER** | El campo "Traslado vinculado" es un `<select>` cargado con los traslados del productor (`GetWasteMovesQuery(ServiceOrderIssuedBy: LinkedEntityId)`). No se permite texto libre. |
+| **Dashboard PRODUCER** | El widget de incidencias abiertas solo cuenta las vinculadas a sus SOs. |
 
 ### 4.4. Control de Zonas DUM (Geofencing)
 
@@ -468,7 +511,69 @@ Reglas de transición (claves):
 
 ## 6. 👥 Gestión de Usuarios, Perfiles y Seguridad
 
+> **Estado**: ✅ Implementado — Application + Web layers completos.
+
 ### 6.1. Perfiles y control de acceso (`Profiles`)
+
+- **Lógica**: cada usuario pertenece a un `Profile` que determina sus permisos funcionales y de visibilidad.
+- **Entidad**: `Profiles`.
+- **Campos clave**: `ID`, `Reference` (código único), `Description`.
+- **Implementación**:
+  - `GetProfilesQuery` → `IReadOnlyList<ProfileDto>` — catálogo del sistema sin filtro OwnerId.
+  - `ProfileList.razor` → `/profiles` — solo lectura, accesible a perfiles de seguridad.
+
+| Reference | Descripción | Acceso típico |
+|---|---|---|
+| `ADMIN` | Administrador del sistema | Todo (multi-tenant si aplica) |
+| `SCRAP` | Sistema colectivo de responsabilidad ampliada | Agreements, Settlements, MarketShares propios + lectura operativa |
+| `PRODUCER` | Productor / Generador | Sus `ServiceOrders`, sus `Residues` (Product/ProductSpec) |
+| `CARRIER` | Transportista | `WasteMoves` / `WasteMoveResidues` donde figura como `IdCarrier`; app móvil |
+| `PLANT_OP` | Operador de Planta | `EntryPlants`, `TreatmentPlants`, `PlantEnergies` de su entidad |
+| `CAC_OP` | Operador de CAC | `EntryCACs` de su entidad |
+| `PUBLIC_ENT` | Entidad pública / Ayuntamiento | Agreements, Settlements, reporting del municipio |
+| `COORDINATOR` | Coordinador del acuerdo | Lectura transversal del ámbito del `Agreement` |
+| `DISPATCH_OFFICE` | Oficina de despacho | Gestión operativa transversal |
+
+### 6.2. Gestión de usuarios (`Users`)
+
+- **Entidad**: `Users` ↔ `Profiles` ↔ `Country` / `TerritoryState` / `Municipality`.
+- **Campos clave**: `ID`, `Login` (único por `OwnerId`), `Email`, `IdProfile` (FK → `Profiles`), `NationalId` (FK → `Country.Id`), `GeographicalId` (FK → `TerritoryState.Id`), `MunicipalityId` (FK → `Municipality.Id`), `OwnerId` (tenant), `PortalEDCProvider`, `PortalEDCConsumer`, `IsActive` (acceso habilitado).
+- **Restricciones de seguridad**:
+  - Solo perfil `ADMIN` accede al módulo.
+  - `ClientSecret` **nunca** se devuelve en queries ni DTOs.
+  - `OwnerId` del usuario creado = `OwnerId` del admin autenticado (no configurable desde UI).
+- **Implementación Application** (`Features/Security/`):
+  - `GetUsersQuery` — paginada, filtros `IdProfile?`, `IsActive?`, `SearchTerm?`, filtra por `OwnerId` del admin.
+  - `GetUserByIdQuery` — devuelve `UserDetailDto` con nombres de País/CCAA/Municipio resueltos y `LinkedEntityName`.
+  - `CreateUserCommand` — validación: `Login` único por `OwnerId`.
+  - `UpdateUserCommand` — loguea (`Warning`) cambios de perfil con perfil anterior y nuevo.
+  - `DeactivateUserCommand` — establece `IsActive = false`.
+  - `LinkUserToEntityCommand` — actualiza `BusinessEntity.IdUser` y loguea la operación.
+- **Implementación Web** (`Components/Pages/Security/`):
+  - `UserList.razor` → `/users` — tabla con filtros, badge de perfil coloreado, acciones Ver/Editar/Desactivar.
+  - `UserForm.razor` → `/users/new`, `/users/{id}/edit` — formulario con `GeographySelector`, sección EDC colapsable.
+  - `UserDetail.razor` → `/users/{id}` — ficha completa con botón "Ir a Entidad vinculada" condicional.
+- **Migración EF**: `AddUserIsActive` — añade columna `IsActive bit NOT NULL DEFAULT 1` a tabla `Users`.
+
+### 6.3. Credenciales SharePoint (`UserSharePointCredentials`)
+
+- **Lógica**: integración por usuario con SharePoint para gestión documental delegada.
+- **Entidad**: `UserSharePointCredentials`.
+- **Campos clave**: `TenantId` (Azure AD), `ClientId`, `ClientSecret` (cifrado en reposo), `IsActive` (solo una activa por usuario).
+- **Funciones**: alta/rotación segura, prueba de conexión, desactivación.
+- **Roles**: usuario propietario + **Administrador**.
+
+### 6.4. Multi-tenancy y visibilidad de datos
+
+- **Lógica**: todas las tablas con `OwnerId` se filtran automáticamente por el `Users.OwnerId` del usuario autenticado. Un usuario NO ve datos de otros tenants salvo que su perfil sea `ADMIN` global.
+- **Regla transversal**: middleware/API debe inyectar siempre `WHERE OwnerId = @currentOwner` (salvo maestros compartidos: `LERCodes`, `TreatmentOperations`, geografía).
+
+### 6.5. Auditoría y seguridad
+
+- **Lógica**: todo cambio queda trazado vía `CreatedAt`/`UpdatedAt`/`DateCreateSys`/`DateModifiedSys` + `IdUser`. Para tablas con `Hash`/`Version`, se detectan manipulaciones.
+- **Funciones**: log de accesos, log de cambios con diff, verificación de `Hash` en documentos (`AgreementDocuments.DocumentHash`, `WasteMoves.DocumentHash`).
+
+---
 
 - **Lógica**: cada usuario pertenece a un `Profile` que determina sus permisos funcionales y de visibilidad.
 - **Entidad**: `Profiles`.
@@ -591,5 +696,268 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 - [ ] Logs de auditoría + verificación periódica de integridad.
 
 ---
+
+## 10. 📦 Módulo de Declaraciones de Producción
+
+> Módulo que permite a los productores declarar periódicamente los productos puestos en el mercado, cumpliendo con las obligaciones de Responsabilidad Ampliada del Productor (RAP). La declaración se estructura como maestro-detalle: `ProductDeclaration` (cabecera) → `Products` (líneas de producto). Los diccionarios `dicProductDeclaration*` alimentan los selectores del formulario.
+
+### 🔄 Estados de la declaración (máquina de estados)
+
+> Estado gestionado en `ProductDeclaration.State` (nvarchar(64)). Las transiciones se controlan en el servicio de dominio `ProductDeclarationStateService`. Los estados documentales disponibles se definen en `DocStates`.
+
+```
+[BORRADOR] → [EMITIDO] → [VALIDADO]
+                  ↓
+             [RECHAZADO] → [BORRADOR] (corrección y reenvío)
+```
+
+Reglas de transición:
+
+| Desde → Hasta | Dispara | Requiere | Quién |
+|---|---|---|---|
+| `BORRADOR → EMITIDO` | Productor confirma declaración | Al menos 1 línea en `Products`, `IdProducer` informado, `Year` + `Period` informados | PRODUCER, ADMIN |
+| `EMITIDO → VALIDADO` | Administrador aprueba | Revisión de cantidades y referencias vs catálogo `Residues` | ADMIN |
+| `EMITIDO → RECHAZADO` | Administrador rechaza | Motivo de rechazo obligatorio (campo `Reference` o campo adicional en log) | ADMIN |
+| `RECHAZADO → BORRADOR` | Productor corrige | El productor modifica líneas y reenvía | PRODUCER, ADMIN |
+
+---
+
+### 10.1. Listado de Declaraciones de Producción
+
+- **Lógica**: vista paginada de todas las declaraciones del tenant, con filtros y acciones contextuales según estado y perfil.
+- **Entidades**: `ProductDeclaration` ↔ `Entities` (IdProducer).
+- **Ruta**: `/product-declarations`
+- **Columnas del listado**:
+  - `Reference` (referencia de la declaración).
+  - Productor (`Entities.Name` vía `IdProducer`).
+  - `Year` + `Period` (referencia a `dicProductDeclarationPeriods`).
+  - `Type` (referencia a `dicProductDeclarationType`).
+  - `State` (badge de color: BORRADOR=gris, EMITIDO=azul, VALIDADO=verde, RECHAZADO=rojo).
+  - `Amount` (importe total formateado con `Currency`).
+  - `DateCreate` / `DateEmit`.
+  - Acciones: Ver / Editar / Emitir / Validar / Rechazar (según estado y perfil).
+- **Filtros**:
+  - Por `State` (multi-select).
+  - Por `Year` y `Period`.
+  - Por `IdProducer` (selector de entidades con `EntityRole=Producer`; oculto para PRODUCER, que ve solo los suyos).
+  - Por `Type` (combo alimentado por `dicProductDeclarationType`).
+  - Por rango de `DateCreate`.
+- **Acciones masivas**: exportación CSV/XLSX del listado filtrado.
+- **Roles**:
+  - **ADMIN**: ve todas las declaraciones del tenant, puede crear/editar/validar/rechazar.
+  - **PRODUCER**: ve solo las declaraciones donde `IdProducer` = su entidad vinculada. Puede crear y editar las que están en `BORRADOR` o `RECHAZADO`.
+  - **SCRAP**: lectura de declaraciones vinculadas a productores de sus acuerdos.
+
+#### ✅ Decisiones de implementación (UI)
+
+| Aspecto | Comportamiento implementado |
+|---|---|
+| **Filtrado PRODUCER** | `GetProductDeclarationsQuery` filtra automáticamente `WHERE IdProducer = @LinkedEntityId` si el perfil es PRODUCER. El usuario no puede anular este filtro. |
+| **Filtrado SCRAP** | Solo ve declaraciones cuyo `IdProducer` está adherido a alguno de sus `Agreements`. Filtro cruzado: `ProductDeclaration.IdProducer IN (SELECT IdProducer FROM ... WHERE Agreements.IdScrap = @LinkedEntityId)`. |
+| **Creación rápida** | Botón "Nueva declaración" visible solo para ADMIN y PRODUCER. Para PRODUCER, `IdProducer` se asigna automáticamente. |
+
+---
+
+### 10.2. Formulario de Declaración de Producción (Cabecera)
+
+- **Lógica**: formulario wizard de 2 pasos: (1) datos de cabecera, (2) líneas de producto. La cabecera se guarda primero en estado `BORRADOR`; las líneas se añaden/editan después.
+- **Entidades**: `ProductDeclaration`, `Entities`, `dicProductDeclarationPeriods`, `dicProductDeclarationType`.
+- **Ruta**: `/product-declarations/new` (alta) · `/product-declarations/{id}` (edición/detalle).
+
+#### Paso 1 — Cabecera (`ProductDeclaration`)
+
+| Campo UI | Campo BD | Tipo | Comportamiento |
+|---|---|---|---|
+| Productor | `IdProducer` | Selector → `Entities` (EntityRole=Producer) | Para PRODUCER: solo lectura, autocompletado con `LinkedEntityId`. Para ADMIN: selector libre. |
+| Año | `Year` | Numérico (4 dígitos) | Obligatorio. Default: año actual. |
+| Periodo | `Period` | Combo → `dicProductDeclarationPeriods` | Obligatorio. Opciones: Trimestral, Semestral, Anual… |
+| Mes | `Month` | Combo 1-12 | Opcional. Solo visible si el periodo lo requiere (mensual). |
+| Tipo | `Type` | Combo → `dicProductDeclarationType` | Obligatorio. |
+| Moneda | `Currency` | Combo (EUR, USD…) | Default: EUR. |
+| Referencia | `Reference` | Texto libre (256 chars) | Opcional. Referencia interna del productor. |
+| Fecha creación | `DateCreate` | Datetime (readonly) | Se asigna automáticamente al crear. |
+| Estado | `State` | Badge (readonly) | Se asigna como `BORRADOR` al crear. |
+
+- **Validaciones de cabecera**:
+  - `IdProducer` obligatorio.
+  - `Year` + `Period` obligatorios.
+  - **Unicidad**: no pueden existir dos declaraciones con el mismo `IdProducer` + `Year` + `Period` + `Type` en estado distinto de `RECHAZADO`. Validar en servidor.
+  - `Type` obligatorio.
+
+#### Paso 2 — Líneas de producto (`Products`)
+
+- Se muestra como tabla editable inline debajo de la cabecera.
+- Botón "Añadir línea" para insertar nuevas filas.
+
+| Campo UI | Campo BD | Tipo | Comportamiento |
+|---|---|---|---|
+| Producto | `IdResidue` | Selector → `Residues` (ResidueType=Product) | Busqueda por `Name`, `Reference`, `ProductCategory`. Al seleccionar, se autocompleta `MeasureUnit` desde `Residues.DefaultMeasureUnit`. |
+| Referencia | `Reference` | Texto libre (512 chars) | Opcional. Referencia específica de esta línea. |
+| Fuente | `Source` | Combo → `dicProductDeclarationSource` | Opcional. |
+| Cantidad | `Quantity` | Decimal (18,2) | Obligatorio. Validación > 0. |
+| Unidad medida | `MeasureUnit` | Combo → valores estándar (kg, t, ud, l…) | Se inicializa desde `Residues.DefaultMeasureUnit`. Editable. |
+| Unidades | `Units` | Entero | Opcional. Número de unidades físicas. |
+| Precio | `Price` | Decimal (18,0) | Opcional. Precio unitario. |
+
+- **Cálculo automático**: al cambiar líneas, se recalcula `ProductDeclaration.Amount` = Σ(`Products.Quantity × Products.Price`) para las líneas con precio informado.
+- **Validaciones de líneas**:
+  - Al menos 1 línea para poder emitir la declaración.
+  - `IdResidue` obligatorio en cada línea (el producto debe existir en el catálogo `Residues` con `ResidueType=Product`).
+  - `Quantity` > 0.
+  - No duplicar `IdResidue` + `Source` en la misma declaración (warning, no bloqueo).
+
+---
+
+### 10.3. Flujo de Emisión y Validación
+
+- **Lógica**: transiciones de estado controladas por el servicio de dominio. Cada transición registra `IdUser`, fecha y motivo (si aplica) en un log de auditoría.
+- **Entidades**: `ProductDeclaration`, `DocStates`.
+
+#### Emitir declaración (BORRADOR → EMITIDO)
+
+- **Acción**: botón "Emitir" en el formulario de detalle.
+- **Precondiciones**: al menos 1 línea en `Products`, todos los campos obligatorios de cabecera informados.
+- **Efecto**:
+  - `State` = `EMITIDO`.
+  - `DateEmit` = `DateTime.UtcNow`.
+  - La declaración pasa a solo lectura para el PRODUCER.
+  - Se genera una notificación para el ADMIN.
+- **Roles**: PRODUCER (sus declaraciones), ADMIN.
+
+#### Validar declaración (EMITIDO → VALIDADO)
+
+- **Acción**: botón "Validar" en el listado o detalle (solo visible en estado EMITIDO).
+- **Precondiciones**: revisión manual por ADMIN (cantidades coherentes, productos existentes).
+- **Efecto**:
+  - `State` = `VALIDADO`.
+  - La declaración queda definitivamente en solo lectura.
+  - Se notifica al PRODUCER.
+- **Roles**: ADMIN.
+
+#### Rechazar declaración (EMITIDO → RECHAZADO)
+
+- **Acción**: botón "Rechazar" con modal de motivo obligatorio.
+- **Efecto**:
+  - `State` = `RECHAZADO`.
+  - Se almacena motivo de rechazo (campo `Reference` o campo de log).
+  - Se notifica al PRODUCER con el motivo.
+  - El PRODUCER puede editar y reemitir.
+- **Roles**: ADMIN.
+
+---
+
+### 10.4. Detalle y vista 360° de la Declaración
+
+- **Lógica**: vista consolidada de una declaración con toda su información: cabecera, líneas de producto con detalle del catálogo `Residues`, timeline de estados, y vinculación con eco-modulación si aplica.
+- **Ruta**: `/product-declarations/{id}`
+- **Secciones**:
+  1. **Cabecera**: datos del productor (nombre, NIF, centro), periodo, tipo, estado con badge, importe total.
+  2. **Líneas de producto**: tabla con columnas Producto (nombre + referencia del catálogo), Categoría (desde `Residues.ProductCategory`), Cantidad, Unidad, Unidades, Precio, Subtotal. Fila de totales al pie.
+  3. **Timeline de estados**: stepper horizontal mostrando BORRADOR → EMITIDO → VALIDADO (o RECHAZADO), con fechas y usuario de cada transición.
+  4. **Histórico de cambios**: log de quién editó qué y cuándo (usando `DateCreateSys` / `DateModifiedSys` / `IdUser`).
+- **Exportación**: botón "Exportar PDF" con resumen de la declaración (cabecera + tabla de líneas + firma del productor). Botón "Exportar XLSX" con todas las líneas.
+- **Roles**: PRODUCER (sus declaraciones), ADMIN (todas), SCRAP (lectura de las de sus productores adheridos).
+
+---
+
+### 10.5. Dashboard de Declaraciones (KPIs del módulo)
+
+- **Lógica**: widgets específicos de declaraciones que se integran en el dashboard principal (§0.1) o en una sub-página dedicada `/product-declarations/dashboard`.
+- **KPIs**:
+  - **Declaraciones por estado**: donut chart con nº de declaraciones en BORRADOR / EMITIDO / VALIDADO / RECHAZADO.
+  - **Volumen declarado por periodo**: bar chart con Σ `Products.Quantity` agrupado por `Year` + `Period`.
+  - **Top 10 productos declarados**: ranking por `Σ Quantity` de las líneas `Products`, resolviendo el nombre vía `Residues.Name`.
+  - **Productores sin declaración**: listado de `Entities` con `EntityRole=Producer` que NO tienen `ProductDeclaration` en el periodo actual.
+  - **Importe total declarado**: card con `Σ ProductDeclaration.Amount` del periodo filtrado.
+- **Filtros**: `Year`, `Period`, `IdProducer` (solo ADMIN), `Type`.
+- **Roles**:
+  - **ADMIN**: todos los KPIs.
+  - **PRODUCER**: solo sus propios KPIs (volumen propio, estado de sus declaraciones).
+  - **SCRAP**: KPIs de sus productores adheridos.
+
+---
+
+### 10.6. Importación masiva de declaraciones
+
+- **Lógica**: carga de un fichero CSV/XLSX con múltiples líneas de producto para una declaración existente (o creando cabecera + líneas en una sola operación).
+- **Formato esperado del fichero**:
+  - Columnas: `ProductReference` (referencia en `Residues`), `Source`, `Quantity`, `MeasureUnit`, `Units`, `Price`.
+  - El sistema busca `Residues` por `Reference` + `ResidueType=Product`. Si no encuentra el producto, marca la fila como error.
+- **Validaciones**:
+  - Formato correcto de cada columna.
+  - Producto existente en catálogo `Residues`.
+  - `Quantity` > 0.
+  - Informe de errores fila a fila con descarga del fichero de errores.
+- **Flujo**:
+  1. El usuario sube el fichero en la pantalla de detalle de la declaración (o en la pantalla de alta).
+  2. El sistema parsea, valida y muestra preview con semáforo por fila (verde=ok, rojo=error).
+  3. El usuario confirma la importación de las filas válidas.
+  4. Las filas se insertan en `Products` vinculadas a la `ProductDeclaration`.
+- **Roles**: PRODUCER (su declaración en BORRADOR), ADMIN.
+
+---
+
+### 10.7. Gestión de Diccionarios de Declaración
+
+- **Lógica**: mantenimiento CRUD de las tablas de referencia que alimentan los selectores del módulo de declaraciones.
+- **Entidades**: `dicProductDeclarationCategory`, `dicProductDeclarationPeriods`, `dicProductDeclarationProducts`, `dicProductDeclarationSource`, `dicProductDeclarationType`, `dicProductDeclarationUse`.
+- **Ruta**: `/admin/dictionaries/product-declarations`
+- **Funciones**:
+  - Listado con búsqueda por `Ref` y `description`.
+  - Alta/edición/desactivación (nunca eliminación física para preservar integridad referencial).
+  - En `dicProductDeclarationProducts`: selector de `CategoryId` → `dicProductDeclarationCategory` (relación FK interna).
+- **Roles**: solo **ADMIN**.
+
+---
+
+## Actualización de la Matriz de Permisos (§8)
+
+La siguiente fila se añade a la tabla de la sección 8:
+
+| Funcionalidad | ADMIN | SCRAP | PRODUCER | CARRIER | PLANT_OP | CAC_OP | PUBLIC_ENT | COORDINATOR |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| ProductDeclaration / Products | CRUD | R (adheridos) | CRUD (suyos) | – | – | – | – | R |
+| dicProductDeclaration* (diccionarios) | CRUD | – | – | – | – | – | – | – |
+
+---
+
+## Actualización de la Matriz de Autorización (Mapa_Autorizacion)
+
+### Pantalla nueva en §4 (matriz por pantalla)
+
+| Pantalla | Entidad BD | PRODUCER | CARRIER | SCRAP | PUBLIC_ENT | CAC_OP | PLANT_OP | COORDINATOR | DISPATCH_OFFICE | ADMIN |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **Declaraciones Producción** | `ProductDeclaration` / `Products` | **CRUD-P** | — | R-P | — | — | — | R | R | **CRUD** |
+| **Diccionarios Declaración** | `dicProductDeclaration*` | — | — | — | — | — | — | — | — | **CRUD** |
+
+### Policy de autorización nueva (§7.1)
+
+```
+Policy                          Perfiles permitidos
+─────────────────────────────── ─────────────────────────────────────
+CanManageProductDeclarations    PRODUCER (CRUD-P), ADMIN (CRUD)
+CanValidateProductDeclarations  ADMIN
+CanViewProductDeclarations      PRODUCER (propias), SCRAP (adheridos), COORDINATOR, DISPATCH_OFFICE, ADMIN
+CanManageDeclarationDicts       ADMIN
+```
+
+### Filtro por datos propios
+
+| Perfil | Campo de filtro | Lógica |
+|---|---|---|
+| `PRODUCER` | `ProductDeclaration.IdProducer` | Solo ve/edita declaraciones donde `IdProducer` = su entidad vinculada |
+| `SCRAP` | `ProductDeclaration.IdProducer` cruzado con `Agreements.IdScrap` | Solo ve declaraciones de productores adheridos a sus acuerdos |
+
+---
+
+## Actualización del Checklist Técnico (§9)
+
+Se añaden los siguientes ítems:
+
+- [ ] Seed de diccionarios: `dicProductDeclarationCategory`, `dicProductDeclarationPeriods`, `dicProductDeclarationProducts`, `dicProductDeclarationSource`, `dicProductDeclarationType`, `dicProductDeclarationUse`.
+- [ ] Seed de `DocStates` con estados: `Borrador`, `Emitido`, `Validado`, `Rechazado`.
+- [ ] Servicio de dominio `ProductDeclarationStateService` para transiciones de estado.
+- [ ] Notificaciones al cambiar estado (EMITIDO → notifica a ADMIN; VALIDADO/RECHAZADO → notifica a PRODUCER).
+- [ ] Template de importación CSV/XLSX disponible para descarga.
 
 *Documento generado para guiar la implementación con Copilot/Claude sobre el modelo GreenTransit v4.1.*

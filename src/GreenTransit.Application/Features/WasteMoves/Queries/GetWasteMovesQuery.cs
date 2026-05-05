@@ -9,29 +9,47 @@ namespace GreenTransit.Application.Features.WasteMoves.Queries;
 // ── GetWasteMovesQuery — lista paginada con filtros ───────────────────────────
 
 public sealed record GetWasteMovesQuery(
-    string?   ServiceStatus = null,
-    Guid?     IdSource      = null,
-    Guid?     IdDestination = null,
-    Guid?     IdScrap       = null,
-    DateTime? DateFrom      = null,
-    DateTime? DateTo        = null,
-    string?   SearchTerm    = null,
-    int       PageNumber    = 1,
-    int       PageSize      = 20
+    string?   ServiceStatus      = null,
+    Guid?     IdSource           = null,
+    Guid?     IdDestination      = null,
+    Guid?     IdScrap            = null,
+    Guid?     ServiceOrderIssuedBy = null,
+    DateTime? DateFrom           = null,
+    DateTime? DateTo             = null,
+    string?   SearchTerm         = null,
+    int       PageNumber         = 1,
+    int       PageSize           = 20
 ) : IRequest<PaginatedResult<WasteMoveDto>>;
 
 public sealed class GetWasteMovesQueryHandler
     : IRequestHandler<GetWasteMovesQuery, PaginatedResult<WasteMoveDto>>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentUserService   _currentUser;
 
-    public GetWasteMovesQueryHandler(IApplicationDbContext context)
-        => _context = context;
+    public GetWasteMovesQueryHandler(
+        IApplicationDbContext context,
+        ICurrentUserService   currentUser)
+    {
+        _context     = context;
+        _currentUser = currentUser;
+    }
 
     public async Task<PaginatedResult<WasteMoveDto>> Handle(
         GetWasteMovesQuery request, CancellationToken ct)
     {
-        var q = _context.WasteMoves.AsNoTracking();
+        var ownerId        = _currentUser.OwnerId;
+        var isScrap        = _currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap);
+        var linkedEntityId = _currentUser.LinkedEntityId;
+
+        var q = _context.WasteMoves.AsNoTracking()
+            .Where(w => ownerId == Guid.Empty || w.OwnerId == ownerId);
+
+        // SCRAP: solo traslados donde figure como IdScrap o IdScrap2
+        if (isScrap && linkedEntityId.HasValue)
+            q = q.Where(w =>
+                w.IdScrap == linkedEntityId.Value ||
+                w.IdScrap2 == linkedEntityId.Value);
 
         if (!string.IsNullOrWhiteSpace(request.ServiceStatus))
             q = q.Where(w => w.ServiceStatus == request.ServiceStatus);
@@ -44,6 +62,12 @@ public sealed class GetWasteMovesQueryHandler
 
         if (request.IdScrap.HasValue)
             q = q.Where(w => w.IdScrap == request.IdScrap);
+
+        if (request.ServiceOrderIssuedBy.HasValue)
+            q = q.Where(w =>
+                w.ServiceOrderId != null &&
+                w.ServiceOrder != null &&
+                w.ServiceOrder.IdIssuedBy == request.ServiceOrderIssuedBy.Value);
 
         if (request.DateFrom.HasValue)
             q = q.Where(w => w.PlannedPickupStart >= request.DateFrom);

@@ -37,6 +37,7 @@ public class AppUser : ITenantEntity
     public Guid? OwnerId { get; set; }
     public string? PortalEDCProvider { get; set; }
     public string? PortalEDCConsumer { get; set; }
+    public bool IsActive { get; set; } = true;
 
     // FK salientes
     public UserProfile Profile { get; set; } = null!;

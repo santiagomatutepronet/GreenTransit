@@ -30,6 +30,7 @@ public class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         builder.Property(e => e.Address).HasMaxLength(512);
         builder.Property(e => e.PortalEDCProvider).HasMaxLength(512);
         builder.Property(e => e.PortalEDCConsumer).HasMaxLength(512);
+        builder.Property(e => e.IsActive).IsRequired().HasDefaultValue(true);
 
         builder.HasOne(u => u.Profile)
                .WithMany(p => p.Users)

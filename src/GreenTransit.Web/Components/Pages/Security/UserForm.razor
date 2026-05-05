@@ -1,0 +1,342 @@
+@page "/users/new"
+@page "/users/{UserId:int}/edit"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Geography.DTOs
+@using GreenTransit.Application.Features.Geography.Queries
+@using GreenTransit.Application.Features.Security.Commands
+@using GreenTransit.Application.Features.Security.DTOs
+@using GreenTransit.Application.Features.Security.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator         Mediator
+@inject NavigationManager Nav
+
+<PageTitle>@(_isEdit ? "Editar Usuario" : "Nuevo Usuario")</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-person-fill me-2"></i>
+        @(_isEdit ? "Editar Usuario" : "Nuevo Usuario")
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="@(async () => await SaveAsync())">
+        <div class="row g-3">
+
+            @* ── 1. Datos básicos ──────────────────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-person-vcard me-2"></i>Datos básicos
+                    </div>
+                    <div class="card-body row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Login <span class="text-danger">*</span></label>
+                            <InputText class="form-control" @bind-Value="_model.Login" />
+                            <FieldMessage Field="Login" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Email</label>
+                            <InputText class="form-control" @bind-Value="_model.Email" />
+                            <FieldMessage Field="Email" Errors="_validationErrors" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Nombre completo</label>
+                            <InputText class="form-control" @bind-Value="_model.CompleteName" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Perfil <span class="text-danger">*</span></label>
+                            <InputSelect class="form-select" @bind-Value="_model.IdProfile">
+                                <option value="0">— Seleccionar —</option>
+                                @foreach (var p in _profiles)
+                                {
+                                    <option value="@p.Id">@p.Reference</option>
+                                }
+                            </InputSelect>
+                            <FieldMessage Field="IdProfile" Errors="_validationErrors" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── 2. Geografía ──────────────────────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-geo-alt-fill me-2"></i>Geografía
+                    </div>
+                    <div class="card-body">
+                        <GeographySelector
+                            @bind-CountryCode="_geoCountryCode"
+                            @bind-CountryCode:after="OnCountryChangedAsync"
+                            @bind-StateCode="_geoStateCode"
+                            @bind-StateCode:after="OnStateChangedAsync"
+                            @bind-ProvinceCode="_geoProvinceCode"
+                            @bind-ProvinceCode:after="OnProvinceChangedAsync"
+                            @bind-MunicipalityCode="_geoMuniCode"
+                            @bind-MunicipalityCode:after="OnMunicipalityChangedAsync"
+                            @bind-ZipCode="_model.ZipCode" />
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-8">
+                                <label class="form-label">Dirección</label>
+                                <InputText class="form-control" @bind-Value="_model.Address" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── 3. Interoperabilidad EDC ──────────────────────────────────── *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold" style="cursor:pointer" @onclick="ToggleEdc">
+                        <i class="bi bi-plug-fill me-2"></i>Interoperabilidad
+                        <i class="bi @(_edcExpanded ? "bi-chevron-up" : "bi-chevron-down") float-end"></i>
+                    </div>
+                    @if (_edcExpanded)
+                    {
+                        <div class="card-body row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Portal EDC Provider</label>
+                                <InputText class="form-control" @bind-Value="_model.PortalEDCProvider" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Portal EDC Consumer</label>
+                                <InputText class="form-control" @bind-Value="_model.PortalEDCConsumer" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ── Acciones ──────────────────────────────────────────────────── *@
+            <div class="col-12 d-flex gap-2 justify-content-end">
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <div class="alert alert-danger py-2 px-3 mb-0 flex-grow-1">@_errorMessage</div>
+                }
+                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="GoBack">Cancelar</button>
+                <button type="submit" class="btn btn-primary btn-sm" disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Guardar
+                </button>
+            </div>
+
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter] public int UserId { get; set; }
+
+    private bool   _isEdit      => UserId > 0;
+    private bool   _loading     = true;
+    private bool   _saving      = false;
+    private bool   _edcExpanded = false;
+    private string _errorMessage = "";
+
+    private Dictionary<string, List<string>> _validationErrors = new();
+    private IReadOnlyList<ProfileDto>         _profiles         = [];
+
+    // ── Códigos geográficos para GeographySelector ────────────────────────────
+    private string? _geoCountryCode;
+    private string? _geoStateCode;
+    private string? _geoProvinceCode;
+    private string? _geoMuniCode;
+
+    private UserFormModel _model = new();
+
+    // ── Ciclo de vida ─────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        _profiles = await Mediator.Send(new GetProfilesQuery());
+
+        if (_isEdit)
+        {
+            var detail = await Mediator.Send(new GetUserByIdQuery(UserId));
+            if (detail is not null)
+            {
+                _model = new UserFormModel
+                {
+                    Login             = detail.Login,
+                    Email             = detail.Email,
+                    CompleteName      = detail.CompleteName,
+                    IdProfile         = detail.IdProfile,
+                    NationalId        = detail.NationalId,
+                    GeographicalId    = detail.GeographicalId,
+                    MunicipalityId    = detail.MunicipalityId,
+                    ZipCode           = detail.ZipCode,
+                    Address           = detail.Address,
+                    PortalEDCProvider = detail.PortalEDCProvider,
+                    PortalEDCConsumer = detail.PortalEDCConsumer,
+                };
+
+                // Resolver IDs a códigos para pre-cargar GeographySelector
+                if (detail.NationalId.HasValue)
+                {
+                    var countries = await Mediator.Send(new GetCountriesQuery());
+                    _geoCountryCode = countries.FirstOrDefault(c => c.Id == detail.NationalId.Value)?.IsoCode;
+                }
+                if (detail.GeographicalId.HasValue && _geoCountryCode is not null)
+                {
+                    var countryId   = _model.NationalId!.Value;
+                    var states      = await Mediator.Send(new GetStatesByCountryQuery(countryId));
+                    _geoStateCode   = states.FirstOrDefault(s => s.Id == detail.GeographicalId.Value)?.Code;
+                }
+
+                _edcExpanded = !string.IsNullOrEmpty(_model.PortalEDCProvider)
+                            || !string.IsNullOrEmpty(_model.PortalEDCConsumer);
+            }
+        }
+
+        _loading = false;
+    }
+
+    // ── Callbacks de GeographySelector ───────────────────────────────────────
+
+    private async Task OnCountryChangedAsync()
+    {
+        _model.NationalId      = null;
+        _model.GeographicalId  = null;
+        _model.MunicipalityId  = null;
+        _geoStateCode          = null;
+        _geoProvinceCode       = null;
+        _geoMuniCode           = null;
+
+        if (string.IsNullOrEmpty(_geoCountryCode)) return;
+        var countries    = await Mediator.Send(new GetCountriesQuery());
+        _model.NationalId = countries.FirstOrDefault(c => c.IsoCode == _geoCountryCode)?.Id;
+    }
+
+    private async Task OnStateChangedAsync()
+    {
+        _model.GeographicalId = null;
+        _model.MunicipalityId = null;
+        _geoProvinceCode      = null;
+        _geoMuniCode          = null;
+
+        if (string.IsNullOrEmpty(_geoStateCode) || !_model.NationalId.HasValue) return;
+        var states             = await Mediator.Send(new GetStatesByCountryQuery(_model.NationalId.Value));
+        _model.GeographicalId  = states.FirstOrDefault(s => s.Code == _geoStateCode)?.Id;
+    }
+
+    private Task OnProvinceChangedAsync()
+    {
+        _model.MunicipalityId = null;
+        _geoMuniCode          = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnMunicipalityChangedAsync()
+    {
+        _model.MunicipalityId = null;
+        if (string.IsNullOrEmpty(_geoMuniCode) || string.IsNullOrEmpty(_geoProvinceCode)) return;
+
+        // Resolver provinceId para obtener municipios
+        if (!_model.GeographicalId.HasValue) return;
+        var provinces = await Mediator.Send(new GetProvincesByStateQuery(_model.GeographicalId.Value));
+        var province  = provinces.FirstOrDefault(p => p.Code == _geoProvinceCode);
+        if (province is null) return;
+
+        var municipalities = await Mediator.Send(new GetMunicipalitiesByProvinceQuery(province.Id));
+        _model.MunicipalityId = municipalities.FirstOrDefault(m => m.Code == _geoMuniCode)?.Id;
+    }
+
+    // ── Guardar ───────────────────────────────────────────────────────────────
+
+    private async Task SaveAsync()
+    {
+        _saving       = true;
+        _errorMessage = "";
+        _validationErrors = new();
+
+        try
+        {
+            if (_isEdit)
+            {
+                await Mediator.Send(new UpdateUserCommand(
+                    UserId,
+                    _model.Login,
+                    _model.Email,
+                    _model.CompleteName,
+                    _model.IdProfile,
+                    _model.NationalId,
+                    _model.GeographicalId,
+                    _model.MunicipalityId,
+                    _model.ZipCode,
+                    _model.Address,
+                    _model.PortalEDCProvider,
+                    _model.PortalEDCConsumer
+                ));
+                Nav.NavigateTo($"/users/{UserId}");
+            }
+            else
+            {
+                var newId = await Mediator.Send(new CreateUserCommand(
+                    _model.Login,
+                    _model.Email,
+                    _model.CompleteName,
+                    _model.IdProfile,
+                    _model.NationalId,
+                    _model.GeographicalId,
+                    _model.MunicipalityId,
+                    _model.ZipCode,
+                    _model.Address,
+                    _model.PortalEDCProvider,
+                    _model.PortalEDCConsumer
+                ));
+                Nav.NavigateTo($"/users/{newId}");
+            }
+        }
+        catch (FluentValidation.ValidationException ex)
+        {
+            _validationErrors = ex.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(e => e.ErrorMessage).ToList());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void GoBack()    => Nav.NavigateTo("/users");
+    private void ToggleEdc() => _edcExpanded = !_edcExpanded;
+
+    // ── Modelo del formulario ─────────────────────────────────────────────────
+
+    private sealed class UserFormModel
+    {
+        public string  Login             { get; set; } = "";
+        public string? Email             { get; set; }
+        public string? CompleteName      { get; set; }
+        public int     IdProfile         { get; set; }
+        public int?    NationalId        { get; set; }
+        public int?    GeographicalId    { get; set; }
+        public int?    MunicipalityId    { get; set; }
+        public string? ZipCode           { get; set; }
+        public string? Address           { get; set; }
+        public string? PortalEDCProvider { get; set; }
+        public string? PortalEDCConsumer { get; set; }
+    }
+}

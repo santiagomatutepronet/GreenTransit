@@ -244,12 +244,25 @@ public sealed class CreateTreatmentPlantCommandHandler
         wm.ServiceStatus   = WasteMoveStatuses.Clasificado;
         wm.DateModifiedSys = DateTime.UtcNow;
 
+        // ── 8. Completar las SOs vinculadas al traslado ───────────────────────
+        var linkedSOs = await _context.ServiceOrders
+            .Where(s => s.WasteMoveReference == wm.WasteMoveReference)
+            .ToListAsync(ct);
+
+        var completedAt = DateTime.UtcNow;
+        foreach (var so in linkedSOs)
+        {
+            so.Status    = ServiceOrderStatuses.Completed;
+            so.UpdatedAt = completedAt;
+            so.IdUser    = _currentUser.IdUser;
+        }
+
         _context.TreatmentPlants.Add(treatment);
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "TreatmentPlant {TreatmentPlantId} creado para traslado {WasteMoveRef}. Estado → CLASIFICADO.",
-            treatment.Id, wm.WasteMoveReference);
+            "TreatmentPlant {TreatmentPlantId} creado para traslado {WasteMoveRef}. Estado → CLASIFICADO. {Count} SO(s) → Completed.",
+            treatment.Id, wm.WasteMoveReference, linkedSOs.Count);
 
         return new CreateTreatmentPlantResult(treatment.Id, false, []);
     }

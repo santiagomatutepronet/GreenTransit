@@ -4,12 +4,15 @@
 
 @using GreenTransit.Application.Features.ServiceOrders.DTOs
 @using GreenTransit.Application.Features.ServiceOrders.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 
-@inject IMediator        Mediator
-@inject NavigationManager Nav
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
 
 <PageTitle>Órdenes de Servicio</PageTitle>
 
@@ -226,9 +229,15 @@ else
         _errorMessage = null;
         try
         {
+            // Filtrado por datos propios: PRODUCER y PUBLIC_ENT solo ven sus SOs (§3.2)
+            Guid? ownFilter = CurrentUser.IsInAnyProfile(ProfileConstants.Producer, ProfileConstants.PublicEnt)
+                ? CurrentUser.LinkedEntityId
+                : null;
+
             _result = await Mediator.Send(new GetServiceOrdersQuery(
                 Status:            string.IsNullOrEmpty(_filterStatus)   ? null : _filterStatus,
                 Priority:          string.IsNullOrEmpty(_filterPriority) ? null : _filterPriority,
+                IdIssuedBy:        ownFilter,
                 SearchTerm:        string.IsNullOrEmpty(_search)         ? null : _search,
                 PlannedPickupFrom: _pickupFrom,
                 PlannedPickupTo:   _pickupTo,

@@ -214,12 +214,25 @@ public sealed class CreateEntryPlantCommandHandler
         wm.ServiceStatus    = WasteMoveStatuses.EnPlanta;
         wm.DateModifiedSys  = DateTime.UtcNow;
 
+        // ── 8. Completar las SOs vinculadas al traslado ───────────────────────
+        var linkedSOs = await _context.ServiceOrders
+            .Where(s => s.WasteMoveReference == wm.WasteMoveReference)
+            .ToListAsync(ct);
+
+        var completedAt = DateTime.UtcNow;
+        foreach (var so in linkedSOs)
+        {
+            so.Status    = ServiceOrderStatuses.Completed;
+            so.UpdatedAt = completedAt;
+            so.IdUser    = _currentUser.IdUser;
+        }
+
         _context.EntryPlants.Add(entry);
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "EntryPlant {Id} creada para traslado {Ref}. NetWeight={Net} kg. Estado→EN_PLANTA.",
-            entry.Id, wm.WasteMoveReference, netWeight);
+            "EntryPlant {Id} creada para traslado {Ref}. NetWeight={Net} kg. Estado→EN_PLANTA. {Count} SO(s) → Completed.",
+            entry.Id, wm.WasteMoveReference, netWeight, linkedSOs.Count);
 
         return new CreateEntryPlantResult(
             entry.Id,

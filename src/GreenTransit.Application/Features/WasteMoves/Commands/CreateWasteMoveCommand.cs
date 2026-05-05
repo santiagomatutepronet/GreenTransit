@@ -106,9 +106,14 @@ public sealed class CreateWasteMoveCommandHandler
             });
         }
 
-        // ── Vincular referencia en las SOs ───────────────────────────────────
+        // ── Vincular referencia en las SOs y transicionar a InProgress ────────
         foreach (var so in serviceOrders)
+        {
             so.WasteMoveReference = reference;
+            so.Status             = ServiceOrderStatuses.InProgress;
+            so.UpdatedAt          = now;
+            so.IdUser             = _currentUser.IdUser;
+        }
 
         _context.WasteMoves.Add(wasteMove);
         await _context.SaveChangesAsync(ct);

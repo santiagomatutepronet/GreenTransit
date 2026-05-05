@@ -44,7 +44,7 @@ public sealed class GetServiceOrdersQueryHandlerTests
             BuildServiceOrder(FakeCurrentUserService.TenantB, "SO-B-001"));
         await ctx.SaveChangesAsync();
 
-        var result = await new GetServiceOrdersQueryHandler(ctx)
+        var result = await new GetServiceOrdersQueryHandler(ctx, user)
             .Handle(new GetServiceOrdersQuery(), CancellationToken.None);
 
         result.Items.Should().HaveCount(2);
@@ -54,9 +54,10 @@ public sealed class GetServiceOrdersQueryHandlerTests
     [Fact]
     public async Task Handle_WhenNoOrders_ReturnsEmptyList()
     {
-        await using var ctx = TestDbContextFactory.CreateDefault();
+        var user = new FakeCurrentUserService();
+        await using var ctx = TestDbContextFactory.Create(user);
 
-        var result = await new GetServiceOrdersQueryHandler(ctx)
+        var result = await new GetServiceOrdersQueryHandler(ctx, user)
             .Handle(new GetServiceOrdersQuery(), CancellationToken.None);
 
         result.Items.Should().BeEmpty();
@@ -66,13 +67,15 @@ public sealed class GetServiceOrdersQueryHandlerTests
     [Fact]
     public async Task Handle_TenantBCannotSeeTenantAOrders()
     {
-        await using var ctxA = TestDbContextFactory.Create(new FakeCurrentUserService(FakeCurrentUserService.TenantA));
+        var userA = new FakeCurrentUserService(FakeCurrentUserService.TenantA);
+        await using var ctxA = TestDbContextFactory.Create(userA);
         ctxA.ServiceOrders.Add(BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-A-001"));
         await ctxA.SaveChangesAsync();
 
-        await using var ctxB = TestDbContextFactory.Create(new FakeCurrentUserService(FakeCurrentUserService.TenantB));
+        var userB = new FakeCurrentUserService(FakeCurrentUserService.TenantB);
+        await using var ctxB = TestDbContextFactory.Create(userB);
 
-        var result = await new GetServiceOrdersQueryHandler(ctxB)
+        var result = await new GetServiceOrdersQueryHandler(ctxB, userB)
             .Handle(new GetServiceOrdersQuery(), CancellationToken.None);
 
         result.Items.Should().BeEmpty();
@@ -83,7 +86,8 @@ public sealed class GetServiceOrdersQueryHandlerTests
     [Fact]
     public async Task Handle_FilterByStatus_ReturnsMatchingOrders()
     {
-        await using var ctx = TestDbContextFactory.CreateDefault();
+        var user = new FakeCurrentUserService();
+        await using var ctx = TestDbContextFactory.Create(user);
 
         ctx.ServiceOrders.AddRange(
             BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-001", ServiceOrderStatuses.Pending),
@@ -91,7 +95,7 @@ public sealed class GetServiceOrdersQueryHandlerTests
             BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-003", ServiceOrderStatuses.Cancelled));
         await ctx.SaveChangesAsync();
 
-        var result = await new GetServiceOrdersQueryHandler(ctx)
+        var result = await new GetServiceOrdersQueryHandler(ctx, user)
             .Handle(new GetServiceOrdersQuery(Status: ServiceOrderStatuses.Pending), CancellationToken.None);
 
         result.Items.Should().HaveCount(1);
@@ -101,7 +105,8 @@ public sealed class GetServiceOrdersQueryHandlerTests
     [Fact]
     public async Task Handle_FilterBySearchTerm_ReturnsMatchingOrders()
     {
-        await using var ctx = TestDbContextFactory.CreateDefault();
+        var user = new FakeCurrentUserService();
+        await using var ctx = TestDbContextFactory.Create(user);
 
         ctx.ServiceOrders.AddRange(
             BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-2024-00001"),
@@ -109,7 +114,7 @@ public sealed class GetServiceOrdersQueryHandlerTests
             BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-2025-00001"));
         await ctx.SaveChangesAsync();
 
-        var result = await new GetServiceOrdersQueryHandler(ctx)
+        var result = await new GetServiceOrdersQueryHandler(ctx, user)
             .Handle(new GetServiceOrdersQuery(SearchTerm: "2025"), CancellationToken.None);
 
         result.Items.Should().HaveCount(1);
@@ -119,7 +124,8 @@ public sealed class GetServiceOrdersQueryHandlerTests
     [Fact]
     public async Task Handle_FilterByPlannedPickupDateRange_ReturnsOrdersInRange()
     {
-        await using var ctx = TestDbContextFactory.CreateDefault();
+        var user = new FakeCurrentUserService();
+        await using var ctx = TestDbContextFactory.Create(user);
         var today     = DateTime.UtcNow.Date;
 
         ctx.ServiceOrders.AddRange(
@@ -128,7 +134,7 @@ public sealed class GetServiceOrdersQueryHandlerTests
             BuildServiceOrder(FakeCurrentUserService.TenantA, "SO-FUTURE", plannedPickup: today.AddDays(10)));
         await ctx.SaveChangesAsync();
 
-        var result = await new GetServiceOrdersQueryHandler(ctx).Handle(
+        var result = await new GetServiceOrdersQueryHandler(ctx, user).Handle(
             new GetServiceOrdersQuery(
                 PlannedPickupFrom: today.AddDays(-1),
                 PlannedPickupTo:   today.AddDays(1)),
@@ -143,17 +149,18 @@ public sealed class GetServiceOrdersQueryHandlerTests
     [Fact]
     public async Task Handle_Pagination_ReturnsCorrectPage()
     {
-        await using var ctx = TestDbContextFactory.CreateDefault();
+        var user = new FakeCurrentUserService();
+        await using var ctx = TestDbContextFactory.Create(user);
 
         ctx.ServiceOrders.AddRange(
             Enumerable.Range(1, 25).Select(i =>
                 BuildServiceOrder(FakeCurrentUserService.TenantA, $"SO-{i:000}")));
         await ctx.SaveChangesAsync();
 
-        var page1 = await new GetServiceOrdersQueryHandler(ctx)
+        var page1 = await new GetServiceOrdersQueryHandler(ctx, user)
             .Handle(new GetServiceOrdersQuery(PageNumber: 1, PageSize: 10), CancellationToken.None);
 
-        var page3 = await new GetServiceOrdersQueryHandler(ctx)
+        var page3 = await new GetServiceOrdersQueryHandler(ctx, user)
             .Handle(new GetServiceOrdersQuery(PageNumber: 3, PageSize: 10), CancellationToken.None);
 
         page1.Items.Should().HaveCount(10);

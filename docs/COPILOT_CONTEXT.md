@@ -71,7 +71,7 @@ Prompt	Estado	Tablas
 5.0 — Instrucción base	✅ Completado	Reglas generales
 5.1 — Maestros 1/2	✅ Completado	Entities, LERCodes
 5.2 — Maestros 2/2	✅ Completado	Residues, TreatmentOperations
-5.3 — Contratos y Liquidaciones	✅ Completado	Agreements*, Settlements*
+5.3 — Contratos y Liquidaciones	 Pendiente	Agreements*, Settlements*
 5.4 — Operación Logística	✅ Completado	ServiceOrders, WasteMoves
 5.5 — Entradas Planta	✅ Completado	EntryPlants*, TreatmentPlants*
 5.6 — Entradas CAC	✅ Completado	EntryCACs*
@@ -107,41 +107,14 @@ Parte 2 — ClaimsTransformation (gt_* claims, gt_user_found, gt_entity_id), Cur
 Parte 3 — EntityUserProvisioningService, EntityRoles (DISPATCH_OFFICE), EntityForm mensajes
 Parte 4 — DbInitializer (seed idempotente de 9 Profiles en startup)
 
-Paso 8 — Autorización por perfiles ✅ COMPLETADO
 
-Prompt	Estado	Archivos / Componentes
-8.1 — Constantes de perfiles	✅ Completado	Domain/Authorization/ProfileConstants.cs, PolicyConstants.cs, PermissionType.cs
-8.2 — CurrentUserService extendido	✅ Completado	ICurrentUserService.ProfileReference (alias de UserProfile), LinkedEntityId, IsInProfile, IsInAnyProfile
-8.3 — Requirements y Handlers	✅ Completado	Infrastructure/Authorization/ProfileRequirement.cs, ProfileAuthorizationHandler.cs, OwnDataRequirement.cs, OwnDataAuthorizationHandler.cs
-8.4 — Registro de policies	✅ Completado	Program.cs: 24 policies registradas + 2 handlers scoped
-8.5 — DataScopeService	✅ Completado	Application/Interfaces/IDataScopeService.cs + Infrastructure/Services/DataScopeService.cs — filtrado por perfil en IQueryable
-8.6 — Componentes Blazor	✅ Completado	Web/Components/Authorization/ProfileAuthorizeView.razor + NavMenu.razor con visibilidad por perfil
-8.7 — Seed de perfiles y admin	✅ Completado	DbInitializer: SeedProfilesAsync (9 perfiles) + SeedAdminUserAsync; Scripts/Seed_Profiles_AdminUser.sql
-8.8 — MediatR AuthorizationBehavior	✅ Completado	Application/Behaviours/AuthorizationBehavior.cs + AuthorizeAttribute.cs + ForbiddenAccessException.cs + IPolicyEvaluator / PolicyEvaluator
-8.9 — Tests unitarios	✅ Completado	Tests/Authorization: ProfileAuthorizationHandlerTests (16), DataScopeServiceTests (13), AuthorizationBehaviorTests (11) — 40 tests, 40 ✅
-8.10 — Documentación	✅ Completado	COPILOT_CONTEXT.md, README.md, PATRON_AUTORIZACION_PAGINAS.md
-
-
-ESTADO FINAL
-Todos los prompts hasta el Paso 8 ejecutados y completados.
+📌 ESTADO FINAL
+✅ Todos los prompts hasta el Paso 7 ejecutados y completados.
 El proyecto queda listo para:
-- Implementar casos de uso reales (CQRS) CON AUTORIZACION INTEGRADA
-  Los commands/queries se decoran con [Authorize(Profiles="...")] o [Authorize(Policy=PolicyConstants.X)]
-  El AuthorizationBehavior evalua permisos automaticamente antes de ejecutar el handler
-- Construir pantallas Blazor CON CONTROL DE ACCESO POR PERFIL
-  @attribute [Authorize(Policy="...")] en la cabecera de la pagina
-  <ProfileAuthorizeView> para botones de accion segun perfil
-  El NavMenu muestra/oculta secciones segun el perfil del usuario
-- Endurecer validaciones de dominio
-- Integracion externa / APIs / reporting
 
-Patron consolidado de autorizacion en queries:
-  var q = _db.ServiceOrders.Where(o => o.OwnerId == _currentUser.OwnerId); // 1. multi-tenant
-  q = _dataScopeService.ApplyScope(q);                                      // 2. filtro por perfil
-
-Documentos de referencia:
-  - Mapa_Autorizacion_GreenTransit.md -> matriz de permisos por perfil y pantalla
-  - PATRON_AUTORIZACION_PAGINAS.md -> guia de implementacion en paginas Blazor
-  - Mapa_Funcionalidades_GreenTransit.md -> funcionalidades del sistema
-
-Ultima actualizacion: Paso 8 completado - sistema de autorizacion por perfiles operativo
+Implementar casos de uso reales (CQRS)
+Construir pantallas Blazor
+Endurecer validaciones de dominio
+Integración externa / APIs / reporting
+Este archivo refleja un estado 100 % completado y sirve como punto de continuidad para futuras sesiones.
+Última actualización: Proyecto base completamente generado

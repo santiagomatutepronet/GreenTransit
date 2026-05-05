@@ -25,14 +25,33 @@ public sealed class GetServiceOrdersQueryHandler
     : IRequestHandler<GetServiceOrdersQuery, PaginatedResult<ServiceOrderDto>>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentUserService   _currentUser;
 
-    public GetServiceOrdersQueryHandler(IApplicationDbContext context)
-        => _context = context;
+    public GetServiceOrdersQueryHandler(
+        IApplicationDbContext context,
+        ICurrentUserService   currentUser)
+    {
+        _context     = context;
+        _currentUser = currentUser;
+    }
 
     public async Task<PaginatedResult<ServiceOrderDto>> Handle(
         GetServiceOrdersQuery request, CancellationToken cancellationToken)
     {
-        var q = _context.ServiceOrders.AsNoTracking();
+        var ownerId        = _currentUser.OwnerId;
+        var isScrap        = _currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap);
+        var linkedEntityId = _currentUser.LinkedEntityId;
+
+        var q = _context.ServiceOrders.AsNoTracking()
+            .Where(s => ownerId == Guid.Empty || s.OwnerId == ownerId);
+
+        // SCRAP: SOs sin traslado asignado aún, o cuyo traslado les tiene como IdScrap/IdScrap2
+        if (isScrap && linkedEntityId.HasValue)
+            q = q.Where(s =>
+                !_context.WasteMoves.Any(wm => wm.ServiceOrderId == s.Id) ||
+                _context.WasteMoves.Any(wm =>
+                    wm.ServiceOrderId == s.Id &&
+                    (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value)));
 
         if (!string.IsNullOrWhiteSpace(request.Status))
             q = q.Where(s => s.Status == request.Status);
