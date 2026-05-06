@@ -97,25 +97,29 @@
         </ProfileAuthorizeView>
     </div>
 
-    @* ── Economía (pendiente de implementar) ────────────────────────────── *@
-    @* <div class="nav-group">
-        <div class="nav-group-title">
-            <i class="bi bi-currency-euro nav-icon"></i>
-            <span class="nav-label">Economía</span>
-        </div>
-        <NavLink class="nav-item nav-item--child" href="/agreements">
-            <i class="bi bi-file-earmark-text nav-icon"></i>
-            <span class="nav-label">Acuerdos</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/settlements">
-            <i class="bi bi-receipt nav-icon"></i>
-            <span class="nav-label">Liquidaciones</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/market-shares">
-            <i class="bi bi-pie-chart-fill nav-icon"></i>
-            <span class="nav-label">Cuotas</span>
-        </NavLink>
-    </div> *@
+    @* ── Economía ────────────────────────────────────────────────────────── *@
+    <ProfileAuthorizeView Profiles="@(new[]{ ProfileConstants.Scrap, ProfileConstants.Admin, ProfileConstants.PublicEnt, ProfileConstants.Coordinator })">
+        <Authorized>
+            <div class="nav-group">
+                <div class="nav-group-title">
+                    <i class="bi bi-currency-euro nav-icon"></i>
+                    <span class="nav-label">Economía</span>
+                </div>
+                <NavLink class="nav-item nav-item--child" href="/agreements">
+                    <i class="bi bi-file-earmark-text nav-icon"></i>
+                    <span class="nav-label">Acuerdos</span>
+                </NavLink>
+                <NavLink class="nav-item nav-item--child" href="/settlements">
+                    <i class="bi bi-receipt nav-icon"></i>
+                    <span class="nav-label">Liquidaciones</span>
+                </NavLink>
+                <NavLink class="nav-item nav-item--child" href="/market-shares">
+                    <i class="bi bi-pie-chart-fill nav-icon"></i>
+                    <span class="nav-label">Cuotas</span>
+                </NavLink>
+            </div>
+        </Authorized>
+    </ProfileAuthorizeView>
 
     @* ── Declaraciones de Producción ────────────────────────────────────── *@
     <ProfileAuthorizeView Profiles="@_profilesDeclarations">

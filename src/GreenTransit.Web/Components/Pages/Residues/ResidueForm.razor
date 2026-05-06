@@ -86,8 +86,26 @@ else
                             </select>
                         </div>
                         <div class="col-md-3">
+                            <label class="form-label">Tipo de flujo</label>
+                            <select class="form-select" value="@_model.FlowType"
+                                    @onchange="OnFlowTypeChanged">
+                                <option value="">— Seleccionar —</option>
+                                @foreach (var ft in FlowTypes)
+                                {
+                                    <option value="@ft.Code">@ft.Label</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
                             <label class="form-label">Categoría de producto</label>
-                            <InputText class="form-control" @bind-Value="_model.ProductCategory" />
+                            <select class="form-select" @bind="_model.ProductCategory"
+                                    disabled="@(string.IsNullOrEmpty(_model.FlowType))">
+                                <option value="">— Selecciona flujo primero —</option>
+                                @foreach (var cat in CategoriesForFlow(_model.FlowType))
+                                {
+                                    <option value="@cat">@cat</option>
+                                }
+                            </select>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Uso del producto</label>
@@ -295,6 +313,51 @@ else
 
     private void OnTypeChanged() => StateHasChanged();
 
+    private void OnFlowTypeChanged(ChangeEventArgs e)
+    {
+        _model.FlowType = e.Value?.ToString();
+        if (!CategoriesForFlow(_model.FlowType).Contains(_model.ProductCategory ?? string.Empty))
+            _model.ProductCategory = null;
+    }
+
+    // ── Catálogos estáticos ───────────────────────────────────────────────────
+
+    private static readonly (string Code, string Label)[] FlowTypes =
+    [
+        ("RAEE", "RAEE - Aparatos eléctricos y electrónicos"),
+        ("ENV",  "ENV - Envases"),
+        ("BAT",  "BAT - Pilas y acumuladores"),
+        ("NFU",  "NFU - Neumáticos fuera de uso"),
+        ("OIL",  "OIL - Aceites industriales"),
+        ("VFU",  "VFU - Vehículos fuera de uso")
+    ];
+
+    private static readonly Dictionary<string, string[]> CategoriesByFlow = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ENV"] =
+        [
+            "Doméstico - Ligero", "Doméstico - Vidrio", "Doméstico - Cartón",
+            "Comercial - Ligero", "Comercial - Cartón", "Comercial - Vidrio",
+            "Industrial - Ligero", "Industrial - Cartón", "Industrial - Vidrio",
+            "Agrario", "Fitosanitarios", "Medicamentos"
+        ],
+        ["RAEE"] =
+        [
+            "Grandes aparatos", "Pequeños aparatos",
+            "Informática y telecomunicaciones", "Electrónica de consumo",
+            "Alumbrado", "Herramientas", "Equipos profesionales", "Paneles fotovoltaicos"
+        ],
+        ["BAT"] = ["Portátiles", "Industriales", "Automoción"],
+        ["NFU"] = ["Turismo", "Camión / Industrial", "Agrícola", "OTR", "Bicicleta"],
+        ["OIL"] = ["Automoción", "Industrial", "Mezcla / contaminados"],
+        ["VFU"] = ["Vehículo completo", "Componentes"]
+    };
+
+    private static string[] CategoriesForFlow(string? flowType)
+        => !string.IsNullOrEmpty(flowType) && CategoriesByFlow.TryGetValue(flowType, out var cats)
+            ? cats
+            : [];
+
     private async Task SaveAsync()
     {
         _saving       = true;
@@ -308,7 +371,7 @@ else
                     ResidueId!.Value,
                     _model.ResidueType!, _model.Name!, _model.Description, _model.Reference,
                     _model.IdLERCode, _model.IsDangerous, _model.IsRAEE, _model.DangerousCode,
-                    _model.ProductUse, _model.ProductCategory, _model.WeightPerUnitKg,
+                    _model.FlowType, _model.ProductUse, _model.ProductCategory, _model.WeightPerUnitKg,
                     _model.DefaultMeasureUnit, _model.ReparabilityIndex, _model.DisassemblyEase,
                     _model.ContainsHazardousVal ? true : null,
                     _model.RecycledContentPercent, _model.CompositionJson,
@@ -320,7 +383,7 @@ else
                 await Mediator.Send(new CreateResidueCommand(
                     _model.ResidueType!, _model.Name!, _model.Description, _model.Reference,
                     _model.IdLERCode, _model.IsDangerous, _model.IsRAEE, _model.DangerousCode,
-                    _model.ProductUse, _model.ProductCategory, _model.WeightPerUnitKg,
+                    _model.FlowType, _model.ProductUse, _model.ProductCategory, _model.WeightPerUnitKg,
                     _model.DefaultMeasureUnit, _model.ReparabilityIndex, _model.DisassemblyEase,
                     _model.ContainsHazardousVal ? true : null,
                     _model.RecycledContentPercent, _model.CompositionJson,
@@ -358,6 +421,7 @@ else
         public bool      IsDangerous            { get; set; }
         public bool      IsRAEE                 { get; set; }
         public string?   DangerousCode          { get; set; }
+        public string?   FlowType               { get; set; }
         public string?   ProductUse             { get; set; }
         public string?   ProductCategory        { get; set; }
         public decimal?  WeightPerUnitKg        { get; set; }
@@ -391,6 +455,7 @@ else
                 IsDangerous            = d.IsDangerous,
                 IsRAEE                 = d.IsRAEE,
                 DangerousCode          = d.DangerousCode,
+                FlowType               = d.FlowType,
                 ProductUse             = d.ProductUse,
                 ProductCategory        = d.ProductCategory,
                 WeightPerUnitKg        = d.WeightPerUnitKg,

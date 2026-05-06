@@ -1,0 +1,515 @@
+@page "/agreements/new"
+@page "/agreements/{AgreementId:guid}/edit"
+@attribute [Authorize(Policy = PolicyConstants.CanManageAgreements)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Agreements.Commands
+@using GreenTransit.Application.Features.Agreements.Queries
+@using GreenTransit.Application.Features.Agreements.DTOs
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Constants
+@using GreenTransit.Domain.Entities
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>@(_isEdit ? "Editar Acuerdo" : "Nuevo Acuerdo")</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-file-earmark-text me-2"></i>
+        @(_isEdit ? "Editar Acuerdo" : "Nuevo Acuerdo")
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else
+{
+    <StepperWizard Steps="_steps" CurrentStep="_currentStep" OnStepChange="GoToStepAsync" />
+
+    @* ── Paso 1: Partes ──────────────────────────────────────────────────────── *@
+    @if (_currentStep == 0)
+    {
+        <div class="card mb-4">
+            <div class="card-header"><i class="bi bi-people me-2"></i>Partes del acuerdo</div>
+            <div class="card-body row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">SCRAP <span class="text-danger">*</span></label>
+                    <select class="form-select" @bind="_idScrap">
+                        <option value="">— Seleccionar SCRAP —</option>
+                        @foreach (var e in _scraps)
+                        {
+                            <option value="@e.Id">@e.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Entidad Pública <span class="text-danger">*</span></label>
+                    <select class="form-select" @bind="_idPublicEntity">
+                        <option value="">— Seleccionar entidad —</option>
+                        @foreach (var e in _publicEntities)
+                        {
+                            <option value="@e.Id">@e.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Coordinador</label>
+                    <select class="form-select" @bind="_idCoordinator">
+                        <option value="">— Sin coordinador —</option>
+                        @foreach (var e in _coordinators)
+                        {
+                            <option value="@e.Id">@e.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Desde <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" @bind="_effectiveFrom" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" class="form-control" @bind="_effectiveTo" />
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Paso 2: Ámbito Geográfico ───────────────────────────────────────────── *@
+    @if (_currentStep == 1)
+    {
+        <div class="card mb-4">
+            <div class="card-header"><i class="bi bi-geo-alt me-2"></i>Ámbito geográfico</div>
+            <div class="card-body row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Flujo de residuo</label>
+                    <select class="form-select" @bind="_wasteStream" @bind:after="OnWasteStreamChanged">
+                        <option value="">— Seleccionar flujo —</option>
+                        <optgroup label="RAP">
+                            @foreach (var f in WasteFlowCatalog.All.Where(x => x.Type == WasteFlowCatalog.TypeRap))
+                            {
+                                <option value="@f.Code">@f.Name</option>
+                            }
+                        </optgroup>
+                        <optgroup label="Operativos">
+                            @foreach (var f in WasteFlowCatalog.All.Where(x => x.Type == WasteFlowCatalog.TypeOperativo))
+                            {
+                                <option value="@f.Code">@f.Name</option>
+                            }
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Sub-flujo</label>
+                    <select class="form-select"
+                            disabled="@(string.IsNullOrEmpty(_wasteStream))"
+                            @bind="_subStream">
+                        <option value="">— Seleccionar sub-flujo —</option>
+                        @foreach (var sf in _currentSubflows)
+                        {
+                            <option value="@sf">@sf</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Comunidad Autónoma / Provincia / Municipio</label>
+                    <GeographySelector
+                        CountryCode="@_countryCode"
+                        CountryCodeChanged="v => _countryCode = v"
+                        StateCode="@_autonomousCommunity"
+                        StateCodeChanged="v => _autonomousCommunity = v"
+                        ProvinceCode="@_provinceCode"
+                        ProvinceCodeChanged="v => { _provinceCode = v; _municipalityCode = null; }"
+                        MunicipalityCode="@_municipalityCode"
+                        MunicipalityCodeChanged="v => _municipalityCode = v" />
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">Métodos cubiertos (JSON)</label>
+                    <textarea class="form-control font-monospace" rows="3" @bind="_coveredMethodsJson"
+                              placeholder='["R3","R4","D15"]'></textarea>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Paso 3: Modelo Económico ────────────────────────────────────────────── *@
+    @if (_currentStep == 2)
+    {
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-currency-euro me-2"></i>Modelo económico</span>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label">Tipo de tarifa</label>
+                        <select class="form-select" @bind="_tariffModelType">
+                            <option value="">— Seleccionar —</option>
+                            <option value="PorKg">Por Kg</option>
+                            <option value="PorTonelada">Por Tonelada</option>
+                            <option value="PorUnidad">Por Unidad</option>
+                            <option value="Mixto">Mixto</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Moneda</label>
+                        <select class="form-select" @bind="_currency">
+                            <option value="EUR">EUR</option>
+                            <option value="USD">USD</option>
+                        </select>
+                    </div>
+                </div>
+
+                @* Tabla editable de reglas tarifarias *@
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong>Reglas tarifarias</strong>
+                    <button type="button" class="btn btn-outline-primary btn-sm"
+                            @onclick="AddTariffRule">
+                        <i class="bi bi-plus-lg me-1"></i>Añadir regla
+                    </button>
+                </div>
+                @if (_tariffRules.Count == 0)
+                {
+                    <p class="text-muted">No hay reglas. Añade al menos una para poder liquidar.</p>
+                }
+                else
+                {
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Categoría</th>
+                                <th class="cell-number">Precio/Kg (€)</th>
+                                <th class="cell-number">Peso mínimo (Kg)</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < _tariffRules.Count; i++)
+                            {
+                                var idx  = i;
+                                var rule = _tariffRules[idx];
+                                <tr>
+                                    <td>
+                                        <input class="form-control form-control-sm"
+                                               @bind="rule.Category" placeholder="Ej: RAEE, Envases…" />
+                                    </td>
+                                    <td>
+                                        <input type="number" class="form-control form-control-sm"
+                                               step="0.0001" @bind="rule.PricePerKg" style="width:110px" />
+                                    </td>
+                                    <td>
+                                        <input type="number" class="form-control form-control-sm"
+                                               @bind="rule.MinWeight" style="width:110px" />
+                                    </td>
+                                    <td>
+                                        <button type="button"
+                                                class="btn btn-outline-danger btn-sm btn-icon-only"
+                                                @onclick="() => _tariffRules.RemoveAt(idx)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+
+                <div class="mt-3">
+                    <label class="form-label">Obligaciones (JSON)</label>
+                    <textarea class="form-control font-monospace" rows="3" @bind="_obligationsJson"
+                              placeholder='{"minKgYear": 10000}'></textarea>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Paso 4: Revisión y Confirmación ────────────────────────────────────── *@
+    @if (_currentStep == 3)
+    {
+        <div class="card mb-4">
+            <div class="card-header"><i class="bi bi-clipboard-check me-2"></i>Revisión y confirmación</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Partes</h6>
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">SCRAP</dt>
+                            <dd class="col-sm-7">@(_scraps.FirstOrDefault(e => e.Id == _idScrap)?.Name ?? "—")</dd>
+                            <dt class="col-sm-5">Entidad Pública</dt>
+                            <dd class="col-sm-7">@(_publicEntities.FirstOrDefault(e => e.Id == _idPublicEntity)?.Name ?? "—")</dd>
+                            <dt class="col-sm-5">Coordinador</dt>
+                            <dd class="col-sm-7">@(_coordinators.FirstOrDefault(e => e.Id == _idCoordinator)?.Name ?? "—")</dd>
+                            <dt class="col-sm-5">Vigencia</dt>
+                            <dd class="col-sm-7">@_effectiveFrom.ToString("dd/MM/yyyy") → @(_effectiveTo?.ToString("dd/MM/yyyy") ?? "indefinido")</dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Ámbito</h6>
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">Flujo</dt>
+                            <dd class="col-sm-7">
+                                @(WasteFlowCatalog.FindByCode(_wasteStream)?.Name ?? _wasteStream ?? "—")
+                                @if (!string.IsNullOrEmpty(_subStream))
+                                {
+                                    <small class="text-muted ms-1">/ @_subStream</small>
+                                }
+                            </dd>
+                            <dt class="col-sm-5">CCAA</dt>
+                            <dd class="col-sm-7">@(_autonomousCommunity ?? "—")</dd>
+                            <dt class="col-sm-5">Provincia</dt>
+                            <dd class="col-sm-7">@(_provinceCode ?? "—")</dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-12 mt-3">
+                        <h6 class="text-muted mb-2">Economía (@_currency)</h6>
+                        @if (_tariffRules.Count > 0)
+                        {
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Categoría</th>
+                                        <th>Precio/Kg</th>
+                                        <th>Mínimo (Kg)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var r in _tariffRules)
+                                    {
+                                        <tr>
+                                            <td>@r.Category</td>
+                                            <td>@r.PricePerKg.ToString("N4")</td>
+                                            <td>@r.MinWeight.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <p class="text-muted">Sin reglas tarifarias definidas.</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Mensajes de error ───────────────────────────────────────────────────── *@
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-danger">@_errorMessage</div>
+    }
+
+    @* ── Navegación de pasos ─────────────────────────────────────────────────── *@
+    <div class="d-flex gap-2">
+        @if (_currentStep > 0)
+        {
+            <button type="button" class="btn btn-ghost" @onclick="PreviousStep">
+                <i class="bi bi-chevron-left me-1"></i>Anterior
+            </button>
+        }
+        @if (_currentStep < _steps.Count - 1)
+        {
+            <button type="button" class="btn btn-primary" @onclick="NextStep">
+                Siguiente<i class="bi bi-chevron-right ms-1"></i>
+            </button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-success" @onclick="SaveAsync" disabled="@_saving">
+                @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="bi bi-floppy me-1"></i>@(_isEdit ? "Guardar cambios" : "Crear acuerdo")
+            </button>
+        }
+        <button type="button" class="btn btn-ghost"
+                @onclick='() => Nav.NavigateTo("/agreements")'>
+            Cancelar
+        </button>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? AgreementId { get; set; }
+
+    private bool _isEdit => AgreementId.HasValue;
+    private bool _loading = true;
+    private bool _saving  = false;
+    private string? _errorMessage;
+    private int _currentStep = 0;
+
+    private static readonly IReadOnlyList<string> _steps =
+        ["Partes", "Ámbito geográfico", "Modelo económico", "Revisión"];
+
+    // Paso 1 — Partes
+    private Guid?    _idScrap;
+    private Guid?    _idPublicEntity;
+    private Guid?    _idCoordinator;
+    private DateTime _effectiveFrom = DateTime.Today;
+    private DateTime? _effectiveTo;
+
+    // Paso 2 — Ámbito
+    private string? _wasteStream;
+    private string? _subStream;
+    private IReadOnlyList<string> _currentSubflows = [];
+    private string? _countryCode         = "ES"; // España por defecto
+    private string? _autonomousCommunity;
+    private string? _provinceCode;
+    private string? _municipalityCode;
+    private string? _coveredMethodsJson;
+
+    // Paso 3 — Economía
+    private string  _tariffModelType = "";
+    private string  _currency        = "EUR";
+    private string? _obligationsJson;
+    private List<TariffRuleModel> _tariffRules = [];
+
+    // Catálogos
+    private List<EntityDto> _scraps         = [];
+    private List<EntityDto> _publicEntities = [];
+    private List<EntityDto> _coordinators   = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _scraps         = (await Mediator.Send(new GetEntitiesQuery(EntityRole: EntityRoles.SCRAP,        PageSize: 500))).Items.ToList();
+            _publicEntities = (await Mediator.Send(new GetEntitiesQuery(EntityRole: EntityRoles.PublicEntity, PageSize: 500))).Items.ToList();
+            _coordinators   = (await Mediator.Send(new GetEntitiesQuery(EntityRole: EntityRoles.Coordinator,  PageSize: 500))).Items.ToList();
+
+            if (_isEdit)
+            {
+                var detail = await Mediator.Send(new GetAgreementByIdQuery(AgreementId!.Value));
+                if (detail is not null)
+                    PopulateFromDetail(detail);
+            }
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void PopulateFromDetail(AgreementDetailDto d)
+    {
+        _idScrap              = d.IdScrap;
+        _idPublicEntity       = d.IdPublicEntity;
+        _idCoordinator        = d.IdCoordinator;
+        _effectiveFrom        = d.EffectiveFrom;
+        _effectiveTo          = d.EffectiveTo;
+        _wasteStream          = d.WasteStream;
+        _subStream            = d.SubStream;
+        _currentSubflows      = WasteFlowCatalog.FindByCode(d.WasteStream)?.Subflows ?? [];
+        _autonomousCommunity  = d.AutonomousCommunity;
+        _provinceCode         = d.ProvinceCode;
+        _municipalityCode     = d.MunicipalityCode;
+        _coveredMethodsJson   = d.CoveredMethodsJson;
+        _tariffModelType      = d.TariffModelType ?? "";
+        _currency             = d.Currency ?? "EUR";
+        _obligationsJson      = d.ObligationsJson;
+
+        if (!string.IsNullOrWhiteSpace(d.TariffRulesJson))
+        {
+            try
+            {
+                _tariffRules = System.Text.Json.JsonSerializer
+                    .Deserialize<List<TariffRuleModel>>(d.TariffRulesJson) ?? [];
+            }
+            catch { _tariffRules = []; }
+        }
+    }
+
+    private void AddTariffRule() => _tariffRules.Add(new TariffRuleModel());
+
+    private void NextStep()
+    {
+        if (!ValidateCurrentStep()) return;
+        _currentStep++;
+    }
+
+    private void OnWasteStreamChanged()
+    {
+        _subStream       = null;
+        _currentSubflows = WasteFlowCatalog.FindByCode(_wasteStream)?.Subflows ?? [];
+    }
+
+    private void PreviousStep()
+    {
+        if (_currentStep > 0) _currentStep--;
+    }
+
+    private Task GoToStepAsync(int step)
+    {
+        if (step < _currentStep) _currentStep = step;
+        return Task.CompletedTask;
+    }
+
+    private bool ValidateCurrentStep()
+    {
+        _errorMessage = null;
+
+        if (_currentStep == 0)
+        {
+            if (_idScrap is null || _idScrap == Guid.Empty)
+            { _errorMessage = "El SCRAP es obligatorio."; return false; }
+            if (_idPublicEntity is null || _idPublicEntity == Guid.Empty)
+            { _errorMessage = "La entidad pública es obligatoria."; return false; }
+            if (_effectiveTo.HasValue && _effectiveTo.Value <= _effectiveFrom)
+            { _errorMessage = "La fecha de fin debe ser posterior a la de inicio."; return false; }
+        }
+
+        return true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!ValidateCurrentStep()) return;
+
+        _saving = true;
+        _errorMessage = null;
+        try
+        {
+            var tariffJson = _tariffRules.Count > 0
+                ? System.Text.Json.JsonSerializer.Serialize(_tariffRules)
+                : null;
+
+            if (_isEdit)
+            {
+                await Mediator.Send(new UpdateAgreementCommand(
+                    AgreementId!.Value,
+                    _wasteStream, _subStream, _autonomousCommunity,
+                    _provinceCode, _municipalityCode, _coveredMethodsJson,
+                    string.IsNullOrEmpty(_tariffModelType) ? null : _tariffModelType,
+                    tariffJson, null, _obligationsJson,
+                    _currency, _effectiveFrom, _effectiveTo));
+                Nav.NavigateTo($"/agreements/{AgreementId}");
+            }
+            else
+            {
+                var id = await Mediator.Send(new CreateAgreementCommand(
+                    _idScrap!.Value, _idPublicEntity!.Value, _idCoordinator,
+                    _wasteStream, _subStream, _autonomousCommunity,
+                    _provinceCode, _municipalityCode, _coveredMethodsJson,
+                    string.IsNullOrEmpty(_tariffModelType) ? null : _tariffModelType,
+                    tariffJson, null, _obligationsJson,
+                    _currency, _effectiveFrom, _effectiveTo));
+                Nav.NavigateTo($"/agreements/{id}");
+            }
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private sealed class TariffRuleModel
+    {
+        public string  Category   { get; set; } = "";
+        public decimal PricePerKg { get; set; }
+        public decimal MinWeight  { get; set; }
+    }
+}

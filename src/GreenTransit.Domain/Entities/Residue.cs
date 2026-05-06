@@ -18,6 +18,7 @@ public class Residue : IAuditableEntity
     public bool IsDangerous { get; set; }
     public bool IsRAEE { get; set; }
     public string? DangerousCode { get; set; }
+    public string? FlowType { get; set; }
     public string? ProductUse { get; set; }
     public string? ProductCategory { get; set; }
     public decimal? WeightPerUnitKg { get; set; }

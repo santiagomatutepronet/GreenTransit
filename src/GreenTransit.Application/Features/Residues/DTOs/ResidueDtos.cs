@@ -27,6 +27,7 @@ public sealed record ResidueDetailDto(
     bool     IsDangerous,
     bool     IsRAEE,
     string?  DangerousCode,
+    string?  FlowType,
     string?  ProductUse,
     string?  ProductCategory,
     decimal? WeightPerUnitKg,

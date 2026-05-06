@@ -1,0 +1,224 @@
+@page "/residues/{ResidueId:guid}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Residues.DTOs
+@using GreenTransit.Application.Features.Residues.Queries
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator        Mediator
+@inject NavigationManager Nav
+
+<PageTitle>@(_detail?.Name ?? "Residuo / Producto")</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Residuo no encontrado.</div>
+    <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("/residues")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver al listado
+    </button>
+}
+else
+{
+    <div class="page-header">
+        <h1 class="page-title">
+            <i class="bi bi-recycle me-2"></i>@_detail.Name
+        </h1>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm"
+                    @onclick='() => Nav.NavigateTo("/residues")'>
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+            <button class="btn btn-primary btn-sm"
+                    @onclick='() => Nav.NavigateTo($"/residues/{_detail.Id}/edit")'>
+                <i class="bi bi-pencil me-1"></i>Editar
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3">
+
+        @* ── Datos generales ──────────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-card-text me-2"></i>Datos generales
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5">Tipo</dt>
+                        <dd class="col-sm-7">
+                            <span class="badge @TypeBadgeClass(_detail.ResidueType)">@_detail.ResidueType</span>
+                        </dd>
+                        <dt class="col-sm-5">Referencia</dt>
+                        <dd class="col-sm-7"><code>@(_detail.Reference ?? "—")</code></dd>
+                        <dt class="col-sm-5">Descripción</dt>
+                        <dd class="col-sm-7">@(_detail.Description ?? "—")</dd>
+                        <dt class="col-sm-5">Estado</dt>
+                        <dd class="col-sm-7">
+                            @if (_detail.IsActive)
+                            {
+                                <span class="badge bg-success">Activo</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactivo</span>
+                            }
+                        </dd>
+                        <dt class="col-sm-5">Versión</dt>
+                        <dd class="col-sm-7">@_detail.Version</dd>
+                        <dt class="col-sm-5">Creado</dt>
+                        <dd class="col-sm-7">@_detail.CreatedAt.ToString("dd/MM/yyyy HH:mm")</dd>
+                        <dt class="col-sm-5">Actualizado</dt>
+                        <dd class="col-sm-7">@_detail.UpdatedAt.ToString("dd/MM/yyyy HH:mm")</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        @* ── Clasificación normativa ──────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-shield-exclamation me-2"></i>Clasificación normativa
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5">Código LER</dt>
+                        <dd class="col-sm-7">
+                            @if (!string.IsNullOrEmpty(_detail.LerCode))
+                            {
+                                <code>@_detail.LerCode</code>
+                                <span class="text-muted small ms-1">@_detail.LerDescription</span>
+                            }
+                            else { <span class="text-muted">—</span> }
+                        </dd>
+                        <dt class="col-sm-5">Peligroso</dt>
+                        <dd class="col-sm-7">
+                            @if (_detail.IsDangerous)
+                            {
+                                <span class="badge bg-danger">Sí</span>
+                                @if (!string.IsNullOrEmpty(_detail.DangerousCode))
+                                {
+                                    <code class="ms-1">@_detail.DangerousCode</code>
+                                }
+                            }
+                            else { <span class="text-muted">No</span> }
+                        </dd>
+                        <dt class="col-sm-5">RAEE</dt>
+                        <dd class="col-sm-7">
+                            @if (_detail.IsRAEE)
+                            {
+                                <span class="badge bg-warning text-dark">Sí</span>
+                            }
+                            else { <span class="text-muted">No</span> }
+                        </dd>
+                        <dt class="col-sm-5">Tipo de flujo</dt>
+                        <dd class="col-sm-7">@(_detail.FlowType ?? "—")</dd>
+                        <dt class="col-sm-5">Categoría de producto</dt>
+                        <dd class="col-sm-7">@(_detail.ProductCategory ?? "—")</dd>
+                        <dt class="col-sm-5">Uso del producto</dt>
+                        <dd class="col-sm-7">@(_detail.ProductUse ?? "—")</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        @* ── Unidades y medidas ───────────────────────────────────────────── *@
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-rulers me-2"></i>Unidades y medidas
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5">Peso por unidad (kg)</dt>
+                        <dd class="col-sm-7">@(_detail.WeightPerUnitKg?.ToString("N3") ?? "—")</dd>
+                        <dt class="col-sm-5">Unidad de medida</dt>
+                        <dd class="col-sm-7">@(_detail.DefaultMeasureUnit ?? "—")</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        @* ── Productor (solo ProductSpec) ─────────────────────────────────── *@
+        @if (_detail.ResidueType == "ProductSpec")
+        {
+            <div class="col-md-6">
+                <div class="card border-info">
+                    <div class="card-header fw-semibold text-info">
+                        <i class="bi bi-building me-2"></i>Productor
+                    </div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">Productor</dt>
+                            <dd class="col-sm-7">@(_detail.ProducerName ?? "—")</dd>
+                            <dt class="col-sm-5">Referencia</dt>
+                            <dd class="col-sm-7"><code>@(_detail.ProducerRef ?? "—")</code></dd>
+                            <dt class="col-sm-5">Sistema origen</dt>
+                            <dd class="col-sm-7">@(_detail.SourceSystem ?? "—")</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Ecodiseño ────────────────────────────────────────────────── *@
+            <div class="col-12">
+                <div class="card border-info">
+                    <div class="card-header fw-semibold text-info">
+                        <i class="bi bi-leaf me-2"></i>Ecodiseño
+                    </div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-3">Índice reparabilidad</dt>
+                            <dd class="col-sm-3">@(_detail.ReparabilityIndex?.ToString() ?? "—")</dd>
+                            <dt class="col-sm-3">Facilidad desmontaje</dt>
+                            <dd class="col-sm-3">@(_detail.DisassemblyEase ?? "—")</dd>
+                            <dt class="col-sm-3">Contenido reciclado (%)</dt>
+                            <dd class="col-sm-3">@(_detail.RecycledContentPercent?.ToString("N2") ?? "—")</dd>
+                            <dt class="col-sm-3">Sustancias peligrosas</dt>
+                            <dd class="col-sm-3">
+                                @if (_detail.ContainsHazardous == true)
+                                {
+                                    <span class="badge bg-danger">Sí</span>
+                                }
+                                else if (_detail.ContainsHazardous == false)
+                                {
+                                    <span class="text-muted">No</span>
+                                }
+                                else { <span class="text-muted">—</span> }
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        }
+
+    </div>
+}
+
+@code {
+    [Parameter] public Guid ResidueId { get; set; }
+
+    private bool              _loading = true;
+    private ResidueDetailDto? _detail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail  = await Mediator.Send(new GetResidueByIdQuery(ResidueId));
+        _loading = false;
+    }
+
+    private static string TypeBadgeClass(string type) => type switch
+    {
+        "Waste"       => "badge bg-secondary",
+        "Product"     => "badge bg-primary",
+        "ProductSpec" => "badge bg-info text-dark",
+        _             => "badge bg-light text-dark"
+    };
+}

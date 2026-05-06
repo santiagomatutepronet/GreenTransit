@@ -211,12 +211,34 @@ else
                             @* ── Clasificación a nivel de orden ──────────── *@
                             <div class="col-md-4">
                                 <label class="form-label">Flujo de residuo</label>
-                                <InputText class="form-control" @bind-Value="_model.WasteStream"
-                                           placeholder="RAEE, Envases, etc." />
+                                <select class="form-select" value="@_model.WasteStream"
+                                        @onchange="e => OnWasteStreamChanged(e.Value?.ToString())">
+                                    <option value="">— Seleccionar flujo —</option>
+                                    <optgroup label="RAP">
+                                        @foreach (var f in WasteFlowCatalog.All.Where(x => x.Type == WasteFlowCatalog.TypeRap))
+                                        {
+                                            <option value="@f.Code">@f.Name</option>
+                                        }
+                                    </optgroup>
+                                    <optgroup label="Operativos">
+                                        @foreach (var f in WasteFlowCatalog.All.Where(x => x.Type == WasteFlowCatalog.TypeOperativo))
+                                        {
+                                            <option value="@f.Code">@f.Name</option>
+                                        }
+                                    </optgroup>
+                                </select>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Sub-flujo</label>
-                                <InputText class="form-control" @bind-Value="_model.SubStream" />
+                                <select class="form-select"
+                                        disabled="@(string.IsNullOrEmpty(_model.WasteStream))"
+                                        @bind="_model.SubStream">
+                                    <option value="">— Seleccionar sub-flujo —</option>
+                                    @foreach (var sf in _soSubflows)
+                                    {
+                                        <option value="@sf">@sf</option>
+                                    }
+                                </select>
                             </div>
 
                             @* ── Líneas de residuo ────────────────────────── *@
@@ -474,6 +496,9 @@ else
     private List<ContainerRow> _containers   = [];
     private List<ResidueLineModel> _residueLines = [];
 
+    // ── Sub-flujos disponibles (cascada WasteFlow) ────────────────────────────
+    private IReadOnlyList<string> _soSubflows = [];
+
     // ── Datos de selectores ───────────────────────────────────────────────────
     private IReadOnlyList<EntitySelectorDto> _allEntities = [];
     private List<LerChapterDto>              _lerChapters = [];
@@ -551,6 +576,18 @@ else
             }
             catch { _containers = []; }
         }
+
+        // Restaurar subflujos disponibles al cargar en edición
+        _soSubflows = WasteFlowCatalog.FindByCode(d.WasteStream)?.Subflows ?? [];
+    }
+
+    // ── Cascade WasteFlow → SubFlow ───────────────────────────────────────────
+
+    private void OnWasteStreamChanged(string? code)
+    {
+        _model.WasteStream = code;
+        _model.SubStream   = null;
+        _soSubflows        = WasteFlowCatalog.FindByCode(code)?.Subflows ?? [];
     }
 
     // ── Eventos ───────────────────────────────────────────────────────────────

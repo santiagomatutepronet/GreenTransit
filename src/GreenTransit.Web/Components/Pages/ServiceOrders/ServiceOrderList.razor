@@ -54,6 +54,24 @@
         </select>
     </div>
     <div class="filter-group">
+        <label>Flujo de residuo</label>
+        <select class="form-control" @bind="_filterWasteStream">
+            <option value="">— Todos —</option>
+            <optgroup label="RAP">
+                @foreach (var f in WasteFlowCatalog.All.Where(x => x.Type == WasteFlowCatalog.TypeRap))
+                {
+                    <option value="@f.Code">@f.Name</option>
+                }
+            </optgroup>
+            <optgroup label="Operativos">
+                @foreach (var f in WasteFlowCatalog.All.Where(x => x.Type == WasteFlowCatalog.TypeOperativo))
+                {
+                    <option value="@f.Code">@f.Name</option>
+                }
+            </optgroup>
+        </select>
+    </div>
+    <div class="filter-group">
         <label>Recogida desde</label>
         <input type="date" class="form-control" @bind="_pickupFrom" @bind:format="yyyy-MM-dd" />
     </div>
@@ -112,7 +130,7 @@ else
                         <td class="cell-muted">@so.IssuedAt.ToString("dd/MM/yyyy")</td>
                         <td class="cell-muted">@(so.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "—")</td>
                         <td class="cell-muted">@(so.PickupPointName ?? "—")</td>
-                        <td>@(so.WasteStream ?? "—")</td>
+                        <td>@(WasteFlowCatalog.FindByCode(so.WasteStream)?.Name ?? so.WasteStream ?? "—")</td>
                         <td class="cell-number">
                             @(so.EstimatedWeight.HasValue ? $"{so.EstimatedWeight:N0} kg" : "—")
                         </td>
@@ -197,9 +215,10 @@ else
 
     private bool   _loading = true;
     private int    _page    = 1;
-    private string _search         = "";
-    private string _filterStatus   = "";
-    private string _filterPriority = "";
+    private string _search            = "";
+    private string _filterStatus      = "";
+    private string _filterPriority    = "";
+    private string _filterWasteStream = "";
     private DateTime? _pickupFrom;
     private DateTime? _pickupTo;
     private string? _errorMessage;
@@ -235,10 +254,11 @@ else
                 : null;
 
             _result = await Mediator.Send(new GetServiceOrdersQuery(
-                Status:            string.IsNullOrEmpty(_filterStatus)   ? null : _filterStatus,
-                Priority:          string.IsNullOrEmpty(_filterPriority) ? null : _filterPriority,
+                Status:            string.IsNullOrEmpty(_filterStatus)      ? null : _filterStatus,
+                Priority:          string.IsNullOrEmpty(_filterPriority)    ? null : _filterPriority,
+                WasteStream:       string.IsNullOrEmpty(_filterWasteStream) ? null : _filterWasteStream,
                 IdIssuedBy:        ownFilter,
-                SearchTerm:        string.IsNullOrEmpty(_search)         ? null : _search,
+                SearchTerm:        string.IsNullOrEmpty(_search)            ? null : _search,
                 PlannedPickupFrom: _pickupFrom,
                 PlannedPickupTo:   _pickupTo,
                 PageNumber:        _page,
@@ -250,7 +270,7 @@ else
 
     private void ResetFilters()
     {
-        _search = ""; _filterStatus = ""; _filterPriority = "";
+        _search = ""; _filterStatus = ""; _filterPriority = ""; _filterWasteStream = "";
         _pickupFrom = null; _pickupTo = null; _page = 1;
         _ = LoadAsync();
     }

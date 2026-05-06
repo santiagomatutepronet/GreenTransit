@@ -1,0 +1,106 @@
+@* Componente reutilizable de asistente por pasos con línea de progreso. *@
+
+<div class="stepper-wizard mb-4">
+    @for (int i = 0; i < Steps.Count; i++)
+    {
+        var idx       = i;
+        var isActive  = idx == CurrentStep;
+        var isDone    = idx < CurrentStep;
+        var stepClass = isDone ? "step done" : isActive ? "step active" : "step";
+
+        <div class="@stepClass" @onclick="() => TryNavigateToStep(idx)" style="cursor:@(isDone ? "pointer" : "default")">
+            <div class="step-circle">
+                @if (isDone)
+                {
+                    <i class="bi bi-check-lg"></i>
+                }
+                else
+                {
+                    <span>@(idx + 1)</span>
+                }
+            </div>
+            <div class="step-label">@Steps[idx]</div>
+        </div>
+
+        @if (idx < Steps.Count - 1)
+        {
+            <div class="step-line @(isDone ? "done" : "")"></div>
+        }
+    }
+</div>
+
+<style>
+    .stepper-wizard {
+        display: flex;
+        align-items: center;
+        gap: 0;
+    }
+    .stepper-wizard .step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 80px;
+        opacity: .5;
+        transition: opacity .2s;
+    }
+    .stepper-wizard .step.active,
+    .stepper-wizard .step.done {
+        opacity: 1;
+    }
+    .stepper-wizard .step-circle {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 2px solid var(--bs-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        background: #fff;
+        color: var(--bs-primary);
+        font-size: .9rem;
+    }
+    .stepper-wizard .step.active .step-circle {
+        background: var(--bs-primary);
+        color: #fff;
+    }
+    .stepper-wizard .step.done .step-circle {
+        background: var(--bs-success);
+        border-color: var(--bs-success);
+        color: #fff;
+    }
+    .stepper-wizard .step-label {
+        font-size: .75rem;
+        margin-top: .3rem;
+        text-align: center;
+        white-space: nowrap;
+    }
+    .stepper-wizard .step-line {
+        flex: 1;
+        height: 2px;
+        background: #dee2e6;
+        margin-bottom: 1.4rem;
+        transition: background .2s;
+    }
+    .stepper-wizard .step-line.done {
+        background: var(--bs-success);
+    }
+</style>
+
+@code {
+    /// <summary>Nombres de cada paso.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<string> Steps { get; set; } = [];
+
+    /// <summary>Índice del paso activo (0-based).</summary>
+    [Parameter] public int CurrentStep { get; set; }
+
+    /// <summary>Callback invocado al solicitar un cambio de paso.</summary>
+    [Parameter] public EventCallback<int> OnStepChange { get; set; }
+
+    private async Task TryNavigateToStep(int idx)
+    {
+        // Solo permite navegar hacia pasos ya completados
+        if (idx < CurrentStep)
+            await OnStepChange.InvokeAsync(idx);
+    }
+}

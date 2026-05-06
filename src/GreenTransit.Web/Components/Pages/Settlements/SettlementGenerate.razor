@@ -1,0 +1,203 @@
+@page "/settlements/generate"
+@attribute [Authorize(Policy = PolicyConstants.CanManageSettlements)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Models
+@using GreenTransit.Application.Features.Agreements.DTOs
+@using GreenTransit.Application.Features.Agreements.Queries
+@using GreenTransit.Application.Features.Settlements.Commands
+@using GreenTransit.Application.Features.Settlements.DTOs
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator         Mediator
+@inject NavigationManager Nav
+
+<PageTitle>Generar liquidación</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-calculator me-2"></i>Generar liquidación
+    </h1>
+    <button class="btn btn-outline-secondary btn-sm" @onclick='() => Nav.NavigateTo("/settlements")'>
+        <i class="bi bi-arrow-left me-1"></i>Volver
+    </button>
+</div>
+
+<div class="card mt-3" style="max-width:600px">
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Acuerdo <span class="text-danger">*</span></label>
+            <select class="form-control" @bind="_agreementId">
+                <option value="">— Seleccione un acuerdo —</option>
+                @foreach (var a in _agreements)
+                {
+                    <option value="@a.Id">@a.AgreementNumber — @a.ScrapName</option>
+                }
+            </select>
+        </div>
+        <div class="row g-3">
+            <div class="col-6">
+                <label class="form-label fw-semibold">Año <span class="text-danger">*</span></label>
+                <input type="number" class="form-control" @bind="_year" min="2020" max="2099" />
+            </div>
+            <div class="col-6">
+                <label class="form-label fw-semibold">Mes <span class="text-danger">*</span></label>
+                <select class="form-control" @bind="_month">
+                    @for (int m = 1; m <= 12; m++)
+                    {
+                        var mName = new DateTime(2000, m, 1).ToString("MMMM");
+                        <option value="@m">@mName</option>
+                    }
+                </select>
+            </div>
+        </div>
+        @if (_validationError is not null)
+        {
+            <div class="alert alert-danger mt-3">@_validationError</div>
+        }
+        <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-outline-primary" @onclick="PreviewAsync" disabled="@_busy">
+                @if (_busy && _mode == "preview")
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="bi bi-eye me-1"></i>Previsualizar
+            </button>
+            <button class="btn btn-primary" @onclick="SaveAsync"
+                    disabled="@(_busy || _preview is null)">
+                @if (_busy && _mode == "save")
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="bi bi-floppy me-1"></i>Generar y guardar
+            </button>
+        </div>
+    </div>
+</div>
+
+@* ── Preview ────────────────────────────────────────────────────────────────── *@
+@if (_preview is not null)
+{
+    <div class="card mt-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-table me-2"></i>Previsualización — @_preview.AgreementNumber
+            (@_preview.Year / @(_preview.Month?.ToString("D2") ?? "?"))
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Código LER</th>
+                        <th>Descripción</th>
+                        <th class="text-end">Peso (kg)</th>
+                        <th class="text-end">€/kg</th>
+                        <th class="text-end">Importe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var l in _preview.Lines)
+                    {
+                        <tr>
+                            <td><code>@(l.LerCodeCode ?? "—")</code></td>
+                            <td>@(l.LerCodeDescription ?? $"Cat. {l.ProductCategory}")</td>
+                            <td class="text-end">@l.WeightKg.ToString("N2")</td>
+                            <td class="text-end">@l.PricePerKg.ToString("N4")</td>
+                            <td class="text-end">@l.Amount.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot class="table-light fw-semibold">
+                    <tr>
+                        <td colspan="4" class="text-end">Base imponible</td>
+                        <td class="text-end">@_preview.BaseAmount.ToString("N2") @_preview.Currency</td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" class="text-end">Ajustes (eco-modulación)</td>
+                        <td class="text-end">@_preview.AdjustmentsAmount.ToString("N2")</td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" class="text-end">IVA (21 %)</td>
+                        <td class="text-end">@_preview.TaxAmount.ToString("N2")</td>
+                    </tr>
+                    <tr class="table-success">
+                        <td colspan="4" class="text-end">Total</td>
+                        <td class="text-end">@_preview.TotalAmount.ToString("N2") @_preview.Currency</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AgreementDto> _agreements = [];
+    private Guid    _agreementId;
+    private int     _year  = DateTime.UtcNow.Year;
+    private int     _month = DateTime.UtcNow.Month;
+    private bool    _busy;
+    private string  _mode = "";
+    private string? _validationError;
+    private SettlementDetailDto? _preview;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Mediator.Send(new GetAgreementsQuery(Status: "Active", PageSize: 200));
+        _agreements = result.Items.ToList();
+    }
+
+    private async Task PreviewAsync()
+    {
+        if (!Validate()) return;
+        _mode = "preview";
+        _busy = true;
+        _validationError = null;
+        _preview = null;
+        try
+        {
+            _preview = await Mediator.Send(new GenerateSettlementCommand(
+                _agreementId, _year, _month, DryRun: true));
+        }
+        catch (Exception ex)
+        {
+            _validationError = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!Validate()) return;
+        _mode = "save";
+        _busy = true;
+        _validationError = null;
+        try
+        {
+            var result = await Mediator.Send(new GenerateSettlementCommand(
+                _agreementId, _year, _month, DryRun: false));
+            Nav.NavigateTo($"/settlements/{result.Id}");
+        }
+        catch (Exception ex)
+        {
+            _validationError = ex.Message;
+            _busy = false;
+        }
+    }
+
+    private bool Validate()
+    {
+        if (_agreementId == Guid.Empty)
+        {
+            _validationError = "Seleccione un acuerdo.";
+            return false;
+        }
+        if (_year < 2020)
+        {
+            _validationError = "El año no es válido.";
+            return false;
+        }
+        return true;
+    }
+}

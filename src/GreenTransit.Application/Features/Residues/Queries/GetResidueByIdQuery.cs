@@ -34,6 +34,7 @@ public sealed class GetResidueByIdQueryHandler
                 r.IsDangerous,
                 r.IsRAEE,
                 r.DangerousCode,
+                r.FlowType,
                 r.ProductUse,
                 r.ProductCategory,
                 r.WeightPerUnitKg,

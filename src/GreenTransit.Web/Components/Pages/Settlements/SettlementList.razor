@@ -1,0 +1,196 @@
+@page "/settlements"
+@attribute [Authorize(Policy = PolicyConstants.CanManageSettlements)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Agreements.Queries
+@using GreenTransit.Application.Features.Settlements.DTOs
+@using GreenTransit.Application.Features.Settlements.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>Liquidaciones</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-receipt me-2"></i>Liquidaciones
+    </h1>
+    <AuthorizeView Policy="@PolicyConstants.CanManageSettlements">
+        <Authorized>
+            <button class="btn btn-primary btn-sm" @onclick='() => Nav.NavigateTo("/settlements/generate")'>
+                <i class="bi bi-plus-lg me-1"></i>Nueva liquidación
+            </button>
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+@* ── Filtros ────────────────────────────────────────────────────────────────── *@
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Estado</label>
+        <select class="form-control" @bind="_filterStatus">
+            <option value="">— Todos —</option>
+            <option value="Pending">Pendiente</option>
+            <option value="Approved">Aprobado</option>
+            <option value="Rejected">Rechazado</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Año</label>
+        <input type="number" class="form-control" style="width:90px"
+               @bind="_filterYear" @bind:event="oninput" min="2020" max="2099" />
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-control" @bind="_filterMonth">
+            <option value="">— Todos —</option>
+            @for (int m = 1; m <= 12; m++)
+            {
+                var monthName = new DateTime(2000, m, 1).ToString("MMMM");
+                <option value="@m">@monthName</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group align-self-end">
+        <button class="btn btn-secondary btn-sm" @onclick="LoadAsync">
+            <i class="bi bi-search me-1"></i>Buscar
+        </button>
+    </div>
+</div>
+
+@* ── Tabla ──────────────────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+}
+else if (_page is null || _page.Items.Count == 0)
+{
+    <div class="alert alert-info mt-3">No se encontraron liquidaciones con los filtros aplicados.</div>
+}
+else
+{
+    <div class="table-responsive mt-3">
+        <table class="table table-hover table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Número</th>
+                    <th>Estado</th>
+                    <th>Acuerdo</th>
+                    <th>Periodo</th>
+                    <th>SCRAP</th>
+                    <th>Entidad pública</th>
+                    <th class="text-end">Base</th>
+                    <th class="text-end">Ajustes</th>
+                    <th class="text-end">IVA</th>
+                    <th class="text-end">Total</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _page.Items)
+                {
+                    <tr>
+                        <td><code>@s.SettlementNumber</code></td>
+                        <td><span class="badge @StatusBadgeClass(s.Status)">@StatusLabel(s.Status)</span></td>
+                        <td><a href="/agreements/@s.AgreementId">@s.AgreementNumber</a></td>
+                        <td>@s.Year / @(s.Month.HasValue ? s.Month.Value.ToString("D2") : "—")</td>
+                        <td>@(s.ScrapName ?? "—")</td>
+                        <td>@(s.PublicEntityName ?? "—")</td>
+                        <td class="text-end">@s.BaseAmount.ToString("N2") @s.Currency</td>
+                        <td class="text-end">@s.AdjustmentsAmount.ToString("N2")</td>
+                        <td class="text-end">@s.TaxAmount.ToString("N2")</td>
+                        <td class="text-end fw-bold">@s.TotalAmount.ToString("N2") @s.Currency</td>
+                        <td>
+                            <button class="btn btn-outline-secondary btn-sm"
+                                        @onclick="@(() => Nav.NavigateTo($"/settlements/{s.Id}"))">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* Paginación *@
+    @if (_page.TotalCount > _pageSize)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <small class="text-muted">@_page.TotalCount resultados</small>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" disabled="@(_currentPage == 1)"
+                        @onclick="PrevPage"><i class="bi bi-chevron-left"></i></button>
+                <button class="btn btn-outline-secondary" disabled>@_currentPage</button>
+                <button class="btn btn-outline-secondary"
+                        disabled="@(_currentPage * _pageSize >= _page.TotalCount)"
+                        @onclick="NextPage"><i class="bi bi-chevron-right"></i></button>
+            </div>
+        </div>
+    }
+}
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-danger mt-3">@_errorMessage</div>
+}
+
+@code {
+    private SettlementsPageDto? _page;
+    private bool    _loading      = true;
+    private string? _errorMessage;
+    private int     _currentPage  = 1;
+    private int     _pageSize     = 20;
+
+    private string? _filterStatus;
+    private int?    _filterYear;
+    private int?    _filterMonth;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading      = true;
+        _errorMessage = null;
+        try
+        {
+            _page = await Mediator.Send(new GetSettlementsQuery(
+                Status:      _filterStatus,
+                Year:        _filterYear,
+                Month:       _filterMonth,
+                Page:        _currentPage,
+                PageSize:    _pageSize));
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task PrevPage() { _currentPage--; await LoadAsync(); }
+    private async Task NextPage() { _currentPage++; await LoadAsync(); }
+
+    private static string StatusBadgeClass(string status) => status switch
+    {
+        "Pending"  => "bg-warning text-dark",
+        "Approved" => "bg-success",
+        "Rejected" => "bg-danger",
+        _          => "bg-secondary"
+    };
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "Pending"  => "Pendiente",
+        "Approved" => "Aprobado",
+        "Rejected" => "Rechazado",
+        _          => status
+    };
+}

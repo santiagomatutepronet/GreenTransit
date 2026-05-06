@@ -1,0 +1,203 @@
+@page "/agreements"
+@attribute [Authorize(Policy = PolicyConstants.CanManageAgreements)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Agreements.DTOs
+@using GreenTransit.Application.Features.Agreements.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Entities
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>Acuerdos</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-file-earmark-text me-2"></i>Acuerdos
+    </h1>
+    <AuthorizeView Policy="@PolicyConstants.CanManageAgreements">
+        <Authorized>
+            <button class="btn btn-primary btn-sm"
+                    @onclick='() => Nav.NavigateTo("/agreements/new")'>
+                <i class="bi bi-plus-lg me-1"></i>Nuevo acuerdo
+            </button>
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+@* ── Filtros ────────────────────────────────────────────────────────────────── *@
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Estado</label>
+        <select class="form-control" @bind="_filterStatus">
+            <option value="">— Todos —</option>
+            @foreach (var s in Agreement.Statuses.All)
+            {
+                <option value="@s">@s</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Año</label>
+        <input type="number" class="form-control" @bind="_filterYear" placeholder="2025" style="width:90px" />
+    </div>
+    <div class="filter-group">
+        <label>Búsqueda</label>
+        <input class="form-control" @bind="_filterSearch" placeholder="Nº acuerdo…" style="min-width:180px" />
+    </div>
+    <button class="btn btn-secondary btn-sm" @onclick="LoadAsync">
+        <i class="bi bi-search me-1"></i>Buscar
+    </button>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Nº Acuerdo</th>
+                        <th>SCRAP</th>
+                        <th>Entidad Pública</th>
+                        <th>Vigencia</th>
+                        <th>Vence en</th>
+                        <th>Estado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_result.Items.Count == 0)
+                    {
+                        <tr><td colspan="7" class="text-muted text-center py-4">No hay acuerdos que mostrar.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var a in _result.Items)
+                        {
+                            var agreementId = a.Id;
+                            <tr>
+                                <td><strong>@a.AgreementNumber</strong></td>
+                                <td>@(a.ScrapName ?? "—")</td>
+                                <td>@(a.PublicEntityName ?? "—")</td>
+                                <td>
+                                    @a.EffectiveFrom.ToString("dd/MM/yyyy")
+                                    @if (a.EffectiveTo.HasValue)
+                                    {
+                                        <span> → @a.EffectiveTo.Value.ToString("dd/MM/yyyy")</span>
+                                    }
+                                </td>
+                                <td>@RenderDaysRemaining(a)</td>
+                                <td><span class="@StatusBadge(a.Status)">@a.Status</span></td>
+                                <td>
+                                    <button class="btn btn-outline-secondary btn-sm btn-icon-only"
+                                            @onclick='() => Nav.NavigateTo($"/agreements/{agreementId}")'>
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    @if (a.Status == Agreement.Statuses.Draft)
+                                    {
+                                        <button class="btn btn-outline-primary btn-sm btn-icon-only ms-1"
+                                                @onclick='() => Nav.NavigateTo($"/agreements/{agreementId}/edit")'>
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (_result.TotalPages > 1)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <small class="text-muted">@_result.TotalCount resultados</small>
+            <div class="d-flex gap-1">
+                <button class="btn btn-outline-secondary btn-sm"
+                        disabled="@(!_result.HasPrevious)"
+                        @onclick="() => ChangePage(_page - 1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="btn btn-sm disabled">@_page / @_result.TotalPages</span>
+                <button class="btn btn-outline-secondary btn-sm"
+                        disabled="@(!_result.HasNext)"
+                        @onclick="() => ChangePage(_page + 1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool    _loading = true;
+    private string? _errorMessage;
+    private int     _page   = 1;
+
+    private string? _filterStatus;
+    private int?    _filterYear;
+    private string? _filterSearch;
+
+    private GreenTransit.Application.Common.Models.PaginatedResult<AgreementDto> _result =
+        GreenTransit.Application.Common.Models.PaginatedResult<AgreementDto>.Create([], 0, 1, 20);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            _result = await Mediator.Send(new GetAgreementsQuery(
+                Status:     _filterStatus,
+                Year:       _filterYear,
+                SearchTerm: _filterSearch,
+                PageNumber: _page));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task ChangePage(int page)
+    {
+        _page = page;
+        await LoadAsync();
+    }
+
+    private static string StatusBadge(string? status) => status switch
+    {
+        Agreement.Statuses.Draft     => "badge bg-secondary",
+        Agreement.Statuses.Active    => "badge bg-success",
+        Agreement.Statuses.Expired   => "badge bg-warning text-dark",
+        Agreement.Statuses.Cancelled => "badge bg-danger",
+        _                            => "badge bg-light text-dark"
+    };
+
+    private static string RenderDaysRemaining(AgreementDto a)
+    {
+        if (!a.EffectiveTo.HasValue || a.Status != Agreement.Statuses.Active)
+            return "—";
+
+        var days = (int)(a.EffectiveTo.Value.Date - DateTime.Today).TotalDays;
+        if (days < 0)  return "Vencido";
+        if (days < 7)  return $"⚠ {days}d";
+        if (days < 30) return $"⚠ {days}d";
+        return $"{days}d";
+    }
+}

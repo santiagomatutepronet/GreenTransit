@@ -14,6 +14,7 @@ public sealed record GetServiceOrdersQuery(
     Guid?     IdIssuedBy        = null,
     Guid?     IdPickupPoint     = null,
     Guid?     IdLERCode         = null,
+    string?   WasteStream       = null,
     DateTime? PlannedPickupFrom = null,
     DateTime? PlannedPickupTo   = null,
     string?   SearchTerm        = null,
@@ -67,6 +68,9 @@ public sealed class GetServiceOrdersQueryHandler
 
         if (request.IdLERCode.HasValue)
             q = q.Where(s => s.IdLERCode == request.IdLERCode);
+
+        if (!string.IsNullOrWhiteSpace(request.WasteStream))
+            q = q.Where(s => s.WasteStream == request.WasteStream);
 
         if (request.PlannedPickupFrom.HasValue)
             q = q.Where(s => s.PlannedPickupStart >= request.PlannedPickupFrom);

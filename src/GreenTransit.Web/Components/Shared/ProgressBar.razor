@@ -1,0 +1,21 @@
+@* Barra de progreso coloreada según el porcentaje de cumplimiento. *@
+@* Verde ≥100 %, naranja 80–99 %, rojo <80 % *@
+
+<div class="progress" style="height:18px;min-width:100px">
+    <div class="progress-bar @CssClass"
+         role="progressbar"
+         style="width:@(Math.Min(100, Percent))%"
+         aria-valuenow="@Percent"
+         aria-valuemin="0"
+         aria-valuemax="100">
+        @Percent.ToString("N1") %
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public decimal Percent { get; set; }
+
+    private string CssClass => Percent >= 100 ? "bg-success"
+                             : Percent >= 80  ? "bg-warning text-dark"
+                             : "bg-danger";
+}

@@ -196,6 +196,15 @@ Reglas de transición (claves):
 - **Funciones**: wizard de alta (partes → ámbito → tarifas → obligaciones → firma), versionado con nuevo `Hash`, alerta de próximo vencimiento (30/60/90 días antes de `EffectiveTo`), repositorio documental con hash de integridad.
 - **Roles**: **Administrador**, **SCRAP** (alta/edición de los suyos), **Entidad Pública** (lectura + firma).
 
+#### ✅ Decisiones de implementación — Campos `WasteStream` y `SubStream`
+
+| Campo | Comportamiento implementado |
+|---|---|
+| **Flujo de residuo (`WasteStream`)** | Selector cerrado (`<select>`) con las 15 categorías del catálogo `WasteFlowCatalog` (Domain/Constants). Opciones agrupadas en `RAP` y `Operativos`. |
+| **Sub-flujo (`SubStream`)** | Selector dependiente del flujo seleccionado. Deshabilitado hasta que se elige `WasteStream`. Al cambiar el flujo el sub-flujo se limpia automáticamente. |
+| **Validación cruzada** | Solo combinaciones definidas en `WasteFlowCatalog.IsValidCombination()` son aceptadas. |
+| **Catálogo compartido** | `Domain/Constants/WasteFlowCatalog.cs` — fuente de verdad única reutilizada en `AgreementWizard.razor` y `ServiceOrderForm.razor`. |
+
 ### 2.2. Liquidación Económica (Settlements)
 
 - **Lógica**: cierre económico periódico. Agrupa los pesos netos de entradas validadas (`EntryPlants.NetWeight`) y aplica las reglas tarifarias del `Agreement`. Desglosa por LER/categoría en `SettlementLines`.
@@ -211,13 +220,37 @@ Reglas de transición (claves):
 - **Funciones**: previsualización antes de generar, re-cálculo, bloqueo tras `Approved`, exportación a formato SII/factura.
 - **Roles**: **Administrador** (cálculo), **SCRAP** (validador), **Entidad Pública** (revisión).
 
-### 2.3. Objetivos y Cuotas de Mercado (MarketShares)
+### 2.3. Objetivos y Cuotas de Mercado (MarketShares) ✅ IMPLEMENTADO
 
 - **Lógica**: gestión de objetivos de recogida/reciclaje por SCRAP, categoría, comunidad autónoma y periodo. Se contrasta con el rendimiento real agregado desde `WasteMoves` y `EntryPlants` para mostrar el % de cumplimiento en el dashboard y alertas.
 - **Entidad**: `MarketShares`.
 - **Campos clave**: `IdScrap` (FK `Entities`), `Category`, `AutonomousCommunity`, `Year`, `Weight` (objetivo en kg), `Period`, `EffectiveFrom`, `EffectiveTo`, `FlowType`.
 - **Funciones**: comparativa real vs objetivo en dashboard, alertas cuando el % de cumplimiento a fecha cae bajo un umbral, exportación regulatoria.
-- **Roles**: **Administrador**, **SCRAP** (lectura).
+- **Roles**: **Administrador** (CRUD), **SCRAP** (lectura — solo sus cuotas).
+- **Archivos implementados**:
+  - `Application/Features/MarketShares/DTOs/MarketShareDtos.cs` — `MarketShareDto` (listados) y `MarketShareComplianceDto` (cumplimiento con `ObjectiveKg`, `AchievedKg`, `CompliancePercent`, `IsAtRisk`).
+  - `Application/Features/MarketShares/Queries/MarketShareQueries.cs` — `GetMarketSharesQuery` (paginada, filtros `IdScrap?`, `Category?`, `AutonomousCommunity?`, `Year?`) y `GetMarketShareComplianceQuery(int year)` (calcula peso real desde `EntryPlantResidues` cruzando `WasteMove.IdScrap` y `Residue.ProductCategory`).
+  - `Application/Features/MarketShares/Commands/MarketShareCommands.cs` — `CreateMarketShareCommand`, `UpdateMarketShareCommand` y `DeleteMarketShareCommand` con validadores FluentValidation y control de unicidad por `IdScrap + Category + AutonomousCommunity + Year + Period`.
+  - `Domain/Authorization/PolicyConstants.cs` — `CanViewMarketShares` (SCRAP + ADMIN) y `CanManageMarketShares` (solo ADMIN).
+  - `Web/Components/Pages/MarketShares/MarketShareList.razor` — página `/market-shares`.
+  - `Web/Components/Shared/ProgressBar.razor` — componente reutilizable de barra de progreso coloreada.
+- **Ruta**: `/market-shares`
+
+#### ✅ Decisiones de implementación (UI)
+
+| Aspecto | Comportamiento implementado |
+|---|---|
+| **Filtrado SCRAP** | `GetMarketSharesQuery` aplica automáticamente `WHERE IdScrap = @LinkedEntityId` si el perfil es SCRAP. El usuario no puede anular este filtro. |
+| **Cálculo de cumplimiento** | `GetMarketShareComplianceQuery` agrega `EntryPlantResidues.Weight` del año filtrado, cruzando `EntryPlant.WasteMove.IdScrap` con `MarketShare.IdScrap` y `Residue.ProductCategory` con `MarketShare.Category`. |
+| **`IsAtRisk`** | `true` si `CompliancePercent < 80 %`. Progreso esperado proporcional al mes en curso dentro del año. |
+| **Barra de progreso** | Verde ≥ 100 %, naranja 80–99 %, rojo < 80 %. Componente `<ProgressBar>` reutilizable en Dashboard. |
+| **Tipo flujo (`FlowType`)** | Selector cerrado con 6 valores: `RAEE`, `ENV`, `BAT`, `NFU`, `OIL`, `VFU` (con descripción larga). |
+| **Categoría (`Category`)** | Selector dependiente del `FlowType` seleccionado. Se limpia automáticamente al cambiar el flujo. Catálogo estático en el componente (`CategoriesByFlow`). |
+| **Comunidad autónoma** | Selector cerrado con las 19 comunidades y ciudades autónomas oficiales. |
+| **Periodo** | Selector con los 4 trimestres (`T1`–`T4`) más opción «Anual» (valor vacío). |
+| **Modal centrado** | Clase `modal-dialog-centered` en Bootstrap para centrar verticalmente el formulario. |
+| **CRUD** | Botones de edición y eliminación visibles solo para ADMIN (`AuthorizeView Policy="CanManageMarketShares"`). Modal inline con confirmación para borrado. |
+| **Widget Dashboard** | `GetMarketShareComplianceQuery` puede invocarse directamente desde `Dashboard.razor` + `<ProgressBar>` para mostrar el widget de cumplimiento (§0.1). |
 
 ---
 
@@ -255,6 +288,9 @@ Reglas de transición (claves):
 | **Unidad de medida (`MeasureUnit`)** | No se muestra en el formulario. Se almacena siempre como `1` (Kg) en el backend. El peso estimado se introduce siempre en kilogramos. |
 | **Tipo de contenedor (`ContainersJson[].Type`)** | Campo `<select>` con opciones fijas: `Bigbag`, `Contenedor`, `Palé`, `Granel`, `Otro`. No se permite texto libre. |
 | **Filtrado en lista** | `PRODUCER` y `PUBLIC_ENT` ven únicamente sus propias SOs (`IdIssuedBy = LinkedEntityId`). `SCRAP` ve las SOs **sin traslado asignado aún** (cualquier SCRAP del tenant puede reclamarlas) **más** las SOs cuyo traslado lo tiene como `IdScrap` o `IdScrap2`. El filtro se aplica en servidor vía `GetServiceOrdersQuery`. |
+| **Flujo de residuo (`WasteStream`)** | Selector cerrado (`<select>`) con las 15 categorías del catálogo `WasteFlowCatalog` (Domain/Constants), agrupadas en `RAP` y `Operativos`. No se permite texto libre. |
+| **Sub-flujo (`SubStream`)** | Selector dependiente del flujo seleccionado; deshabilitado hasta que se elige `WasteStream`. Al cambiar el flujo el sub-flujo se limpia. Catálogo compartido con `AgreementWizard`. |
+| **Filtro por flujo en listado** | Desplegable `WasteStream` en la barra de filtros de `ServiceOrderList.razor`. Pasa el código a `GetServiceOrdersQuery.WasteStream` para filtrar en BD. La columna muestra el nombre completo del flujo (no el código). |
 
 ### 3.2. Paso 2 — Crear Solicitud de Traslado (`WasteMoves`) → Estado **SOLICITADO**
 

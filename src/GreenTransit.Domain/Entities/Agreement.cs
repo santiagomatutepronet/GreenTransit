@@ -37,4 +37,14 @@ public class Agreement : IAuditableEntity, ITenantEntity
     public BusinessEntity? Coordinator { get; set; }
     public ICollection<AgreementDocument> AgreementDocuments { get; set; } = [];
     public ICollection<Settlement> Settlements { get; set; } = [];
+
+    public static class Statuses
+    {
+        public const string Draft     = "Draft";
+        public const string Active    = "Active";
+        public const string Expired   = "Expired";
+        public const string Cancelled = "Cancelled";
+
+        public static readonly IReadOnlyList<string> All = [Draft, Active, Expired, Cancelled];
+    }
 }

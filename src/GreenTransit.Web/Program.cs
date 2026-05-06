@@ -444,6 +444,18 @@ try
         options.AddPolicy(PolicyConstants.CanManageDeclarationDicts, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Admin)));
+
+        // ── CUOTAS DE MERCADO ─────────────────────────────────────────────────
+
+        // Ver cuotas y cumplimiento: SCRAP y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewMarketShares, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.Admin)));
+
+        // CRUD de cuotas de mercado: solo ADMIN.
+        options.AddPolicy(PolicyConstants.CanManageMarketShares, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Admin)));
     });
 
     // ClaimsTransformation: enriquece el principal con IdUser, OwnerId y Profile desde la BD

@@ -106,4 +106,12 @@ public static class PolicyConstants
 
     /// <summary>Gestión de diccionarios de declaraciones: solo ADMIN.</summary>
     public const string CanManageDeclarationDicts = "CanManageDeclarationDicts";
+
+    // ─── Cuotas de mercado ────────────────────────────────────────────────────
+
+    /// <summary>Ver cuotas de mercado y cumplimiento: SCRAP, ADMIN.</summary>
+    public const string CanViewMarketShares = "CanViewMarketShares";
+
+    /// <summary>CRUD de cuotas de mercado: solo ADMIN.</summary>
+    public const string CanManageMarketShares = "CanManageMarketShares";
 }

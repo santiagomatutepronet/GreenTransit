@@ -1,0 +1,430 @@
+@page "/agreements/{AgreementId:guid}"
+@attribute [Authorize(Policy = PolicyConstants.CanManageAgreements)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.Agreements.Commands
+@using GreenTransit.Application.Features.Agreements.Queries
+@using GreenTransit.Application.Features.Agreements.DTOs
+@using GreenTransit.Application.Features.Settlements.Queries
+@using GreenTransit.Application.Features.Settlements.DTOs
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Entities
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>Acuerdo @(_detail?.AgreementNumber)</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-warning">Acuerdo no encontrado.</div>
+}
+else
+{
+    <div class="page-header">
+        <h1 class="page-title">
+            <i class="bi bi-file-earmark-text me-2"></i>@_detail.AgreementNumber
+        </h1>
+        <span class="@StatusBadge(_detail.Status) fs-6">@_detail.Status</span>
+
+        @if (_detail.Status == Agreement.Statuses.Draft)
+        {
+            <AuthorizeView Policy="@PolicyConstants.CanManageAgreements">
+                <Authorized>
+                    <button class="btn btn-outline-primary btn-sm"
+                            @onclick='() => Nav.NavigateTo($"/agreements/{AgreementId}/edit")'>
+                        <i class="bi bi-pencil me-1"></i>Editar
+                    </button>
+                    <button class="btn btn-success btn-sm" @onclick="ActivateAsync" disabled="@_busy">
+                        <i class="bi bi-check-circle me-1"></i>Activar
+                    </button>
+                </Authorized>
+            </AuthorizeView>
+        }
+        @if (_detail.Status == Agreement.Statuses.Active)
+        {
+            <AuthorizeView Policy="@PolicyConstants.CanManageAgreements">
+                <Authorized>
+                    <button class="btn btn-outline-danger btn-sm" @onclick="() => _showCancelModal = true">
+                        <i class="bi bi-x-circle me-1"></i>Cancelar
+                    </button>
+                </Authorized>
+            </AuthorizeView>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-danger">@_errorMessage</div>
+    }
+
+    @* ── Tabs ────────────────────────────────────────────────────────────────── *@
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <button class="nav-link @(_tab == 0 ? "active" : "")" @onclick="() => _tab = 0">
+                <i class="bi bi-info-circle me-1"></i>Datos generales
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == 1 ? "active" : "")" @onclick="() => _tab = 1">
+                <i class="bi bi-paperclip me-1"></i>Documentos
+                <span class="badge bg-secondary ms-1">@_detail.Documents.Count</span>
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == 2 ? "active" : "")" @onclick="() => _tab = 2">
+                <i class="bi bi-receipt me-1"></i>Liquidaciones
+            </button>
+        </li>
+    </ul>
+
+    @* ── Tab 0: Datos generales ──────────────────────────────────────────────── *@
+    @if (_tab == 0)
+    {
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">Partes</div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">SCRAP</dt>
+                            <dd class="col-sm-7">@(_detail.ScrapName ?? "—")</dd>
+                            <dt class="col-sm-5">Entidad Pública</dt>
+                            <dd class="col-sm-7">@(_detail.PublicEntityName ?? "—")</dd>
+                            <dt class="col-sm-5">Coordinador</dt>
+                            <dd class="col-sm-7">@(_detail.CoordinatorName ?? "—")</dd>
+                            <dt class="col-sm-5">Vigencia</dt>
+                            <dd class="col-sm-7">
+                                @_detail.EffectiveFrom.ToString("dd/MM/yyyy")
+                                @if (_detail.EffectiveTo.HasValue)
+                                {
+                                    <span> → @_detail.EffectiveTo.Value.ToString("dd/MM/yyyy")</span>
+                                }
+                            </dd>
+                            <dt class="col-sm-5">Versión / Hash</dt>
+                            <dd class="col-sm-7">
+                                v@_detail.Version
+                                @if (_detail.Hash is { Length: > 8 })
+                                {
+                                    <small class="text-muted ms-1 font-monospace">@_detail.Hash[..8]…</small>
+                                }
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">Ámbito y economía</div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">Flujo</dt>
+                            <dd class="col-sm-7">@(_detail.WasteStream ?? "—")</dd>
+                            <dt class="col-sm-5">CCAA</dt>
+                            <dd class="col-sm-7">@(_detail.AutonomousCommunity ?? "—")</dd>
+                            <dt class="col-sm-5">Provincia</dt>
+                            <dd class="col-sm-7">@(_detail.ProvinceCode ?? "—")</dd>
+                            <dt class="col-sm-5">Municipio</dt>
+                            <dd class="col-sm-7">@(_detail.MunicipalityCode ?? "—")</dd>
+                            <dt class="col-sm-5">Modelo tarifa</dt>
+                            <dd class="col-sm-7">@(_detail.TariffModelType ?? "—")</dd>
+                            <dt class="col-sm-5">Moneda</dt>
+                            <dd class="col-sm-7">@(_detail.Currency ?? "EUR")</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Tab 1: Documentos ───────────────────────────────────────────────────── *@
+    @if (_tab == 1)
+    {
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Documentos adjuntos</span>
+                <button type="button" class="btn btn-outline-primary btn-sm"
+                        @onclick="() => _showAttachModal = true">
+                    <i class="bi bi-paperclip me-1"></i>Adjuntar
+                </button>
+            </div>
+            <div class="card-body p-0">
+                @if (_detail.Documents.Count == 0)
+                {
+                    <p class="text-muted p-3">No hay documentos adjuntos.</p>
+                }
+                else
+                {
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>ID Documento</th>
+                                <th>Hash</th>
+                                <th>Firmado</th>
+                                <th>Proveedor firma</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var doc in _detail.Documents)
+                            {
+                                <tr>
+                                    <td><span class="badge bg-info text-dark">@doc.DocumentType</span></td>
+                                    <td><code>@(doc.DocumentId ?? "—")</code></td>
+                                    <td>
+                                        @if (doc.DocumentHash is { Length: > 12 })
+                                        {
+                                            <small class="font-monospace text-muted">@doc.DocumentHash[..12]…</small>
+                                        }
+                                        else
+                                        {
+                                            <span>—</span>
+                                        }
+                                    </td>
+                                    <td>@(doc.SignedAt?.ToString("dd/MM/yyyy") ?? "—")</td>
+                                    <td>@(doc.SignatureProvider ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+
+        @if (_showAttachModal)
+        {
+            <div class="modal-backdrop-custom">
+                <div class="modal-dialog-custom card" style="max-width:480px">
+                    <div class="card-header d-flex justify-content-between">
+                        <span>Adjuntar documento</span>
+                        <button type="button" class="btn-close" @onclick="() => _showAttachModal = false"></button>
+                    </div>
+                    <div class="card-body row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Tipo <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="_attachDocType">
+                                <option value="">— Seleccionar —</option>
+                                @foreach (var t in DocumentTypes.All)
+                                {
+                                    <option value="@t">@t</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">ID Documento (referencia DMS)</label>
+                            <input class="form-control" @bind="_attachDocId" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Hash SHA-256</label>
+                            <input class="form-control font-monospace" @bind="_attachDocHash" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Firmado el</label>
+                            <input type="date" class="form-control" @bind="_attachSignedAt" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Proveedor firma</label>
+                            <input class="form-control" @bind="_attachSignatureProvider" />
+                        </div>
+                    </div>
+                    <div class="card-footer d-flex gap-2 justify-content-end">
+                        <button type="button" class="btn btn-ghost btn-sm"
+                                @onclick="() => _showAttachModal = false">Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm"
+                                @onclick="AttachDocumentAsync" disabled="@_busy">
+                            Adjuntar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    @* ── Tab 2: Liquidaciones ────────────────────────────────────────────────── *@
+    @if (_tab == 2)
+    {
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Liquidaciones del acuerdo</span>
+                @if (_detail.Status == Agreement.Statuses.Active)
+                {
+                    <button class="btn btn-outline-primary btn-sm"
+                            @onclick='() => Nav.NavigateTo($"/settlements/new?agreementId={AgreementId}")'>
+                        <i class="bi bi-plus-lg me-1"></i>Nueva liquidación
+                    </button>
+                }
+            </div>
+            <div class="card-body p-0">
+                @if (_settlements.Count == 0)
+                {
+                    <p class="text-muted p-3">No hay liquidaciones para este acuerdo.</p>
+                }
+                else
+                {
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Nº Liquidación</th>
+                                <th>Año/Mes</th>
+                                <th>Estado</th>
+                                <th class="cell-number">Total</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var s in _settlements)
+                            {
+                                var settlementId = s.Id;
+                                <tr>
+                                    <td>@s.SettlementNumber</td>
+                                    <td>@s.Year/@(s.Month?.ToString("00") ?? "—")</td>
+                                    <td><span class="@SettlementBadge(s.Status)">@s.Status</span></td>
+                                    <td class="cell-number">@s.TotalAmount.ToString("N2") @s.Currency</td>
+                                    <td>
+                                        <button class="btn btn-outline-secondary btn-sm btn-icon-only"
+                                                @onclick='() => Nav.NavigateTo($"/settlements/{settlementId}")'>
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+
+    @if (_showCancelModal)
+    {
+        <div class="modal-backdrop-custom">
+            <div class="modal-dialog-custom card" style="max-width:420px">
+                <div class="card-header">Cancelar acuerdo</div>
+                <div class="card-body">
+                    <label class="form-label">Motivo <span class="text-danger">*</span></label>
+                    <textarea class="form-control" rows="3" @bind="_cancelReason"
+                              placeholder="Indique el motivo de cancelación…"></textarea>
+                </div>
+                <div class="card-footer d-flex gap-2 justify-content-end">
+                    <button class="btn btn-ghost btn-sm" @onclick="() => _showCancelModal = false">Volver</button>
+                    <button class="btn btn-danger btn-sm" @onclick="CancelAsync" disabled="@_busy">
+                        Confirmar cancelación
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid AgreementId { get; set; }
+
+    private bool    _loading = true;
+    private bool    _busy    = false;
+    private string? _errorMessage;
+    private int     _tab     = 0;
+
+    private AgreementDetailDto?        _detail      = null;
+    private List<SettlementSummaryDto> _settlements = [];
+
+    // Attach modal
+    private bool      _showAttachModal       = false;
+    private string    _attachDocType         = "";
+    private string?   _attachDocId;
+    private string?   _attachDocHash;
+    private DateTime? _attachSignedAt;
+    private string?   _attachSignatureProvider;
+
+    // Cancel modal
+    private bool   _showCancelModal = false;
+    private string _cancelReason   = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _detail      = await Mediator.Send(new GetAgreementByIdQuery(AgreementId));
+            _settlements = await Mediator.Send(new GetSettlementsByAgreementQuery(AgreementId));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task ActivateAsync()
+    {
+        _busy = true;
+        _errorMessage = null;
+        try
+        {
+            await Mediator.Send(new ActivateAgreementCommand(AgreementId));
+            _detail = await Mediator.Send(new GetAgreementByIdQuery(AgreementId));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task CancelAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_cancelReason))
+        { _errorMessage = "El motivo es obligatorio."; return; }
+
+        _busy = true;
+        _errorMessage = null;
+        _showCancelModal = false;
+        try
+        {
+            await Mediator.Send(new CancelAgreementCommand(AgreementId, _cancelReason));
+            _detail = await Mediator.Send(new GetAgreementByIdQuery(AgreementId));
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task AttachDocumentAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_attachDocType))
+        { _errorMessage = "Selecciona un tipo de documento."; return; }
+
+        _busy = true;
+        _errorMessage = null;
+        try
+        {
+            await Mediator.Send(new AttachDocumentCommand(
+                AgreementId, _attachDocType, _attachDocId,
+                _attachDocHash, _attachSignedAt, _attachSignatureProvider));
+
+            _detail = await Mediator.Send(new GetAgreementByIdQuery(AgreementId));
+            _showAttachModal = false;
+            _attachDocType = "";
+            _attachDocId = _attachDocHash = _attachSignatureProvider = null;
+            _attachSignedAt = null;
+        }
+        catch (Exception ex) { _errorMessage = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string StatusBadge(string? status) => status switch
+    {
+        Agreement.Statuses.Draft     => "badge bg-secondary",
+        Agreement.Statuses.Active    => "badge bg-success",
+        Agreement.Statuses.Expired   => "badge bg-warning text-dark",
+        Agreement.Statuses.Cancelled => "badge bg-danger",
+        _                            => "badge bg-light text-dark"
+    };
+
+    private static string SettlementBadge(string? status) => status switch
+    {
+        "Pending"  => "badge bg-warning text-dark",
+        "Approved" => "badge bg-success",
+        "Rejected" => "badge bg-danger",
+        _          => "badge bg-secondary"
+    };
+}

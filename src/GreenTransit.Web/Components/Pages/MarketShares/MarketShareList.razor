@@ -1,0 +1,553 @@
+@page "/market-shares"
+@attribute [Authorize(Policy = PolicyConstants.CanViewMarketShares)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.MarketShares.Commands
+@using GreenTransit.Application.Features.MarketShares.DTOs
+@using GreenTransit.Application.Features.MarketShares.Queries
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Constants
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+
+@inject IMediator           Mediator
+@inject NavigationManager   Nav
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>Cuotas de Mercado</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-pie-chart-fill me-2"></i>Cuotas de Mercado
+    </h1>
+    <AuthorizeView Policy="@PolicyConstants.CanManageMarketShares">
+        <Authorized>
+            <button class="btn btn-primary btn-sm" @onclick="OpenCreate">
+                <i class="bi bi-plus-lg me-1"></i>Nueva cuota
+            </button>
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+@* ── Filtros ─────────────────────────────────────────────────────────────────── *@
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Categoría</label>
+        <input type="text" class="form-control" placeholder="Todas" @bind="_filterCategory" />
+    </div>
+    <div class="filter-group">
+        <label>CCAA</label>
+        <input type="text" class="form-control" placeholder="Todas" @bind="_filterCcaa" />
+    </div>
+    <div class="filter-group">
+        <label>Año</label>
+        <input type="number" class="form-control" style="width:90px"
+               @bind="_filterYear" min="2020" max="2099" />
+    </div>
+    <div class="filter-group align-self-end">
+        <button class="btn btn-secondary btn-sm" @onclick="LoadAsync">
+            <i class="bi bi-search me-1"></i>Buscar
+        </button>
+    </div>
+</div>
+
+@* ── Tabla ───────────────────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+}
+else if (_page is null || _page.Items.Count == 0)
+{
+    <div class="alert alert-info mt-3">No se encontraron cuotas de mercado con los filtros aplicados.</div>
+}
+else
+{
+    <div class="table-responsive mt-3">
+        <table class="table table-hover table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Categoría</th>
+                    <th>CCAA</th>
+                    <th>Año</th>
+                    <th class="text-end">Objetivo (kg)</th>
+                    @if (_compliance is not null)
+                    {
+                        <th class="text-end">Real (kg)</th>
+                        <th>% Cumplimiento</th>
+                    }
+                    <th>Tipo flujo</th>
+                    <AuthorizeView Policy="@PolicyConstants.CanManageMarketShares">
+                        <Authorized><th></th></Authorized>
+                    </AuthorizeView>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var ms in _page.Items)
+                {
+                    var comp = _compliance?.FirstOrDefault(c => c.MarketShareId == ms.Id);
+                    <tr>
+                        <td>@ms.Category</td>
+                        <td>@(ms.AutonomousCommunity ?? "—")</td>
+                        <td>@ms.Year</td>
+                        <td class="text-end">@ms.Weight.ToString("N0")</td>
+                        @if (_compliance is not null)
+                        {
+                            <td class="text-end">@(comp?.AchievedKg.ToString("N0") ?? "—")</td>
+                            <td>@if (comp is not null) { <ProgressBar Percent="@comp.CompliancePercent" /> }</td>
+                        }
+                        <td>@(ms.FlowType ?? "—")</td>
+                        <AuthorizeView Policy="@PolicyConstants.CanManageMarketShares">
+                            <Authorized>
+                                <td class="text-nowrap">
+                                    <button class="btn btn-outline-secondary btn-sm me-1"
+                                            @onclick="@(() => OpenEdit(ms))">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm"
+                                            @onclick="@(() => ConfirmDelete(ms))">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </Authorized>
+                        </AuthorizeView>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* Paginación *@
+    @if (_page.TotalPages > 1)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <small class="text-muted">@_page.TotalCount registros</small>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" disabled="@(!_page.HasPrevious)"
+                        @onclick="() => ChangePage(_page.PageNumber - 1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="btn btn-outline-secondary disabled">@_page.PageNumber / @_page.TotalPages</span>
+                <button class="btn btn-outline-secondary" disabled="@(!_page.HasNext)"
+                        @onclick="() => ChangePage(_page.PageNumber + 1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    }
+}
+
+@* ── Modal de alta/edición ───────────────────────────────────────────────────── *@
+@if (_showForm)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editId.HasValue ? "Editar cuota" : "Nueva cuota de mercado")</h5>
+                    <button class="btn-close" @onclick="CloseForm"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        @* SCRAP — obligatorio en alta; oculto en edición (no cambia el SCRAP de una cuota) *@
+                        @if (!_editId.HasValue)
+                        {
+                            <div class="col-12">
+                                <label class="form-label">SCRAP <span class="text-danger">*</span></label>
+                                <select class="form-select" @bind="_form.IdScrap">
+                                    <option value="">— Selecciona SCRAP —</option>
+                                    @foreach (var s in _scraps)
+                                    {
+                                        <option value="@s.Id">@s.Name@(s.NationalId is not null ? $" ({s.NationalId})" : "")</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                        @* Tipo de flujo — debe ir primero porque condiciona Categoría *@
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo flujo <span class="text-danger">*</span></label>
+                            <select class="form-select" value="@_form.FlowType"
+                                    @onchange="OnFlowTypeChanged">
+                                <option value="">— Selecciona —</option>
+                                @foreach (var ft in FlowTypes)
+                                {
+                                    <option value="@ft.Code">@ft.Label</option>
+                                }
+                            </select>
+                        </div>
+                        @* Categoría — depende del flujo seleccionado *@
+                        <div class="col-md-6">
+                            <label class="form-label">Categoría <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="_form.Category"
+                                    disabled="@(string.IsNullOrEmpty(_form.FlowType))">
+                                <option value="">— Selecciona flujo primero —</option>
+                                @foreach (var cat in CategoriesForFlow(_form.FlowType))
+                                {
+                                    <option value="@cat">@cat</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Comunidad autónoma</label>
+                            <select class="form-select" @bind="_form.AutonomousCommunity">
+                                <option value="">— Todas —</option>
+                                @foreach (var ccaa in AutonomousCommunities)
+                                {
+                                    <option value="@ccaa">@ccaa</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Periodo (trimestre)</label>
+                            <select class="form-select" value="@(_form.Period?.ToString() ?? "")"
+                                    @onchange="OnPeriodChanged">
+                                <option value="">— Anual —</option>
+                                <option value="1">T1 — Enero / Marzo</option>
+                                <option value="2">T2 — Abril / Junio</option>
+                                <option value="3">T3 — Julio / Septiembre</option>
+                                <option value="4">T4 — Octubre / Diciembre</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Año <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_form.Year"
+                                   @bind:after="RecalculateDates" min="2020" max="2099" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Objetivo (kg) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_form.Weight" min="0" step="0.01" />
+                        </div>
+                        @* Vigencia: se muestra como sólo lectura cuando hay trimestre seleccionado *@
+                        @if (_form.Period.HasValue)
+                        {
+                            <div class="col-12">
+                                <div class="alert alert-info py-2 mb-0">
+                                    <i class="bi bi-calendar-check me-1"></i>
+                                    Vigencia calculada automáticamente:
+                                    <strong>@_form.EffectiveFrom?.ToString("dd/MM/yyyy")</strong>
+                                    →
+                                    <strong>@_form.EffectiveTo?.ToString("dd/MM/yyyy")</strong>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label">Vigencia desde</label>
+                                <input type="date" class="form-control"
+                                       value="@(_form.EffectiveFrom?.ToString("yyyy-MM-dd"))"
+                                       @onchange="e => _form.EffectiveFrom = ParseDate(e.Value?.ToString())" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Vigencia hasta</label>
+                                <input type="date" class="form-control"
+                                       value="@(_form.EffectiveTo?.ToString("yyyy-MM-dd"))"
+                                       @onchange="e => _form.EffectiveTo = ParseDate(e.Value?.ToString())" />
+                            </div>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(_formError))
+                    {
+                        <div class="alert alert-danger mt-3">@_formError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary btn-sm" @onclick="CloseForm">Cancelar</button>
+                    <button class="btn btn-primary btn-sm" @onclick="SaveAsync" disabled="@_saving">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Modal confirmación borrado ──────────────────────────────────────────────── *@
+@if (_deleteTarget is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirmar eliminación</h5>
+                    <button class="btn-close" @onclick="() => _deleteTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    ¿Eliminar la cuota <strong>@_deleteTarget.Category</strong>
+                    (@_deleteTarget.Year)? Esta acción no se puede deshacer.
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary btn-sm" @onclick="() => _deleteTarget = null">Cancelar</button>
+                    <button class="btn btn-danger btn-sm" @onclick="DeleteAsync">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ── Estado de la página ───────────────────────────────────────────────────
+    private GreenTransit.Application.Common.Models.PaginatedResult<MarketShareDto>? _page;
+    private IReadOnlyList<MarketShareComplianceDto>? _compliance;
+    private IReadOnlyList<EntitySelectorDto> _scraps = [];
+    private bool   _loading   = true;
+    private string? _filterCategory;
+    private string? _filterCcaa;
+    private int?    _filterYear = DateTime.Now.Year;
+    private int     _currentPage = 1;
+
+    // ── Formulario modal ─────────────────────────────────────────────────────
+    private bool   _showForm  = false;
+    private bool   _saving    = false;
+    private string? _formError;
+    private Guid?   _editId;
+    private Guid?   _editScrapId;
+    private FormModel _form = new();
+
+    // ── Borrado ──────────────────────────────────────────────────────────────
+    private MarketShareDto? _deleteTarget;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery([EntityRoles.SCRAP]));
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _page    = null;
+
+        var year = _filterYear;
+
+        var query = new GetMarketSharesQuery(
+            Category:            _filterCategory,
+            AutonomousCommunity: _filterCcaa,
+            Year:                year,
+            PageNumber:          _currentPage);
+
+        _page = await Mediator.Send(query);
+
+        // Cargar cumplimiento para el año filtrado
+        if (year.HasValue)
+            _compliance = await Mediator.Send(new GetMarketShareComplianceQuery(year.Value));
+        else
+            _compliance = null;
+
+        _loading = false;
+    }
+
+    private async Task ChangePage(int page)
+    {
+        _currentPage = page;
+        await LoadAsync();
+    }
+
+    // ── CRUD helpers ─────────────────────────────────────────────────────────
+
+    private void OpenCreate()
+    {
+        _editId      = null;
+        _editScrapId = null;
+        _form        = new FormModel { Year = DateTime.Now.Year };
+        _formError   = null;
+        _showForm    = true;
+    }
+
+    private void OpenEdit(MarketShareDto ms)
+    {
+        _editId      = ms.Id;
+        _editScrapId = ms.IdScrap;
+        _form = new FormModel
+        {
+            IdScrap             = ms.IdScrap,
+            Category            = ms.Category,
+            AutonomousCommunity = ms.AutonomousCommunity,
+            Year                = ms.Year,
+            Weight              = ms.Weight,
+            Period              = ms.Period,
+            FlowType            = ms.FlowType,
+            EffectiveFrom       = ms.EffectiveFrom,
+            EffectiveTo         = ms.EffectiveTo
+        };
+        _formError = null;
+        _showForm  = true;
+    }
+
+    private void CloseForm()
+    {
+        _showForm = false;
+        _formError = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving    = true;
+        _formError = null;
+        try
+        {
+            if (_editId.HasValue)
+            {
+                await Mediator.Send(new UpdateMarketShareCommand(
+                    _editId.Value,
+                    _form.Category!,
+                    _form.AutonomousCommunity,
+                    _form.Year,
+                    _form.Weight,
+                    _form.Period,
+                    _form.EffectiveFrom,
+                    _form.EffectiveTo,
+                    _form.FlowType));
+            }
+            else
+            {
+                await Mediator.Send(new CreateMarketShareCommand(
+                    _form.IdScrap ?? Guid.Empty,
+                    _form.Category!,
+                    _form.AutonomousCommunity,
+                    _form.Year,
+                    _form.Weight,
+                    _form.Period,
+                    _form.EffectiveFrom,
+                    _form.EffectiveTo,
+                    _form.FlowType));
+            }
+            _showForm = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ConfirmDelete(MarketShareDto ms) => _deleteTarget = ms;
+
+    private async Task DeleteAsync()
+    {
+        if (_deleteTarget is null) return;
+        try
+        {
+            await Mediator.Send(new DeleteMarketShareCommand(_deleteTarget.Id));
+            _deleteTarget = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _formError = ex.Message;
+        }
+    }
+
+    private static DateOnly? ParseDate(string? value)
+        => DateOnly.TryParse(value, out var d) ? d : null;
+
+    private void OnFlowTypeChanged(ChangeEventArgs e)
+    {
+        _form.FlowType = e.Value?.ToString();
+        // Limpiar categoría si ya no pertenece al nuevo flujo
+        if (!CategoriesForFlow(_form.FlowType).Contains(_form.Category ?? string.Empty))
+            _form.Category = null;
+    }
+
+    private void OnPeriodChanged(ChangeEventArgs e)
+    {
+        _form.Period = int.TryParse(e.Value?.ToString(), out var p) ? p : null;
+        RecalculateDates();
+    }
+
+    /// <summary>Autocompleta EffectiveFrom/EffectiveTo con el primer y último día del trimestre.</summary>
+    private void RecalculateDates()
+    {
+        if (!_form.Period.HasValue || _form.Year < 2000)
+        {
+            // Si se borra el trimestre, limpiar fechas calculadas
+            if (!_form.Period.HasValue)
+            {
+                _form.EffectiveFrom = null;
+                _form.EffectiveTo   = null;
+            }
+            return;
+        }
+
+        var (firstMonth, lastMonth) = _form.Period.Value switch
+        {
+            1 => (1, 3),
+            2 => (4, 6),
+            3 => (7, 9),
+            4 => (10, 12),
+            _ => (1, 12)
+        };
+
+        _form.EffectiveFrom = new DateOnly(_form.Year, firstMonth, 1);
+        _form.EffectiveTo   = new DateOnly(_form.Year, lastMonth,
+            DateTime.DaysInMonth(_form.Year, lastMonth));
+    }
+
+    // ── Catálogos estáticos ──────────────────────────────────────────────────
+
+    private static readonly (string Code, string Label)[] FlowTypes =
+    [
+        ("RAEE", "RAEE - Aparatos eléctricos y electrónicos"),
+        ("ENV",  "ENV - Envases"),
+        ("BAT",  "BAT - Pilas y acumuladores"),
+        ("NFU",  "NFU - Neumáticos fuera de uso"),
+        ("OIL",  "OIL - Aceites industriales"),
+        ("VFU",  "VFU - Vehículos fuera de uso")
+    ];
+
+    private static readonly Dictionary<string, string[]> CategoriesByFlow = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ENV"] =
+        [
+            "Doméstico - Ligero", "Doméstico - Vidrio", "Doméstico - Cartón",
+            "Comercial - Ligero", "Comercial - Cartón", "Comercial - Vidrio",
+            "Industrial - Ligero", "Industrial - Cartón", "Industrial - Vidrio",
+            "Agrario", "Fitosanitarios", "Medicamentos"
+        ],
+        ["RAEE"] =
+        [
+            "Grandes aparatos", "Pequeños aparatos",
+            "Informática y telecomunicaciones", "Electrónica de consumo",
+            "Alumbrado", "Herramientas", "Equipos profesionales", "Paneles fotovoltaicos"
+        ],
+        ["BAT"] = ["Portátiles", "Industriales", "Automoción"],
+        ["NFU"] = ["Turismo", "Camión / Industrial", "Agrícola", "OTR", "Bicicleta"],
+        ["OIL"] = ["Automoción", "Industrial", "Mezcla / contaminados"],
+        ["VFU"] = ["Vehículo completo", "Componentes"]
+    };
+
+    private static string[] CategoriesForFlow(string? flowType)
+        => !string.IsNullOrEmpty(flowType) && CategoriesByFlow.TryGetValue(flowType, out var cats)
+            ? cats
+            : [];
+
+    private static readonly string[] AutonomousCommunities =
+    [
+        "Andalucía", "Aragón", "Asturias", "Illes Balears", "Canarias",
+        "Cantabria", "Castilla-La Mancha", "Castilla y León", "Cataluña",
+        "Comunitat Valenciana", "Extremadura", "Galicia", "La Rioja",
+        "Comunidad de Madrid", "Región de Murcia", "Comunidad Foral de Navarra",
+        "País Vasco", "Ceuta", "Melilla"
+    ];
+
+    // ── Modelo de formulario ─────────────────────────────────────────────────
+    private sealed class FormModel
+    {
+        public Guid?     IdScrap             { get; set; }
+        public string?   Category            { get; set; }
+        public string?   AutonomousCommunity { get; set; }
+        public int       Year                { get; set; } = DateTime.Now.Year;
+        public decimal   Weight              { get; set; }
+        public int?      Period              { get; set; }
+        public string?   FlowType            { get; set; }
+        public DateOnly? EffectiveFrom       { get; set; }
+        public DateOnly? EffectiveTo         { get; set; }
+    }
+}

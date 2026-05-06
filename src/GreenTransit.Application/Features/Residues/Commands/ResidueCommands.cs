@@ -15,6 +15,7 @@ public sealed record CreateResidueCommand(
     bool     IsDangerous,
     bool     IsRAEE,
     string?  DangerousCode,
+    string?  FlowType,
     string?  ProductUse,
     string?  ProductCategory,
     decimal? WeightPerUnitKg,
@@ -62,6 +63,7 @@ public sealed class CreateResidueCommandHandler
             IsDangerous           = request.IsDangerous,
             IsRAEE                = request.IsRAEE,
             DangerousCode         = request.DangerousCode?.Trim(),
+            FlowType              = request.FlowType?.Trim(),
             ProductUse            = request.ProductUse?.Trim(),
             ProductCategory       = request.ProductCategory?.Trim(),
             WeightPerUnitKg       = request.WeightPerUnitKg,
@@ -102,6 +104,7 @@ public sealed record UpdateResidueCommand(
     bool     IsDangerous,
     bool     IsRAEE,
     string?  DangerousCode,
+    string?  FlowType,
     string?  ProductUse,
     string?  ProductCategory,
     decimal? WeightPerUnitKg,
@@ -142,6 +145,7 @@ public sealed class UpdateResidueCommandHandler
         entity.IsDangerous           = request.IsDangerous;
         entity.IsRAEE                = request.IsRAEE;
         entity.DangerousCode         = request.DangerousCode?.Trim();
+        entity.FlowType              = request.FlowType?.Trim();
         entity.ProductUse            = request.ProductUse?.Trim();
         entity.ProductCategory       = request.ProductCategory?.Trim();
         entity.WeightPerUnitKg       = request.WeightPerUnitKg;

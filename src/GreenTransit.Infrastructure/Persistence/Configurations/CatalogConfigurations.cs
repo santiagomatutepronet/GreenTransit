@@ -79,6 +79,7 @@ public class ResidueConfiguration : IEntityTypeConfiguration<Residue>
         builder.Property(e => e.Description).HasMaxLength(512);
         builder.Property(e => e.Reference).HasMaxLength(128);
         builder.Property(e => e.DangerousCode).HasMaxLength(256);
+        builder.Property(e => e.FlowType).HasMaxLength(32);
         builder.Property(e => e.ProductUse).HasMaxLength(64);
         builder.Property(e => e.ProductCategory).HasMaxLength(256);
         builder.Property(e => e.WeightPerUnitKg).HasColumnType("decimal(18,3)");
