@@ -1,4 +1,5 @@
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.PlantEnergies.DTOs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -22,11 +23,13 @@ public sealed class PlantEnergyOptions
 public sealed record GetPlantEnergiesQuery(
     string? PlantCenterCode = null,
     int?    Year            = null,
-    int?    Month           = null
-) : IRequest<IReadOnlyList<PlantEnergyDto>>;
+    int?    Month           = null,
+    int     PageNumber      = 1,
+    int     PageSize        = 15
+) : IRequest<PaginatedResult<PlantEnergyDto>>;
 
 public sealed class GetPlantEnergiesQueryHandler
-    : IRequestHandler<GetPlantEnergiesQuery, IReadOnlyList<PlantEnergyDto>>
+    : IRequestHandler<GetPlantEnergiesQuery, PaginatedResult<PlantEnergyDto>>
 {
     private readonly IApplicationDbContext   _context;
     private readonly ICurrentUserService     _currentUser;
@@ -39,7 +42,7 @@ public sealed class GetPlantEnergiesQueryHandler
         _currentUser = currentUser;
     }
 
-    public async Task<IReadOnlyList<PlantEnergyDto>> Handle(
+    public async Task<PaginatedResult<PlantEnergyDto>> Handle(
         GetPlantEnergiesQuery request, CancellationToken ct)
     {
         var ownerId = _currentUser.OwnerId;
@@ -57,9 +60,15 @@ public sealed class GetPlantEnergiesQueryHandler
         if (request.Month.HasValue)
             query = query.Where(e => e.Month == request.Month.Value);
 
-        return await query
-            .OrderBy(e => e.Year)
-            .ThenBy(e => e.Month)
+        var total = await query.CountAsync(ct);
+
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var items = await query
+            .OrderByDescending(e => e.Year)
+            .ThenByDescending(e => e.Month)
+            .ThenBy(e => e.PlantCenterCode)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(e => new PlantEnergyDto(
                 e.Id,
                 e.PlantName,
@@ -74,6 +83,8 @@ public sealed class GetPlantEnergiesQueryHandler
                 e.CreatedAt,
                 e.UpdatedAt))
             .ToListAsync(ct);
+
+        return PaginatedResult<PlantEnergyDto>.Create(items, total, request.PageNumber, pageSize);
     }
 }
 

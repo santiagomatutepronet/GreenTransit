@@ -18,7 +18,7 @@ public sealed record GetWasteMovesQuery(
     DateTime? DateTo             = null,
     string?   SearchTerm         = null,
     int       PageNumber         = 1,
-    int       PageSize           = 20
+    int       PageSize           = 15
 ) : IRequest<PaginatedResult<WasteMoveDto>>;
 
 public sealed class GetWasteMovesQueryHandler
@@ -84,11 +84,12 @@ public sealed class GetWasteMovesQueryHandler
 
         var total = await q.CountAsync(ct);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await q
             .OrderByDescending(w => w.RequestDate)
             .ThenByDescending(w => w.DateCreateSys)
-            .Skip((request.PageNumber - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(w => new WasteMoveDto(
                 w.Id,
                 w.WasteMoveReference,
@@ -104,6 +105,6 @@ public sealed class GetWasteMovesQueryHandler
             .ToListAsync(ct);
 
         return PaginatedResult<WasteMoveDto>.Create(
-            items, total, request.PageNumber, request.PageSize);
+            items, total, request.PageNumber, pageSize);
     }
 }

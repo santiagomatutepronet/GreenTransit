@@ -183,21 +183,22 @@ else
     </div>
 
     @* ── Paginación ──────────────────────────────────────────────────────── *@
-    @if (_result.TotalCount > _pageSize)
+    @if (_result.TotalPages > 1)
     {
         <div class="d-flex justify-content-between align-items-center mt-2">
             <small class="text-muted">
-                @((_page - 1) * _pageSize + 1)–@(Math.Min(_page * _pageSize, _result.TotalCount))
+                @((_page - 1) * PageSize + 1)–@(Math.Min(_page * PageSize, _result.TotalCount))
                 de @_result.TotalCount registros
             </small>
             <div class="btn-group btn-group-sm">
                 <button class="btn btn-outline-secondary"
-                        disabled="@(_page == 1)"
+                        disabled="@(!_result.HasPrevious)"
                         @onclick="PrevPage">
                     <i class="bi bi-chevron-left"></i>
                 </button>
+                <span class="btn btn-outline-secondary disabled">@_page / @_result.TotalPages</span>
                 <button class="btn btn-outline-secondary"
-                        disabled="@(_page * _pageSize >= _result.TotalCount)"
+                        disabled="@(!_result.HasNext)"
                         @onclick="NextPage">
                     <i class="bi bi-chevron-right"></i>
                 </button>
@@ -207,15 +208,16 @@ else
 }
 
 @code {
-    private GetTreatmentPlantsResult? _result;
+    private const int PageSize = 15;
+
+    private GreenTransit.Application.Common.Models.PaginatedResult<TreatmentPlantDto>? _result;
     private bool _loading             = true;
     private bool _loadingDisponibles  = true;
 
     private string?   _filterRef;
     private DateTime? _filterFrom;
     private DateTime? _filterTo;
-    private int       _page     = 1;
-    private const int _pageSize = 20;
+    private int       _page = 1;
 
     private List<WasteMoveDto> _disponibles         = [];
     private Guid               _selectedWasteMoveId = Guid.Empty;
@@ -233,8 +235,8 @@ else
             WasteMoveReference:     _filterRef,
             PlantTreatmentDateFrom: _filterFrom,
             PlantTreatmentDateTo:   _filterTo,
-            Page:                   _page,
-            PageSize:               _pageSize));
+            PageNumber:             _page,
+            PageSize:               PageSize));
         _loading = false;
     }
 

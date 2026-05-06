@@ -1,4 +1,5 @@
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.Incidents.DTOs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -16,21 +17,14 @@ public sealed record GetIncidentsQuery(
     string?   WasteMoveReference = null,
     DateTime? DateFrom           = null,
     DateTime? DateTo             = null,
-    int       Page               = 1,
-    int       PageSize           = 20
-) : IRequest<GetIncidentsResult>;
-
-public sealed record GetIncidentsResult(
-    IReadOnlyList<IncidentDto> Items,
-    int                        TotalCount,
-    int                        Page,
-    int                        PageSize
-);
+    int       PageNumber         = 1,
+    int       PageSize           = 15
+) : IRequest<PaginatedResult<IncidentDto>>;
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 public sealed class GetIncidentsQueryHandler
-    : IRequestHandler<GetIncidentsQuery, GetIncidentsResult>
+    : IRequestHandler<GetIncidentsQuery, PaginatedResult<IncidentDto>>
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService   _currentUser;
@@ -43,7 +37,7 @@ public sealed class GetIncidentsQueryHandler
         _currentUser = currentUser;
     }
 
-    public async Task<GetIncidentsResult> Handle(
+    public async Task<PaginatedResult<IncidentDto>> Handle(
         GetIncidentsQuery request, CancellationToken ct)
     {
         var ownerId        = _currentUser.OwnerId;
@@ -100,10 +94,11 @@ public sealed class GetIncidentsQueryHandler
 
         var total = await query.CountAsync(ct);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await query
             .OrderByDescending(i => i.OpenedAt)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(i => new IncidentDto(
                 i.Id,
                 i.Type,
@@ -118,6 +113,6 @@ public sealed class GetIncidentsQueryHandler
                 i.Description))
             .ToListAsync(ct);
 
-        return new GetIncidentsResult(items, total, request.Page, request.PageSize);
+        return PaginatedResult<IncidentDto>.Create(items, total, request.PageNumber, pageSize);
     }
 }

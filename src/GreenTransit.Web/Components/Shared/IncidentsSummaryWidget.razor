@@ -70,7 +70,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        var tasks = new Task<GetIncidentsResult>[]
+        var tasks = new Task<GreenTransit.Application.Common.Models.PaginatedResult<GreenTransit.Application.Features.Incidents.DTOs.IncidentDto>>[]
         {
             Mediator.Send(new GetIncidentsQuery(Severity: "Critical", IsOpen: true, PageSize: 1)),
             Mediator.Send(new GetIncidentsQuery(Severity: "High",     IsOpen: true, PageSize: 1)),

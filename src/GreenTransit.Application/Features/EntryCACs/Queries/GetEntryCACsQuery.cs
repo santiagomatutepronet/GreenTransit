@@ -1,4 +1,5 @@
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.EntryCACs.DTOs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -11,24 +12,17 @@ namespace GreenTransit.Application.Features.EntryCACs.Queries;
 /// Devuelve una página de Entradas en CAC filtradas por el OwnerId del usuario activo.
 /// </summary>
 public sealed record GetEntryCACsQuery(
-    string?   WasteMoveReference,
-    DateTime? CACEntryDateFrom,
-    DateTime? CACEntryDateTo,
-    int       Page     = 1,
-    int       PageSize = 20
-) : IRequest<GetEntryCACsResult>;
-
-public sealed record GetEntryCACsResult(
-    IReadOnlyList<EntryCACDto> Items,
-    int                        TotalCount,
-    int                        Page,
-    int                        PageSize
-);
+    string?   WasteMoveReference = null,
+    DateTime? CACEntryDateFrom   = null,
+    DateTime? CACEntryDateTo     = null,
+    int       PageNumber         = 1,
+    int       PageSize           = 15
+) : IRequest<PaginatedResult<EntryCACDto>>;
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 public sealed class GetEntryCACsQueryHandler
-    : IRequestHandler<GetEntryCACsQuery, GetEntryCACsResult>
+    : IRequestHandler<GetEntryCACsQuery, PaginatedResult<EntryCACDto>>
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService   _currentUser;
@@ -41,7 +35,7 @@ public sealed class GetEntryCACsQueryHandler
         _currentUser = currentUser;
     }
 
-    public async Task<GetEntryCACsResult> Handle(
+    public async Task<PaginatedResult<EntryCACDto>> Handle(
         GetEntryCACsQuery request, CancellationToken ct)
     {
         var ownerId        = _currentUser.OwnerId;
@@ -71,10 +65,11 @@ public sealed class GetEntryCACsQueryHandler
 
         var total = await query.CountAsync(ct);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await query
             .OrderByDescending(e => e.CACEntryDate)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(e => new EntryCACDto(
                 e.Id,
                 e.IdWasteMove,
@@ -86,6 +81,6 @@ public sealed class GetEntryCACsQueryHandler
                 e.EntryCACResidues.Count))
             .ToListAsync(ct);
 
-        return new GetEntryCACsResult(items, total, request.Page, request.PageSize);
+        return PaginatedResult<EntryCACDto>.Create(items, total, request.PageNumber, pageSize);
     }
 }

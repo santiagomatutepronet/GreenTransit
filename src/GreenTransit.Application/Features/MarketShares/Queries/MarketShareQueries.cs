@@ -16,7 +16,7 @@ public sealed record GetMarketSharesQuery(
     string? AutonomousCommunity = null,
     int?    Year               = null,
     int     PageNumber         = 1,
-    int     PageSize           = 20
+    int     PageSize           = 15
 ) : IRequest<PaginatedResult<MarketShareDto>>;
 
 public sealed class GetMarketSharesQueryHandler
@@ -56,11 +56,12 @@ public sealed class GetMarketSharesQueryHandler
 
         var total = await q.CountAsync(ct);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await q
             .OrderByDescending(ms => ms.Year)
             .ThenBy(ms => ms.Category)
-            .Skip((request.PageNumber - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(ms => new MarketShareDto(
                 ms.Id,
                 ms.IdScrap,
@@ -75,14 +76,18 @@ public sealed class GetMarketSharesQueryHandler
                 ms.EffectiveTo))
             .ToListAsync(ct);
 
-        return PaginatedResult<MarketShareDto>.Create(items, total, request.PageNumber, request.PageSize);
+        return PaginatedResult<MarketShareDto>.Create(items, total, request.PageNumber, pageSize);
     }
 }
 
 // ── Cumplimiento ──────────────────────────────────────────────────────────────
 
-/// <summary>Calcula el cumplimiento de cuotas de mercado para el año indicado.</summary>
-public sealed record GetMarketShareComplianceQuery(int Year) : IRequest<IReadOnlyList<MarketShareComplianceDto>>;
+/// <summary>Calcula el cumplimiento de cuotas de mercado para el año indicado.
+/// <paramref name="MarketShareIds"/> permite limitar el cálculo a un subconjunto de IDs (p.ej. la página actual).</summary>
+public sealed record GetMarketShareComplianceQuery(
+    int Year,
+    IReadOnlyList<Guid>? MarketShareIds = null
+) : IRequest<IReadOnlyList<MarketShareComplianceDto>>;
 
 public sealed class GetMarketShareComplianceQueryHandler
     : IRequestHandler<GetMarketShareComplianceQuery, IReadOnlyList<MarketShareComplianceDto>>
@@ -107,6 +112,9 @@ public sealed class GetMarketShareComplianceQueryHandler
         // SCRAP: solo las suyas
         if (_currentUser.IsInProfile(ProfileConstants.Scrap) && _currentUser.LinkedEntityId.HasValue)
             sharesQuery = sharesQuery.Where(ms => ms.IdScrap == _currentUser.LinkedEntityId.Value);
+
+        if (request.MarketShareIds is { Count: > 0 })
+            sharesQuery = sharesQuery.Where(ms => request.MarketShareIds.Contains(ms.Id));
 
         var shares = await sharesQuery.ToListAsync(ct);
 

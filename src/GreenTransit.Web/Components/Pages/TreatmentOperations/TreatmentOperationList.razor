@@ -38,6 +38,9 @@
         </select>
     </div>
     <div class="filter-actions">
+        <button class="btn btn-primary btn-sm" @onclick="FilterAsync">
+            <i class="bi bi-search me-1"></i>Buscar
+        </button>
         <button class="btn btn-ghost btn-sm" @onclick="ResetFilters">Limpiar</button>
     </div>
 </div>
@@ -145,40 +148,68 @@ else
         </div>
     }
 
-    @if (!Groups.Any())
+    @if (!_result?.Items.Any() ?? true)
     {
         <div class="alert alert-info">No se encontraron operaciones con los filtros aplicados.</div>
+    }
+    @if (_result is not null && _result.TotalPages > 1)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <small class="text-muted">@_result.TotalCount operaciones</small>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" disabled="@(!_result.HasPrevious)"
+                        @onclick="() => GoPageAsync(_page - 1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="btn btn-outline-secondary disabled">@_page / @_result.TotalPages</span>
+                <button class="btn btn-outline-secondary" disabled="@(!_result.HasNext)"
+                        @onclick="() => GoPageAsync(_page + 1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
     }
 }
 
 @code {
+    private const int PageSize = 15;
+
     private bool   _loading    = true;
+    private int    _page       = 1;
     private string _searchTerm = "";
     private string _filterType = "";
 
-    private List<TreatmentOperationDto> _all = [];
+    private GreenTransit.Application.Common.Models.PaginatedResult<TreatmentOperationDto>? _result;
 
     private IEnumerable<IGrouping<string, TreatmentOperationDto>> Groups =>
-        _all
-            .Where(o => string.IsNullOrWhiteSpace(_filterType) || o.OperationType == _filterType)
-            .Where(o => string.IsNullOrWhiteSpace(_searchTerm)
-                        || o.Code.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)
-                        || o.Description.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)
-                        || (o.ShortDescription != null && o.ShortDescription.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)))
+        (_result?.Items ?? [])
             .OrderBy(o => o.OperationType == "Recovery" ? 0 : 1)
             .ThenBy(o => o.SortOrder)
             .ThenBy(o => o.Code)
             .GroupBy(o => o.OperationType);
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
     {
-        _all     = await Mediator.Send(new GetTreatmentOperationsQuery());
+        _loading = true;
+        _result  = await Mediator.Send(new GetTreatmentOperationsPagedQuery(
+            OperationType: string.IsNullOrWhiteSpace(_filterType) ? null : _filterType,
+            SearchTerm:    string.IsNullOrWhiteSpace(_searchTerm) ? null : _searchTerm,
+            PageNumber:    _page,
+            PageSize:      PageSize));
         _loading = false;
     }
+
+    private async Task FilterAsync() { _page = 1; await LoadAsync(); }
+
+    private async Task GoPageAsync(int page) { _page = page; await LoadAsync(); }
 
     private void ResetFilters()
     {
         _searchTerm = "";
         _filterType = "";
+        _page       = 1;
+        _ = LoadAsync();
     }
 }

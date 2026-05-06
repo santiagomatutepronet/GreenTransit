@@ -18,7 +18,7 @@ public sealed record GetAgreementsQuery(
     int?    Year            = null,
     string? SearchTerm      = null,
     int     PageNumber      = 1,
-    int     PageSize        = 20
+    int     PageSize        = 15
 ) : IRequest<PaginatedResult<AgreementDto>>;
 
 public sealed class GetAgreementsQueryHandler
@@ -81,10 +81,11 @@ public sealed class GetAgreementsQueryHandler
 
         var totalCount = await q.CountAsync(ct);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await q
             .OrderByDescending(a => a.CreatedAt)
-            .Skip((request.PageNumber - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(a => new AgreementDto(
                 a.Id,
                 a.OwnerId,
@@ -108,7 +109,7 @@ public sealed class GetAgreementsQueryHandler
                 a.UpdatedAt))
             .ToListAsync(ct);
 
-        return PaginatedResult<AgreementDto>.Create(items, totalCount, request.PageNumber, request.PageSize);
+        return PaginatedResult<AgreementDto>.Create(items, totalCount, request.PageNumber, pageSize);
     }
 }
 

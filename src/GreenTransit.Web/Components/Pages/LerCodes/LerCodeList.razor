@@ -1,4 +1,4 @@
-@page "/ler-codes"
+﻿@page "/ler-codes"
 @attribute [Authorize]
 @rendermode InteractiveServer
 
@@ -67,272 +67,134 @@
 {
     <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
 }
-else if (_chapters.Count == 0)
+else if (_pagedResult is null || _pagedResult.Items.Count == 0)
 {
-    <div class="alert alert-info">No se encontraron códigos LER con los filtros aplicados.</div>
+    <div class="alert alert-info">No se encontraron codigos LER con los filtros aplicados.</div>
 }
 else
 {
-    @foreach (var chapter in _chapters)
-    {
-        var chapterKey = chapter.Chapter ?? "—";
-        var chapterOpen = !_collapsedChapters.Contains(chapterKey);
-
-        <div class="card mb-2">
-            <div class="card-header d-flex align-items-center gap-2 py-2"
-                 style="cursor:pointer" @onclick="() => ToggleChapter(chapterKey)">
-                <i class="bi @(chapterOpen ? "bi-chevron-down" : "bi-chevron-right") text-muted"></i>
-                <span class="fw-bold me-2">Capítulo @chapter.Chapter</span>
-                <span class="text-muted">@chapter.ChapterDescription</span>
-            </div>
-
-            @if (chapterOpen)
-            {
-                <div class="card-body p-0">
-                    @foreach (var sub in chapter.SubChapters)
+    <div class="table-responsive mt-3">
+        <table class="table table-hover table-sm align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:100px">Codigo</th>
+                    <th style="width:100px">Capitulo</th>
+                    <th style="width:120px">Subcapitulo</th>
+                    <th>Descripcion</th>
+                    <th style="width:80px" class="text-center">Peligroso</th>
+                    <th style="width:60px" class="text-center">RAEE</th>
+                    <th style="width:80px" class="text-center">Estado</th>
+                    @if (_isAdmin)
                     {
-                        var subKey = $"{chapterKey}|{sub.SubChapter}";
-                        var subOpen = !_collapsedSubs.Contains(subKey);
-
-                        <div class="border-bottom">
-                            <div class="d-flex align-items-center gap-2 px-3 py-2 bg-light"
-                                 style="cursor:pointer" @onclick="() => ToggleSub(subKey)">
-                                <i class="bi @(subOpen ? "bi-chevron-down" : "bi-chevron-right") text-muted small"></i>
-                                <span class="fw-semibold small me-2">@sub.SubChapter</span>
-                                <span class="text-muted small">@sub.SubChapterDescription</span>
-                            </div>
-
-                            @if (subOpen)
-                            {
-                                <div class="table-responsive">
-                                    <table class="table table-sm table-hover align-middle mb-0">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th style="width:100px">Código</th>
-                                                <th>Descripción</th>
-                                                <th style="width:80px" class="text-center">Peligroso</th>
-                                                <th style="width:60px" class="text-center">RAEE</th>
-                                                <th style="width:80px" class="text-center">Estado</th>
-                                                @if (_isAdmin)
-                                                {
-                                                    <th style="width:100px" class="text-end">Acciones</th>
-                                                }
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var lerCode in sub.Codes)
-                                            {
-                                                <tr>
-                                                    <td><code class="fw-semibold">@lerCode.Code</code></td>
-                                                    <td>@lerCode.Description</td>
-                                                    <td class="text-center">
-                                                        @if (lerCode.IsDangerous)
-                                                        {
-                                                            <span class="badge bg-danger">Sí</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="text-muted">—</span>
-                                                        }
-                                                    </td>
-                                                    <td class="text-center">
-                                                        @if (lerCode.IsRAEE)
-                                                        {
-                                                            <span class="badge bg-warning text-dark">Sí</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="text-muted">—</span>
-                                                        }
-                                                    </td>
-                                                    <td class="text-center">
-                                                        @if (lerCode.IsActive)
-                                                        {
-                                                            <span class="badge bg-success">Activo</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="badge bg-secondary">Inactivo</span>
-                                                        }
-                                                    </td>
-                                                    @if (_isAdmin)
-                                                            {
-                                                                <td class="text-end">
-                                                                    <button class="btn btn-outline-primary btn-sm py-0 px-1 me-1"
-                                                                            title="Editar"
-                                                                            @onclick="() => EditCode(lerCode.Id)">
-                                                                        <i class="bi bi-pencil"></i>
-                                                                    </button>
-                                                                    <button class="btn btn-outline-secondary btn-sm py-0 px-1"
-                                                                            title="@(lerCode.IsActive ? "Desactivar" : "Activar")"
-                                                                            @onclick="() => ToggleActiveAsync(lerCode.Id)">
-                                                                        <i class="bi @(lerCode.IsActive ? "bi-toggle-on" : "bi-toggle-off")"></i>
-                                                                                </button>
-                                                                            </td>
-                                                                        }
-                                                                    </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-                            }
-                        </div>
+                        <th style="width:100px" class="text-end">Acciones</th>
                     }
-                </div>
-            }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var lerCode in _pagedResult.Items)
+                {
+                    <tr>
+                        <td><code class="fw-semibold">@lerCode.Code</code></td>
+                        <td class="text-muted small">@(lerCode.Chapter ?? "---")</td>
+                        <td class="text-muted small">@(lerCode.SubChapter ?? "---")</td>
+                        <td>@lerCode.Description</td>
+                        <td class="text-center">
+                            @if (lerCode.IsDangerous) { <span class="badge bg-danger">Si</span> }
+                            else { <span class="text-muted">---</span> }
+                        </td>
+                        <td class="text-center">
+                            @if (lerCode.IsRAEE) { <span class="badge bg-warning text-dark">Si</span> }
+                            else { <span class="text-muted">---</span> }
+                        </td>
+                        <td class="text-center">
+                            @if (lerCode.IsActive) { <span class="badge bg-success">Activo</span> }
+                            else { <span class="badge bg-secondary">Inactivo</span> }
+                        </td>
+                        @if (_isAdmin)
+                        {
+                            <td class="text-end">
+                                <button class="btn btn-outline-primary btn-sm py-0 px-1 me-1"
+                                        title="Editar" @onclick="() => EditCode(lerCode.Id)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                                        @onclick="() => ToggleActiveAsync(lerCode.Id)">
+                                    <i class="bi @(lerCode.IsActive ? "bi-toggle-on" : "bi-toggle-off")"></i>
+                                </button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (_pagedResult.TotalPages > 1)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <small class="text-muted">@_pagedResult.TotalCount codigos LER</small>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" disabled="@(!_pagedResult.HasPrevious)"
+                        @onclick="() => GoPageAsync(_currentPage - 1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="btn btn-outline-secondary disabled">@_currentPage / @_pagedResult.TotalPages</span>
+                <button class="btn btn-outline-secondary" disabled="@(!_pagedResult.HasNext)"
+                        @onclick="() => GoPageAsync(_currentPage + 1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
         </div>
     }
 }
-
-@* ── Modal Crear/Editar (solo ADMIN) ──────────────────────────────────────── *@
-@if (_showForm)
-{
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi bi-list-ol me-2"></i>
-                        @(_editId.HasValue ? "Editar código LER" : "Nuevo código LER")
-                    </h5>
-                    <button type="button" class="btn-close" @onclick="CloseForm"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label">Código LER <span class="text-danger">*</span></label>
-                            <input class="form-control" maxlength="6" @bind="_form.Code" placeholder="000000" />
-                            <FieldMessage Field="Code" Errors="_formErrors" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Código extendido</label>
-                            <input class="form-control" @bind="_form.CodeExtended" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Descripción <span class="text-danger">*</span></label>
-                            <input class="form-control" @bind="_form.Description" />
-                            <FieldMessage Field="Description" Errors="_formErrors" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Capítulo</label>
-                            <input class="form-control" maxlength="2" @bind="_form.Chapter" />
-                            <FieldMessage Field="Chapter" Errors="_formErrors" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Desc. Capítulo</label>
-                            <input class="form-control" @bind="_form.ChapterDescription" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Subcapítulo</label>
-                            <input class="form-control" maxlength="4" @bind="_form.SubChapter" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Desc. Subcapítulo</label>
-                            <input class="form-control" @bind="_form.SubChapterDescription" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Categoría producto defecto</label>
-                            <input class="form-control" @bind="_form.DefaultProductCategory" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Notas</label>
-                            <textarea class="form-control" rows="2" @bind="_form.Notes"></textarea>
-                        </div>
-                        <div class="col-md-4 d-flex flex-column gap-2 justify-content-end">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="chkDangerous"
-                                       @bind="_form.IsDangerous" />
-                                <label class="form-check-label" for="chkDangerous">Peligroso</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="chkRaee"
-                                       @bind="_form.IsRAEE" />
-                                <label class="form-check-label" for="chkRaee">RAEE</label>
-                            </div>
-                        </div>
-                    </div>
-
-                    @if (!string.IsNullOrEmpty(_formError))
-                    {
-                        <div class="alert alert-danger mt-3 mb-0">@_formError</div>
-                    }
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="CloseForm">Cancelar</button>
-                    <button class="btn btn-primary" @onclick="SaveFormAsync" disabled="@_saving">
-                        @if (_saving)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1"></span>
-                        }
-                        Guardar
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
 @code {
-    // ── Estado ────────────────────────────────────────────────────────────────
-    private List<LerChapterDto> _chapters        = [];
-    private bool                _loading         = true;
-    private bool                _isAdmin         = false;
-    private string?             _searchTerm;
-    private string              _filterDangerous = "";
-    private string              _filterRaee      = "";
+    private const int PageSize = 15;
 
-    private readonly HashSet<string> _collapsedChapters = [];
-    private readonly HashSet<string> _collapsedSubs     = [];
+    private GreenTransit.Application.Common.Models.PaginatedResult<LerCodeDto>? _pagedResult;
+    private bool    _loading         = true;
+    private bool    _isAdmin         = false;
+    private int     _currentPage     = 1;
+    private string? _searchTerm;
+    private string  _filterDangerous = "";
+    private string  _filterRaee      = "";
 
-    // Formulario modal
-    private bool                             _showForm  = false;
-    private bool                             _saving    = false;
+    private bool                             _showForm   = false;
+    private bool                             _saving     = false;
     private Guid?                            _editId;
     private string?                          _formError;
     private Dictionary<string, List<string>> _formErrors = [];
     private LerFormModel                     _form       = new();
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
     protected override async Task OnInitializedAsync()
     {
         _isAdmin = CurrentUser.UserProfile == "ADMIN";
         await LoadAsync();
     }
 
-    // ── Carga ─────────────────────────────────────────────────────────────────
     private async Task LoadAsync()
     {
         _loading = true;
-        _chapters = await Mediator.Send(new GetLerCodesQuery(
+        _pagedResult = await Mediator.Send(new GetLerCodesPagedQuery(
             IsDangerous: ParseBool(_filterDangerous),
             IsRAEE:      ParseBool(_filterRaee),
-            SearchTerm:  _searchTerm));
+            SearchTerm:  _searchTerm,
+            PageNumber:  _currentPage,
+            PageSize:    PageSize));
         _loading = false;
     }
 
-    private async Task ApplyFilters() => await LoadAsync();
+    private async Task ApplyFilters() { _currentPage = 1; await LoadAsync(); }
 
     private async Task ResetFilters()
     {
         _searchTerm      = null;
         _filterDangerous = "";
         _filterRaee      = "";
+        _currentPage     = 1;
         await LoadAsync();
     }
 
-    // ── Colapso jerárquico ────────────────────────────────────────────────────
-    private void ToggleChapter(string key)
-    {
-        if (!_collapsedChapters.Remove(key)) _collapsedChapters.Add(key);
-    }
-
-    private void ToggleSub(string key)
-    {
-        if (!_collapsedSubs.Remove(key)) _collapsedSubs.Add(key);
-    }
-
-    // ── CRUD ──────────────────────────────────────────────────────────────────
-    private void CreateNew()
+    private async Task GoPageAsync(int page) { _currentPage = page; await LoadAsync(); }
+private void CreateNew()
     {
         _editId    = null;
         _form      = new();

@@ -1,4 +1,5 @@
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.Settlements.DTOs;
 using GreenTransit.Domain.Authorization;
 using MediatR;
@@ -15,17 +16,12 @@ public sealed record GetSettlementsQuery(
     int?     Year        = null,
     int?     Month       = null,
     Guid?    IdScrap     = null,
-    int      Page        = 1,
-    int      PageSize    = 20
-) : IRequest<SettlementsPageDto>;
-
-public sealed record SettlementsPageDto(
-    IReadOnlyList<SettlementSummaryDto> Items,
-    int TotalCount
-);
+    int      PageNumber  = 1,
+    int      PageSize    = 15
+) : IRequest<PaginatedResult<SettlementSummaryDto>>;
 
 public sealed class GetSettlementsQueryHandler
-    : IRequestHandler<GetSettlementsQuery, SettlementsPageDto>
+    : IRequestHandler<GetSettlementsQuery, PaginatedResult<SettlementSummaryDto>>
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService   _currentUser;
@@ -36,7 +32,7 @@ public sealed class GetSettlementsQueryHandler
         _currentUser = currentUser;
     }
 
-    public async Task<SettlementsPageDto> Handle(GetSettlementsQuery request, CancellationToken ct)
+    public async Task<PaginatedResult<SettlementSummaryDto>> Handle(GetSettlementsQuery request, CancellationToken ct)
     {
         var q = _context.Settlements
             .AsNoTracking()
@@ -62,10 +58,11 @@ public sealed class GetSettlementsQueryHandler
 
         var total = await q.CountAsync(ct);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await q
             .OrderByDescending(s => s.CreatedAt)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(s => new SettlementSummaryDto(
                 s.Id,
                 s.SettlementNumber,
@@ -88,7 +85,7 @@ public sealed class GetSettlementsQueryHandler
                 s.CreatedAt))
             .ToListAsync(ct);
 
-        return new SettlementsPageDto(items, total);
+        return PaginatedResult<SettlementSummaryDto>.Create(items, total, request.PageNumber, pageSize);
     }
 }
 

@@ -331,9 +331,12 @@ else
 
         _page = await Mediator.Send(query);
 
-        // Cargar cumplimiento para el año filtrado
-        if (year.HasValue)
-            _compliance = await Mediator.Send(new GetMarketShareComplianceQuery(year.Value));
+        // Cargar cumplimiento solo para los IDs de la página actual
+        if (year.HasValue && _page is { Items.Count: > 0 })
+        {
+            var pageIds = _page.Items.Select(x => x.Id).ToList();
+            _compliance = await Mediator.Send(new GetMarketShareComplianceQuery(year.Value, pageIds));
+        }
         else
             _compliance = null;
 

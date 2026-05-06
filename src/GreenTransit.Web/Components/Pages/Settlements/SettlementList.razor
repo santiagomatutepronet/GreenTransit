@@ -118,16 +118,15 @@ else
     </div>
 
     @* Paginación *@
-    @if (_page.TotalCount > _pageSize)
+    @if (_page.TotalPages > 1)
     {
         <div class="d-flex justify-content-between align-items-center mt-2">
             <small class="text-muted">@_page.TotalCount resultados</small>
             <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary" disabled="@(_currentPage == 1)"
+                <button class="btn btn-outline-secondary" disabled="@(!_page.HasPrevious)"
                         @onclick="PrevPage"><i class="bi bi-chevron-left"></i></button>
-                <button class="btn btn-outline-secondary" disabled>@_currentPage</button>
-                <button class="btn btn-outline-secondary"
-                        disabled="@(_currentPage * _pageSize >= _page.TotalCount)"
+                <span class="btn btn-outline-secondary disabled">@_currentPage / @_page.TotalPages</span>
+                <button class="btn btn-outline-secondary" disabled="@(!_page.HasNext)"
                         @onclick="NextPage"><i class="bi bi-chevron-right"></i></button>
             </div>
         </div>
@@ -140,11 +139,11 @@ else
 }
 
 @code {
-    private SettlementsPageDto? _page;
+    private GreenTransit.Application.Common.Models.PaginatedResult<SettlementSummaryDto>? _page;
     private bool    _loading      = true;
     private string? _errorMessage;
     private int     _currentPage  = 1;
-    private int     _pageSize     = 20;
+    private int     _pageSize     = 15;
 
     private string? _filterStatus;
     private int?    _filterYear;
@@ -159,11 +158,11 @@ else
         try
         {
             _page = await Mediator.Send(new GetSettlementsQuery(
-                Status:      _filterStatus,
-                Year:        _filterYear,
-                Month:       _filterMonth,
-                Page:        _currentPage,
-                PageSize:    _pageSize));
+                Status:     _filterStatus,
+                Year:       _filterYear,
+                Month:      _filterMonth,
+                PageNumber: _currentPage,
+                PageSize:   _pageSize));
         }
         catch (Exception ex)
         {

@@ -19,7 +19,7 @@ public sealed record GetServiceOrdersQuery(
     DateTime? PlannedPickupTo   = null,
     string?   SearchTerm        = null,
     int       PageNumber        = 1,
-    int       PageSize          = 20
+    int       PageSize          = 15
 ) : IRequest<PaginatedResult<ServiceOrderDto>>;
 
 public sealed class GetServiceOrdersQueryHandler
@@ -87,10 +87,11 @@ public sealed class GetServiceOrdersQueryHandler
 
         var total = await q.CountAsync(cancellationToken);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await q
             .OrderByDescending(s => s.IssuedAt)
-            .Skip((request.PageNumber - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(s => new ServiceOrderDto(
                 s.Id,
                 s.ServiceOrderNumber,
@@ -109,7 +110,7 @@ public sealed class GetServiceOrdersQueryHandler
                 s.LerCode != null ? s.LerCode.Description : null))
             .ToListAsync(cancellationToken);
 
-        return PaginatedResult<ServiceOrderDto>.Create(items, total, request.PageNumber, request.PageSize);
+        return PaginatedResult<ServiceOrderDto>.Create(items, total, request.PageNumber, pageSize);
     }
 }
 

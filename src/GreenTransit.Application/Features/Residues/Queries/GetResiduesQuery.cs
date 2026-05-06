@@ -18,7 +18,7 @@ public sealed record GetResiduesQuery(
     Guid?   IdProducer  = null,
     string? SearchTerm  = null,
     int     PageNumber  = 1,
-    int     PageSize    = 25
+    int     PageSize    = 15
 ) : IRequest<PaginatedResult<ResidueDto>>;
 
 public sealed class GetResiduesQueryHandler
@@ -67,11 +67,12 @@ public sealed class GetResiduesQueryHandler
 
         var totalCount = await query.CountAsync(cancellationToken);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await query
             .OrderBy(r => r.ResidueType)
             .ThenBy(r => r.Name)
-            .Skip((request.PageNumber - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(r => new ResidueDto(
                 r.Id,
                 r.ResidueType,
@@ -85,6 +86,6 @@ public sealed class GetResiduesQueryHandler
                 r.IsActive))
             .ToListAsync(cancellationToken);
 
-        return PaginatedResult<ResidueDto>.Create(items, totalCount, request.PageNumber, request.PageSize);
+        return PaginatedResult<ResidueDto>.Create(items, totalCount, request.PageNumber, pageSize);
     }
 }

@@ -16,7 +16,7 @@ public sealed record GetUsersQuery(
     bool?   IsActive   = null,
     string? SearchTerm = null,
     int     PageNumber = 1,
-    int     PageSize   = 20
+    int     PageSize   = 15
 ) : IRequest<PaginatedResult<UserDto>>;
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -65,10 +65,11 @@ public sealed class GetUsersQueryHandler
 
         var totalCount = await query.CountAsync(cancellationToken);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await query
             .OrderBy(u => u.Login)
-            .Skip((request.PageNumber - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(u => new UserDto(
                 u.Id,
                 u.Login,
@@ -81,6 +82,6 @@ public sealed class GetUsersQueryHandler
             ))
             .ToListAsync(cancellationToken);
 
-        return PaginatedResult<UserDto>.Create(items, totalCount, request.PageNumber, request.PageSize);
+        return PaginatedResult<UserDto>.Create(items, totalCount, request.PageNumber, pageSize);
     }
 }

@@ -59,7 +59,7 @@
                 </select>
             </div>
             <div class="col-auto">
-                <button class="btn btn-primary btn-sm" @onclick="LoadDataAsync">
+                <button class="btn btn-primary btn-sm" @onclick="FilterAsync">
                     <i class="bi bi-search me-1"></i>Filtrar
                 </button>
             </div>
@@ -129,7 +129,7 @@
         </div>
     </div>
 }
-else if (_records.Count == 0)
+else if (_result is null || _result.Items.Count == 0)
 {
     <div class="alert alert-light text-center">Sin registros para los filtros seleccionados.</div>
 }
@@ -156,7 +156,7 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var r in _records)
+                        @foreach (var r in _result!.Items)
                         {
                             <tr>
                                 <td class="small">@r.PlantName</td>
@@ -182,8 +182,22 @@ else
                 </table>
             </div>
         </div>
-        <div class="card-footer py-1 text-muted small">
-            @_records.Count registro(s)
+        <div class="card-footer py-1 text-muted small d-flex justify-content-between align-items-center">
+            <span>@_result!.TotalCount registro(s)</span>
+            @if (_result.TotalPages > 1)
+            {
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-secondary" disabled="@(!_result.HasPrevious)"
+                            @onclick="() => GoPageAsync(_page - 1)">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <span class="btn btn-outline-secondary disabled">@_page / @_result.TotalPages</span>
+                    <button class="btn btn-outline-secondary" disabled="@(!_result.HasNext)"
+                            @onclick="() => GoPageAsync(_page + 1)">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+            }
         </div>
     </div>
 }
@@ -282,12 +296,15 @@ else
 }
 
 @code {
+    private const int PageSize = 15;
+
     // ── Estado ────────────────────────────────────────────────────────────────
-    private List<PlantEnergyDto>    _records  = [];
+    private GreenTransit.Application.Common.Models.PaginatedResult<PlantEnergyDto>? _result;
     private PlantEnergySummaryDto?  _summary;
     private bool                    _loading  = true;
     private bool                    _isAdmin;
     private bool                    _isPlantOp;
+    private int                     _page     = 1;
 
     // Filtros
     private string  _filterCode  = "";
@@ -320,12 +337,12 @@ else
         _loading = true;
         _summary = null;
 
-        var q = new GetPlantEnergiesQuery(
+        _result = await Mediator.Send(new GetPlantEnergiesQuery(
             PlantCenterCode: string.IsNullOrWhiteSpace(_filterCode) ? null : _filterCode,
             Year:            _filterYear  > 0 ? _filterYear  : null,
-            Month:           _filterMonth > 0 ? _filterMonth : null);
-
-        _records = [.. await Mediator.Send(q)];
+            Month:           _filterMonth > 0 ? _filterMonth : null,
+            PageNumber:      _page,
+            PageSize:        PageSize));
 
         // Si se filtra por planta + año cargamos el resumen anual
         if (!string.IsNullOrWhiteSpace(_filterCode) && _filterYear > 0)
@@ -335,6 +352,18 @@ else
         }
 
         _loading = false;
+    }
+
+    private async Task FilterAsync()
+    {
+        _page = 1;
+        await LoadDataAsync();
+    }
+
+    private async Task GoPageAsync(int page)
+    {
+        _page = page;
+        await LoadDataAsync();
     }
 
     // ── Formulario ────────────────────────────────────────────────────────────

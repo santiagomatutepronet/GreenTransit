@@ -18,7 +18,7 @@ public sealed record GetProductDeclarationsQuery(
     DateTime? DateFrom    = null,
     DateTime? DateTo      = null,
     int       PageNumber  = 1,
-    int       PageSize    = 20
+    int       PageSize    = 15
 ) : IRequest<PaginatedResult<ProductDeclarationDto>>;
 
 public sealed class GetProductDeclarationsQueryHandler
@@ -88,10 +88,11 @@ public sealed class GetProductDeclarationsQueryHandler
 
         var total = await q.CountAsync(ct);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await q
             .OrderByDescending(pd => pd.DateCreateSys)
-            .Skip((request.PageNumber - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(pd => new ProductDeclarationDto(
                 pd.Id,
                 pd.OwnerId,
@@ -112,6 +113,6 @@ public sealed class GetProductDeclarationsQueryHandler
             .ToListAsync(ct);
 
         return PaginatedResult<ProductDeclarationDto>.Create(
-            items, total, request.PageNumber, request.PageSize);
+            items, total, request.PageNumber, pageSize);
     }
 }

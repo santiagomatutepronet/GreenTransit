@@ -1,4 +1,5 @@
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.TreatmentPlants.DTOs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -15,21 +16,14 @@ public sealed record GetTreatmentPlantsQuery(
     DateTime? PlantTreatmentDateFrom    = null,
     DateTime? PlantTreatmentDateTo      = null,
     Guid?     IdTreatmentOperation      = null,
-    int       Page                      = 1,
-    int       PageSize                  = 20
-) : IRequest<GetTreatmentPlantsResult>;
-
-public sealed record GetTreatmentPlantsResult(
-    IReadOnlyList<TreatmentPlantDto> Items,
-    int                              TotalCount,
-    int                              Page,
-    int                              PageSize
-);
+    int       PageNumber                = 1,
+    int       PageSize                  = 15
+) : IRequest<PaginatedResult<TreatmentPlantDto>>;
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 public sealed class GetTreatmentPlantsQueryHandler
-    : IRequestHandler<GetTreatmentPlantsQuery, GetTreatmentPlantsResult>
+    : IRequestHandler<GetTreatmentPlantsQuery, PaginatedResult<TreatmentPlantDto>>
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService   _currentUser;
@@ -42,7 +36,7 @@ public sealed class GetTreatmentPlantsQueryHandler
         _currentUser = currentUser;
     }
 
-    public async Task<GetTreatmentPlantsResult> Handle(
+    public async Task<PaginatedResult<TreatmentPlantDto>> Handle(
         GetTreatmentPlantsQuery request, CancellationToken ct)
     {
         var ownerId        = _currentUser.OwnerId;
@@ -75,11 +69,12 @@ public sealed class GetTreatmentPlantsQueryHandler
 
         var total = await query.CountAsync(ct);
 
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var items = await query
             .OrderByDescending(t => t.PlantTreatmentDate)
             .ThenByDescending(t => t.DateCreateSys)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(t => new TreatmentPlantDto(
                 t.Id,
                 t.IdWasteMove,
@@ -93,6 +88,6 @@ public sealed class GetTreatmentPlantsQueryHandler
                 t.IncidentId != null))
             .ToListAsync(ct);
 
-        return new GetTreatmentPlantsResult(items, total, request.Page, request.PageSize);
+        return PaginatedResult<TreatmentPlantDto>.Create(items, total, request.PageNumber, pageSize);
     }
 }

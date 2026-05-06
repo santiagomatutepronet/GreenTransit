@@ -1,4 +1,5 @@
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Application.Common.Models;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,24 +19,26 @@ public sealed record EmissionSummaryLineDto(
     DateTime? GatheredDate
 );
 
-/// <summary>Totales globales del panel de emisiones.</summary>
+/// <summary>Totales globales del panel de emisiones (para todo el dataset filtrado).</summary>
 public sealed record EmissionsSummaryDto(
-    decimal                          TotalKgCO2e,
-    int                              TotalMoves,
-    int                              TotalLines,
-    IReadOnlyList<EmissionSummaryLineDto> Lines
+    decimal                                    TotalKgCO2e,
+    int                                        TotalMoves,
+    int                                        TotalLines,
+    PaginatedResult<EmissionSummaryLineDto>    Page
 );
 
 // ── Query ─────────────────────────────────────────────────────────────────────
 
 /// <summary>
-/// Devuelve el resumen de emisiones CO₂ de los traslados del tenant,
-/// agrupado por WasteMove. Solo incluye líneas con emisión calculada.
+/// Devuelve el resumen paginado de emisiones CO₂ de los traslados del tenant,
+/// agrupado por WasteMove. Solo incluye traslados con emisión calculada.
+/// Paginación real en BD mediante WasteMoves como entidad base.
 /// </summary>
 public sealed record GetEmissionsSummaryQuery(
-    DateTime? DateFrom = null,
-    DateTime? DateTo   = null,
-    int       Take     = 100
+    DateTime? DateFrom   = null,
+    DateTime? DateTo     = null,
+    int       PageNumber = 1,
+    int       PageSize   = 15
 ) : IRequest<EmissionsSummaryDto>;
 
 public sealed class GetEmissionsSummaryQueryHandler
@@ -55,63 +58,63 @@ public sealed class GetEmissionsSummaryQueryHandler
     public async Task<EmissionsSummaryDto> Handle(
         GetEmissionsSummaryQuery request, CancellationToken ct)
     {
-        var ownerId = _currentUser.OwnerId;
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
 
-        var residuesQuery = _context.WasteMoveResidues
+        // Consulta base: WasteMoves con al menos una línea con emisión calculada.
+        // Usar WasteMoves como entidad base permite paginación real en BD.
+        var wmQuery = _context.WasteMoves
             .AsNoTracking()
-            .Where(r => r.TransportInfo_TransportCarbonEmissions != null
-                     && r.TransportInfo_TransportCarbonEmissions > 0);
+            .Where(wm => wm.WasteMoveResidues.Any(r =>
+                r.TransportInfo_TransportCarbonEmissions != null &&
+                r.TransportInfo_TransportCarbonEmissions > 0));
 
         if (request.DateFrom.HasValue)
-            residuesQuery = residuesQuery.Where(r =>
-                r.WasteMove!.GatheredDate >= request.DateFrom.Value);
+            wmQuery = wmQuery.Where(wm => wm.GatheredDate >= request.DateFrom.Value);
 
         if (request.DateTo.HasValue)
-            residuesQuery = residuesQuery.Where(r =>
-                r.WasteMove!.GatheredDate <= request.DateTo.Value);
+            wmQuery = wmQuery.Where(wm => wm.GatheredDate <= request.DateTo.Value);
 
-        // EF Core no puede traducir GroupBy cuando la clave incluye propiedades
-        // de navegación (genera TransparentIdentifier internamente). Se proyecta
-        // primero a un tipo anónimo plano (SQL simple con JOIN) y se agrupa en cliente.
-        var flat = await residuesQuery
-            .Select(r => new
+        // ── Totales globales (todo el dataset filtrado, no solo la página) ────
+        var totals = await wmQuery
+            .Select(wm => new
             {
-                r.IdWasteMove,
-                r.WasteMove!.WasteMoveReference,
-                r.WasteMove.ServiceStatus,
-                r.WasteMove.GatheredDate,
-                r.EmissionFactorVersion,
-                r.TransportInfo_TransportCarbonEmissions,
-                r.TransportInfo_TransportDistance
+                KgCO2e = wm.WasteMoveResidues
+                    .Where(r => r.TransportInfo_TransportCarbonEmissions != null && r.TransportInfo_TransportCarbonEmissions > 0)
+                    .Sum(r => r.TransportInfo_TransportCarbonEmissions ?? 0m),
+                Lines = wm.WasteMoveResidues
+                    .Count(r => r.TransportInfo_TransportCarbonEmissions != null && r.TransportInfo_TransportCarbonEmissions > 0)
             })
             .ToListAsync(ct);
 
-        var lines = flat
-            .GroupBy(r => new
-            {
-                r.IdWasteMove,
-                r.WasteMoveReference,
-                r.ServiceStatus,
-                r.GatheredDate,
-                r.EmissionFactorVersion
-            })
-            .Select(g => new EmissionSummaryLineDto(
-                g.Key.IdWasteMove,
-                g.Key.WasteMoveReference,
-                g.Key.ServiceStatus,
-                g.Count(),
-                g.Sum(r => r.TransportInfo_TransportCarbonEmissions!.Value),
-                g.Sum(r => r.TransportInfo_TransportDistance ?? 0m),
-                g.Key.EmissionFactorVersion,
-                g.Key.GatheredDate))
-            .OrderByDescending(l => l.GatheredDate)
-            .Take(request.Take)
-            .ToList();
+        var totalMoves  = totals.Count;
+        var totalKgCO2e = totals.Sum(x => x.KgCO2e);
+        var totalLines  = totals.Sum(x => x.Lines);
 
-        return new EmissionsSummaryDto(
-            lines.Sum(l => l.TotalKgCO2e),
-            lines.Select(l => l.WasteMoveId).Distinct().Count(),
-            lines.Sum(l => l.ResidueLines),
-            lines);
+        // ── Página de traslados ───────────────────────────────────────────────
+        var lines = await wmQuery
+            .OrderByDescending(wm => wm.GatheredDate)
+            .ThenBy(wm => wm.Id)
+            .Skip((request.PageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .Select(wm => new EmissionSummaryLineDto(
+                wm.Id,
+                wm.WasteMoveReference,
+                wm.ServiceStatus,
+                wm.WasteMoveResidues.Count(r =>
+                    r.TransportInfo_TransportCarbonEmissions != null &&
+                    r.TransportInfo_TransportCarbonEmissions > 0),
+                wm.WasteMoveResidues.Sum(r => r.TransportInfo_TransportCarbonEmissions ?? 0m),
+                wm.WasteMoveResidues.Sum(r => r.TransportInfo_TransportDistance ?? 0m),
+                wm.WasteMoveResidues
+                    .Where(r => r.EmissionFactorVersion != null)
+                    .Select(r => r.EmissionFactorVersion)
+                    .FirstOrDefault(),
+                wm.GatheredDate))
+            .ToListAsync(ct);
+
+        var page = PaginatedResult<EmissionSummaryLineDto>.Create(
+            lines, totalMoves, request.PageNumber, pageSize);
+
+        return new EmissionsSummaryDto(totalKgCO2e, totalMoves, totalLines, page);
     }
 }

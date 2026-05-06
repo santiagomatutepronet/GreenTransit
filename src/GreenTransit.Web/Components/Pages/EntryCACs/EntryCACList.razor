@@ -210,21 +210,22 @@ else
         </div>
     </div>
 
-    @if (_result.TotalCount > _pageSize)
+    @if (_result.TotalPages > 1)
     {
         <div class="d-flex justify-content-between align-items-center mt-2">
             <span class="text-muted small">
-                Mostrando @((_page - 1) * _pageSize + 1)–@(Math.Min(_page * _pageSize, _result.TotalCount))
+                Mostrando @((_page - 1) * PageSize + 1)–@(Math.Min(_page * PageSize, _result.TotalCount))
                 de @_result.TotalCount entradas
             </span>
             <div class="btn-group btn-group-sm">
                 <button class="btn btn-outline-secondary"
-                        disabled="@(_page <= 1)"
+                        disabled="@(!_result.HasPrevious)"
                         @onclick="PrevPage">
                     <i class="bi bi-chevron-left"></i>
                 </button>
+                <span class="btn btn-outline-secondary disabled">@_page / @_result.TotalPages</span>
                 <button class="btn btn-outline-secondary"
-                        disabled="@(_page * _pageSize >= _result.TotalCount)"
+                        disabled="@(!_result.HasNext)"
                         @onclick="NextPage">
                     <i class="bi bi-chevron-right"></i>
                 </button>
@@ -234,17 +235,18 @@ else
 }
 
 @code {
+    private const int PageSize = 15;
+
     private bool      _loading          = true;
     private bool      _loadingRecogidos = true;
     private int       _page             = 1;
-    private const int _pageSize         = 20;
 
     private string?   _filterReference;
     private DateTime? _filterDateFrom;
     private DateTime? _filterDateTo;
     private string    _selectedWasteMoveId = "";
 
-    private GetEntryCACsResult? _result;
+    private GreenTransit.Application.Common.Models.PaginatedResult<EntryCACDto>? _result;
     private List<WasteMoveDto>  _recogidos = [];
 
     protected override async Task OnInitializedAsync()
@@ -257,11 +259,11 @@ else
     {
         _loading = true;
         _result  = await Mediator.Send(new GetEntryCACsQuery(
-            _filterReference,
-            _filterDateFrom,
-            _filterDateTo,
-            _page,
-            _pageSize));
+            WasteMoveReference: _filterReference,
+            CACEntryDateFrom:   _filterDateFrom,
+            CACEntryDateTo:     _filterDateTo,
+            PageNumber:         _page,
+            PageSize:           PageSize));
         _loading = false;
     }
 
