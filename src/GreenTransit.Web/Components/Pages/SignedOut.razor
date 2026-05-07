@@ -1,0 +1,27 @@
+@page "/signed-out"
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+@layout AnonymousLayout
+
+<PageTitle>Sesión cerrada — GreenTransit</PageTitle>
+
+<div class="signed-out-shell">
+    <div class="signed-out-card">
+
+        <div class="signed-out-icon">
+            <i class="bi bi-shield-check"></i>
+        </div>
+
+        <h1 class="signed-out-title">Sesión cerrada</h1>
+
+        <p class="signed-out-body">
+            Tu sesión en <strong>GreenTransit</strong> se ha cerrado correctamente
+            y tus credenciales han sido eliminadas de este dispositivo.
+        </p>
+
+        <a href="/account/login" class="signed-out-btn">
+            <i class="bi bi-box-arrow-in-right me-2"></i>Iniciar sesión de nuevo
+        </a>
+
+    </div>
+</div>

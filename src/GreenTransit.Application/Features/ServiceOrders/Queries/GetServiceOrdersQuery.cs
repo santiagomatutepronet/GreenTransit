@@ -102,7 +102,7 @@ public sealed class GetServiceOrdersQueryHandler
                 s.IdPickupPoint,
                 s.PickupPoint != null ? s.PickupPoint.Name : null,
                 s.WasteStream,
-                s.EstimatedWeight,
+                s.Residues.Sum(r => (decimal?)r.EstimatedWeight),
                 s.MeasureUnit,
                 s.WasteMoveReference,
                 s.IdLERCode,

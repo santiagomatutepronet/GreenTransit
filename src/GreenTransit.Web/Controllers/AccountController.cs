@@ -19,21 +19,22 @@ public sealed class AccountController : Controller
     [HttpGet("login")]
     public IActionResult Login([FromQuery] string? returnUrl)
     {
-        var redirectUrl = Url.Content(string.IsNullOrEmpty(returnUrl) ? "~/" : returnUrl);
+        var redirectUrl = Url.Content(
+            string.IsNullOrEmpty(returnUrl) ? "~/dashboard" : returnUrl);
         return Challenge(
             new AuthenticationProperties { RedirectUri = redirectUrl },
             OpenIdConnectDefaults.AuthenticationScheme);
     }
 
     /// <summary>
-    /// Cierra la sesión de cookies y del proveedor OIDC (Single Sign-Out).
+    /// Cierra la sesión local (elimina la cookie de la app) y redirige
+    /// a la página de confirmación. No redirige al IdP para evitar errores
+    /// del endpoint de logout del servidor de identidad externo.
     /// </summary>
     [HttpGet("logout")]
-    public IActionResult Logout()
+    public async Task<IActionResult> Logout()
     {
-        return SignOut(
-            new AuthenticationProperties { RedirectUri = "/" },
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            OpenIdConnectDefaults.AuthenticationScheme);
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return LocalRedirect("/signed-out");
     }
 }

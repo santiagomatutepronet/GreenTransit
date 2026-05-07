@@ -146,6 +146,95 @@ else
         </div>
     }
 }
+@* ── Modal formulario Crear / Editar ───────────────────────────────────────── *@
+@if (_showForm)
+{
+    <div class="modal-backdrop-custom" @onclick="CloseForm"></div>
+    <div class="modal-panel" @onclick:stopPropagation>
+        <div class="modal-panel-header">
+            <h5 class="mb-0">
+                <i class="bi @(_editId.HasValue ? "bi-pencil-square" : "bi-plus-circle") me-2"></i>
+                @(_editId.HasValue ? "Editar código LER" : "Nuevo código LER")
+            </h5>
+            <button class="btn-icon" @onclick="CloseForm" title="Cerrar">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="modal-panel-body">
+
+            @if (_formError is not null)
+            {
+                <div class="alert alert-danger py-2">@_formError</div>
+            }
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Código <span class="text-danger">*</span></label>
+                    <input class="form-control @(_formErrors.ContainsKey("Code") ? "is-invalid" : "")"
+                           @bind="_form.Code" placeholder="Ej: 16 01 03" />
+                    @foreach (var e in _formErrors.GetValueOrDefault("Code") ?? [])
+                    { <div class="invalid-feedback">@e</div> }
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Código extendido</label>
+                    <input class="form-control" @bind="_form.CodeExtended" placeholder="Ej: 160103" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Categoría producto</label>
+                    <input class="form-control" @bind="_form.DefaultProductCategory" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Descripción <span class="text-danger">*</span></label>
+                    <textarea class="form-control @(_formErrors.ContainsKey("Description") ? "is-invalid" : "")"
+                              rows="2" @bind="_form.Description"></textarea>
+                    @foreach (var e in _formErrors.GetValueOrDefault("Description") ?? [])
+                    { <div class="invalid-feedback">@e</div> }
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Capítulo</label>
+                    <input class="form-control" @bind="_form.Chapter" placeholder="Ej: 16" />
+                </div>
+                <div class="col-md-9">
+                    <label class="form-label">Descripción capítulo</label>
+                    <input class="form-control" @bind="_form.ChapterDescription" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Subcapítulo</label>
+                    <input class="form-control" @bind="_form.SubChapter" placeholder="Ej: 16 01" />
+                </div>
+                <div class="col-md-9">
+                    <label class="form-label">Descripción subcapítulo</label>
+                    <input class="form-control" @bind="_form.SubChapterDescription" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-control" rows="2" @bind="_form.Notes"></textarea>
+                </div>
+                <div class="col-md-3 d-flex align-items-center gap-3 pt-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="chkDangerous"
+                               @bind="_form.IsDangerous" />
+                        <label class="form-check-label" for="chkDangerous">Peligroso</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="chkRaee"
+                               @bind="_form.IsRAEE" />
+                        <label class="form-check-label" for="chkRaee">RAEE</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-panel-footer">
+            <button class="btn btn-ghost btn-sm" @onclick="CloseForm" disabled="@_saving">Cancelar</button>
+            <button class="btn btn-primary btn-sm" @onclick="SaveFormAsync" disabled="@_saving">
+                @if (_saving)
+                { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="bi bi-floppy me-1"></i>Guardar
+            </button>
+        </div>
+    </div>
+}
+
 @code {
     private const int PageSize = 15;
 

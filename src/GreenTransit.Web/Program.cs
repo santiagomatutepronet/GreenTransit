@@ -254,6 +254,17 @@ try
                 context.Response.Redirect("/acceso-denegado?error=" +
                     Uri.EscapeDataString(context.Failure?.Message ?? "Error desconocido"));
                 return Task.CompletedTask;
+            },
+            // ── OnRedirectToIdentityProviderForSignOut: elimina post_logout_redirect_uri
+            // para evitar el error del IdP cuando la URI no está registrada en el cliente.
+            // El IdP desconecta la sesión SSO y redirige a su página por defecto.
+            // La sesión local (cookie) ya se eliminó antes de llegar aquí.
+            OnRedirectToIdentityProviderForSignOut = context =>
+            {
+                // Quitar el parámetro de redirección post-logout para no
+                // enviar una URI que el IdP puede rechazar como no registrada.
+                context.ProtocolMessage.PostLogoutRedirectUri = null;
+                return Task.CompletedTask;
             }
         };
     });

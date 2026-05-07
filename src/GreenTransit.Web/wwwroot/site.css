@@ -2451,3 +2451,379 @@ select:disabled {
 
     .btn { padding: var(--space-2) var(--space-3); font-size: var(--text-xs); }
 }
+
+
+/* ============================================================
+   26. SIDEBAR COLAPSADO — reglas globales (evita CSS isolation)
+       Estas reglas afectan elementos de NavMenu y otros hijos
+       que tienen scope diferente a MainLayout, por eso DEBEN
+       estar en site.css (CSS global, sin scope).
+   ============================================================ */
+
+/* Ocultar etiquetas de texto */
+.app-shell.sidebar-collapsed .nav-label,
+.app-shell.sidebar-collapsed .nav-group-title .nav-label {
+    opacity: 0;
+    width:   0;
+    display: none;
+}
+
+/* Centrar título de grupo */
+.app-shell.sidebar-collapsed .nav-group-title {
+    justify-content: center;
+    padding:         6px 0;
+}
+
+/* Ítems hijo: sin indentación, centrado */
+.app-shell.sidebar-collapsed .nav-item--child {
+    padding-left:    0;
+    justify-content: center;
+}
+
+/* Todos los ítems: centrado */
+.app-shell.sidebar-collapsed .nav-item {
+    justify-content: center;
+    padding:         9px 0;
+}
+
+/* Botón de colapso: rotar icono */
+.app-shell.sidebar-collapsed .sidebar-toggle-inner i {
+    transform: scaleX(-1);
+}
+
+
+/* ============================================================
+   27. DARK MODE — sobreescritura de tokens de site.css
+       El selector .app-shell.dark-mode redefine las variables
+
+       (cards, tablas, formularios, botones, modales…)
+       las hereden automáticamente.
+   ============================================================ */
+.app-shell.dark-mode {
+    /* ── Superficies ────────────────────────────────────── */
+    --background:         #0f1a13;
+    --surface:            #172318;
+    --surface-alt:        #1d2d22;
+    --surface-elevated:   #1d2d22;
+
+    /* ── Texto ──────────────────────────────────────────── */
+    --text-primary:       #deeee4;
+    --text-secondary:     #a5c4ae;
+    --text-muted:         #6b9a78;
+    --text-disabled:      #3d5545;
+    --text-inverse:       #0f1a13;
+
+    /* ── Bordes ─────────────────────────────────────────── */
+    --border:             #2a3d2f;
+    --border-strong:      #3d5843;
+    --border-focus:       #4C9A6D;
+
+    /* ── Variables Bootstrap (tables, body, borders) ────── */
+    --bs-body-bg:              #0f1a13;
+    --bs-body-color:           #deeee4;
+    --bs-border-color:         #2a3d2f;
+    --bs-border-color-translucent: rgba(255,255,255,0.1);
+
+    /* Bootstrap table */
+    --bs-table-bg:             #172318;
+    --bs-table-color:          #deeee4;
+    --bs-table-border-color:   #2a3d2f;
+    --bs-table-striped-bg:     #1a2a1e;
+    --bs-table-striped-color:  #deeee4;
+    --bs-table-hover-bg:       #1f3326;
+    --bs-table-hover-color:    #deeee4;
+    --bs-table-active-bg:      #22382a;
+    --bs-table-active-color:   #deeee4;
+
+    /* Bootstrap secundarios */
+    --bs-secondary-bg:         #1d2d22;
+    --bs-tertiary-bg:          #1a2a1e;
+    --bs-secondary-color:      #a5c4ae;
+    --bs-tertiary-color:       #6b9a78;
+    --bs-emphasis-color:       #deeee4;
+    --bs-link-color:           #4C9A6D;
+    --bs-link-hover-color:     #7ec99a;
+
+    /* ── Estados semánticos — fondos ────────────────────── */
+    --primary-light:      #1a3d26;
+    --success-bg:         #152c1a;
+    --success-border:     #2a5c38;
+    --warning-bg:         #2c230e;
+    --warning-border:     #6b5010;
+    --danger-bg:          #2c1515;
+    --danger-border:      #6b2020;
+    --info-bg:            #152033;
+    --info-border:        #1e3a5a;
+    --secondary-light:    #152033;
+
+    /* ── Inputs y selects ───────────────────────────────── */
+    color-scheme: dark;
+}
+
+/* Fondos de card, panel, tabla y formulario en dark mode */
+.app-shell.dark-mode .card,
+.app-shell.dark-mode .card-header,
+.app-shell.dark-mode .table-wrapper,
+.app-shell.dark-mode .form-section,
+.app-shell.dark-mode .filter-bar,
+.app-shell.dark-mode .modal,
+.app-shell.dark-mode .panel,
+.app-shell.dark-mode .detail-section,
+.app-shell.dark-mode .wizard-body,
+.app-shell.dark-mode .step-content {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text-primary);
+}
+
+/* ── Bootstrap table: sobreescritura directa (Bootstrap usa color-mix / rgba
+   que ignoran las CSS vars si el navegador no resuelve correctamente) ─────── */
+
+/* Contenedor responsive Bootstrap */
+.app-shell.dark-mode .table-responsive {
+    background: var(--surface);
+}
+
+/* Tabla completa */
+.app-shell.dark-mode .table {
+    background-color: var(--surface) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border) !important;
+}
+
+/* Filas y celdas */
+.app-shell.dark-mode .table > :not(caption) > * > * {
+    background-color: var(--surface) !important;
+    color: var(--text-primary) !important;
+    border-bottom-color: var(--border) !important;
+}
+
+/* Cabecera con .table-light */
+.app-shell.dark-mode .table > thead,
+.app-shell.dark-mode .table-light,
+.app-shell.dark-mode .table-light > * {
+    background-color: var(--surface-alt) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--border) !important;
+    --bs-table-bg: var(--surface-alt) !important;
+    --bs-table-color: var(--text-secondary) !important;
+    --bs-table-border-color: var(--border) !important;
+}
+
+/* Hover de filas */
+.app-shell.dark-mode .table-hover > tbody > tr:hover > * {
+    background-color: var(--surface-alt) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Filas impares (striped) */
+.app-shell.dark-mode .table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: #1a2a1e !important;
+    color: var(--text-primary) !important;
+}
+
+/* Badges Bootstrap en dark mode */
+.app-shell.dark-mode .badge.bg-light,
+.app-shell.dark-mode .badge.text-bg-light {
+    background-color: var(--surface-alt) !important;
+    color: var(--text-primary) !important;
+}
+
+.app-shell.dark-mode .badge.bg-secondary,
+.app-shell.dark-mode .badge.text-bg-secondary {
+    background-color: #3d5843 !important;
+    color: #deeee4 !important;
+}
+
+/* Botones Bootstrap outline en dark mode */
+.app-shell.dark-mode .btn-outline-primary {
+    color: #4C9A6D !important;
+    border-color: #4C9A6D !important;
+}
+.app-shell.dark-mode .btn-outline-primary:hover {
+    background-color: var(--primary-light) !important;
+    color: #7ec99a !important;
+}
+.app-shell.dark-mode .btn-outline-secondary {
+    color: var(--text-secondary) !important;
+    border-color: var(--border-strong) !important;
+}
+.app-shell.dark-mode .btn-outline-secondary:hover {
+    background-color: var(--surface-alt) !important;
+}
+
+/* Alert Bootstrap */
+.app-shell.dark-mode .alert-info {
+    background-color: var(--info-bg) !important;
+    border-color: var(--info-border) !important;
+    color: #7ab0d8 !important;
+}
+.app-shell.dark-mode .alert-warning {
+    background-color: var(--warning-bg) !important;
+    border-color: var(--warning-border) !important;
+    color: #f0c94a !important;
+}
+.app-shell.dark-mode .alert-danger {
+    background-color: var(--danger-bg) !important;
+    border-color: var(--danger-border) !important;
+    color: #f08080 !important;
+}
+.app-shell.dark-mode .alert-success {
+    background-color: var(--success-bg) !important;
+    border-color: var(--success-border) !important;
+    color: #7ec99a !important;
+}
+
+/* Cabecera de tabla */
+.app-shell.dark-mode .table thead {
+    background: var(--surface-alt);
+    border-color: var(--border);
+}
+
+.app-shell.dark-mode .table thead th {
+    color: var(--text-secondary);
+}
+
+/* Filas de tabla */
+.app-shell.dark-mode .table tbody tr:hover {
+    background: var(--surface-alt);
+}
+
+.app-shell.dark-mode .table tbody td {
+    border-color: var(--border);
+    color: var(--text-primary);
+}
+
+/* Inputs, selects y textareas */
+.app-shell.dark-mode input[type="text"],
+.app-shell.dark-mode input[type="number"],
+.app-shell.dark-mode input[type="email"],
+.app-shell.dark-mode input[type="password"],
+.app-shell.dark-mode input[type="date"],
+.app-shell.dark-mode input[type="datetime-local"],
+.app-shell.dark-mode input[type="time"],
+.app-shell.dark-mode input[type="search"],
+.app-shell.dark-mode select,
+.app-shell.dark-mode textarea,
+.app-shell.dark-mode .form-control {
+    background: var(--surface-alt);
+    border-color: var(--border);
+    color: var(--text-primary);
+}
+
+.app-shell.dark-mode input:disabled,
+.app-shell.dark-mode select:disabled,
+.app-shell.dark-mode textarea:disabled,
+.app-shell.dark-mode .form-control:disabled {
+    background: #111e15;
+    color: var(--text-disabled);
+}
+
+/* Prefijos/sufijos de input-group */
+.app-shell.dark-mode .input-group-prefix,
+.app-shell.dark-mode .input-group-suffix {
+    background: var(--surface-alt);
+    border-color: var(--border);
+    color: var(--text-secondary);
+}
+
+/* Botón outline neutral */
+.app-shell.dark-mode .btn-outline-neutral {
+    background:   var(--surface-alt);
+    border-color: var(--border);
+    color:        var(--text-primary);
+}
+
+.app-shell.dark-mode .btn-outline-neutral:hover {
+    background:   var(--border);
+    border-color: var(--border-strong);
+}
+
+/* Botón ghost */
+.app-shell.dark-mode .btn-ghost {
+    color: var(--text-secondary);
+}
+
+.app-shell.dark-mode .btn-ghost:hover {
+    background: var(--surface-alt);
+    color:      var(--text-primary);
+}
+
+/* Botón outline */
+.app-shell.dark-mode .btn-outline {
+    border-color: var(--border-focus);
+    color:        var(--border-focus);
+}
+
+.app-shell.dark-mode .btn-outline:hover {
+    background: var(--primary-light);
+    color:      #7ec99a;
+}
+
+/* Badges de estado */
+.app-shell.dark-mode .badge-success { background: #1a4d2b; color: #7ec99a; border-color: #2a6b3d; }
+.app-shell.dark-mode .badge-warning { background: #3d2f08; color: #f0c94a; border-color: #6b5010; }
+.app-shell.dark-mode .badge-danger  { background: #3d1010; color: #f08080; border-color: #6b2020; }
+.app-shell.dark-mode .badge-info    { background: #0e2040; color: #7ab0d8; border-color: #1e3a5a; }
+.app-shell.dark-mode .badge-neutral { background: var(--surface-alt); color: var(--text-secondary); border-color: var(--border); }
+
+/* KPI cards */
+.app-shell.dark-mode .kpi-value { color: var(--text-primary); }
+.app-shell.dark-mode .kpi-label { color: var(--text-muted); }
+
+/* Texto genérico */
+.app-shell.dark-mode h1,
+.app-shell.dark-mode h2,
+.app-shell.dark-mode h3,
+.app-shell.dark-mode h4,
+.app-shell.dark-mode h5,
+.app-shell.dark-mode h6 {
+    color: var(--text-primary);
+}
+
+.app-shell.dark-mode p,
+.app-shell.dark-mode label {
+    color: var(--text-primary);
+}
+
+.app-shell.dark-mode .text-muted,
+.app-shell.dark-mode .field-help {
+    color: var(--text-muted);
+}
+
+/* Separadores */
+.app-shell.dark-mode hr,
+.app-shell.dark-mode .form-section-title,
+.app-shell.dark-mode .form-actions {
+    border-color: var(--border);
+}
+
+/* Modales — backdrop */
+.app-shell.dark-mode .modal-backdrop {
+    background: rgba(0, 0, 0, 0.65);
+}
+
+/* Código inline */
+.app-shell.dark-mode code {
+    background:   var(--surface-alt);
+    border-color: var(--border);
+    color:        #7ec99a;
+}
+
+/* Paginación */
+.app-shell.dark-mode .pagination-btn {
+    background:   var(--surface-alt);
+    border-color: var(--border);
+    color:        var(--text-secondary);
+}
+
+.app-shell.dark-mode .pagination-btn:hover:not(:disabled) {
+    background: var(--border);
+    color:      var(--text-primary);
+}
+
+.app-shell.dark-mode .pagination-btn.active {
+    background:   var(--primary);
+    border-color: var(--primary);
+    color:        #fff;
+}

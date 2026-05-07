@@ -11,9 +11,9 @@
     --color-accent:       var(--secondary);
     --color-bg:           var(--background);
     --color-surface:      var(--surface);
-    --color-sidebar-bg:     #1A3628; /* Verde oscuro corporativo GreenTransit  */
-    --color-sidebar-text:   rgba(255,255,255,0.72);
-    --color-sidebar-hover:  #254D38; /* Verde medio — hover                    */
+    --color-sidebar-bg:     #255C3A; /* Verde corporativo GreenTransit (aclarado) */
+    --color-sidebar-text:   rgba(255,255,255,0.80);
+    --color-sidebar-hover:  #2E7348; /* Verde medio — hover                    */
     --color-sidebar-active: var(--primary);
     --color-topbar-bg:    var(--surface);
     --color-border:       var(--border);
@@ -268,27 +268,15 @@
     background: var(--color-bg);
 }
 
-/* ── Sidebar colapsado: ocultar labels y títulos de grupo ─────────────────── */
-.app-shell.sidebar-collapsed .nav-label,
-.app-shell.sidebar-collapsed .nav-group-title .nav-label {
+/* Sidebar colapsado: sidebar y logo (sí están en MainLayout → el scope funciona) */
+.app-shell.sidebar-collapsed .sidebar {
+    width:     var(--sidebar-collapsed-width);
+    min-width: var(--sidebar-collapsed-width);
+}
+
+.app-shell.sidebar-collapsed .sidebar-logo-text {
     opacity: 0;
     width:   0;
-    display: none;
-}
-
-.app-shell.sidebar-collapsed .nav-group-title {
-    justify-content: center;
-    padding:         6px 0;
-}
-
-.app-shell.sidebar-collapsed .nav-item--child {
-    padding-left: 0;
-    justify-content: center;
-}
-
-.app-shell.sidebar-collapsed .nav-item {
-    justify-content: center;
-    padding:         9px 0;
 }
 
 #blazor-error-ui {

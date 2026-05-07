@@ -1,0 +1,72 @@
+/* ── Página de sesión cerrada ──────────────────────────────────────────────── */
+
+.signed-out-shell {
+    display:         flex;
+    align-items:     center;
+    justify-content: center;
+    min-height:      100vh;
+    background:      var(--background, #F4F6F8);
+    padding:         24px;
+}
+
+.signed-out-card {
+    background:    var(--surface, #ffffff);
+    border:        1px solid var(--border, #D1D9E0);
+    border-radius: 16px;
+    box-shadow:    0 4px 24px rgba(26, 31, 46, 0.08);
+    padding:       48px 40px;
+    max-width:     420px;
+    width:         100%;
+    text-align:    center;
+}
+
+.signed-out-icon {
+    width:         72px;
+    height:        72px;
+    background:    #E8F5EE;
+    border-radius: 50%;
+    display:       flex;
+    align-items:   center;
+    justify-content: center;
+    margin:        0 auto 24px;
+}
+
+.signed-out-icon .bi {
+    font-size: 2rem;
+    color:     #1B6B3A;
+}
+
+.signed-out-title {
+    font-size:     1.5rem;
+    font-weight:   700;
+    color:         #1A1F2E;
+    margin-bottom: 12px;
+    font-family:   'Source Sans 3', 'Segoe UI', sans-serif;
+}
+
+.signed-out-body {
+    font-size:     0.95rem;
+    color:         #4A5568;
+    line-height:   1.6;
+    margin-bottom: 32px;
+}
+
+.signed-out-btn {
+    display:         inline-flex;
+    align-items:     center;
+    justify-content: center;
+    padding:         10px 28px;
+    background:      #1B6B3A;
+    color:           #ffffff;
+    border-radius:   8px;
+    font-size:       0.9rem;
+    font-weight:     600;
+    text-decoration: none;
+    transition:      background 0.15s ease;
+}
+
+.signed-out-btn:hover {
+    background:      #155430;
+    color:           #ffffff;
+    text-decoration: none;
+}

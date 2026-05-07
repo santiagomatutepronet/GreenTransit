@@ -53,7 +53,13 @@ else
             return;
         }
 
-        var state = AuthTask is not null ? await AuthTask : null;
+        // Preferir la ruta síncrona si AuthTask ya está completada (caso habitual en
+        // Blazor Server con AddCascadingAuthenticationState). Si no hace yield, Blazor
+        // emite un único render con el estado final y el spinner nunca es visible.
+        var state = AuthTask?.IsCompletedSuccessfully == true
+            ? AuthTask.Result
+            : (AuthTask is not null ? await AuthTask : null);
+
         var user = state?.User;
         _isAuthenticated = user?.Identity?.IsAuthenticated == true;
 

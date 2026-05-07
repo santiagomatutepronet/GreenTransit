@@ -50,7 +50,6 @@ public sealed class UpdateServiceOrderCommandHandler : IRequestHandler<UpdateSer
     public async Task Handle(UpdateServiceOrderCommand request, CancellationToken ct)
     {
         var so = await _context.ServiceOrders
-            .Include(s => s.Residues)
             .FirstOrDefaultAsync(s => s.Id == request.Id, ct)
             ?? throw new KeyNotFoundException($"ServiceOrder {request.Id} no encontrada.");
 
@@ -91,10 +90,15 @@ public sealed class UpdateServiceOrderCommandHandler : IRequestHandler<UpdateSer
         so.Hash                 = ComputeHash(so);
 
         // ── Reemplazar líneas de residuo ─────────────────────────────────────
-        so.Residues.Clear();
+        // ExecuteDeleteAsync elimina directamente en BD sin pasar por el change tracker,
+        // evitando DbUpdateConcurrencyException en contextos de larga vida (Blazor Server).
+        await _context.ServiceOrderResidues
+            .Where(r => r.IdServiceOrder == so.Id)
+            .ExecuteDeleteAsync(ct);
+
         foreach (var line in request.Residues)
         {
-            so.Residues.Add(new ServiceOrderResidue
+            _context.ServiceOrderResidues.Add(new ServiceOrderResidue
             {
                 Id              = Guid.NewGuid(),
                 IdServiceOrder  = so.Id,

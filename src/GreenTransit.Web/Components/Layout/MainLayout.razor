@@ -1,5 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @inject ICurrentUserService CurrentUser
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 @using GreenTransit.Application.Common.Interfaces
 @using Microsoft.AspNetCore.Components.Authorization
 
@@ -17,8 +19,8 @@
                 <span class="sidebar-logo-text">GreenTransit</span>
             </span>
             <button class="btn-icon sidebar-toggle-inner"
-                    @onclick="ToggleSidebar"
-                    title="@(_sidebarCollapsed ? "Expandir menú" : "Colapsar menú")"
+                    onclick="gtSidebar.toggle()"
+                    title="Colapsar/Expandir menú"
                     aria-label="Toggle sidebar">
                 <i class="bi bi-layout-sidebar-reverse"></i>
             </button>
@@ -36,8 +38,8 @@
         <header class="topbar">
             <div class="topbar-left">
                 <button class="btn-icon topbar-hamburger"
-                        @onclick="ToggleSidebar"
-                        title="@(_sidebarCollapsed ? "Expandir menú" : "Colapsar menú")"
+                        onclick="gtSidebar.toggle()"
+                        title="Colapsar/Expandir menú"
                         aria-label="Toggle sidebar">
                     <i class="bi bi-list"></i>
                 </button>
@@ -73,10 +75,13 @@
                     <i class="bi @(_darkMode ? "bi-sun-fill" : "bi-moon-fill")"></i>
                 </button>
 
-                @* Cerrar sesión *@
+                @* Cerrar sesión — data-enhance-nav="false" fuerza recarga HTTP completa
+                   para que el circuito Blazor se destruya y la cookie eliminada surta efecto *@
                 <AuthorizeView>
                     <Authorized>
-                        <a class="btn-icon" href="/account/logout" title="Cerrar sesión" aria-label="Cerrar sesión">
+                        <a class="btn-icon" href="/account/logout"
+                           data-enhance-nav="false"
+                           title="Cerrar sesión" aria-label="Cerrar sesión">
                             <i class="bi bi-box-arrow-right"></i>
                         </a>
                     </Authorized>
@@ -103,11 +108,44 @@
 @code {
     private bool _sidebarCollapsed;
     private bool _darkMode;
+    private DotNetObjectReference<MainLayout>? _dotNetRef;
 
     private string TenantShort => CurrentUser.OwnerId == Guid.Empty
         ? "—"
         : CurrentUser.OwnerId.ToString()[..8] + "…";
 
-    private void ToggleSidebar()  => _sidebarCollapsed = !_sidebarCollapsed;
-    private void ToggleDarkMode() => _darkMode         = !_darkMode;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            // Leer estado persistido y registrar referencia .NET en JS
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", "gt-sidebar");
+            var storedCollapsed = stored == "1";
+            await JS.InvokeVoidAsync("gtSidebar.init", _dotNetRef, storedCollapsed);
+            // Solo re-renderizar si el estado difiere del valor inicial (false)
+            // para evitar el doble refresco en cada carga de página
+            if (storedCollapsed != _sidebarCollapsed)
+            {
+                _sidebarCollapsed = storedCollapsed;
+                StateHasChanged();
+            }
+        }
+    }
+
+    /// <summary>Llamado desde JS para mantener el estado Blazor sincronizado.</summary>
+    [JSInvokable]
+    public void SetSidebar(bool collapsed)
+    {
+        _sidebarCollapsed = collapsed;
+        StateHasChanged();
+    }
+
+    private void ToggleDarkMode() => _darkMode = !_darkMode;
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        await Task.CompletedTask;
+    }
 }

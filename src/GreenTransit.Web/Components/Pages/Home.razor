@@ -2,8 +2,5 @@
 @inject NavigationManager Nav
 
 @code {
-    // forceLoad: true garantiza un HTTP redirect (302) real, evitando que
-    // el NavigationException quede "atrapado" dentro del pipeline de SSR
-    // enhanced navigation antes de ejecutarse.
-    protected override void OnInitialized() => Nav.NavigateTo("/dashboard", forceLoad: true);
+    protected override void OnInitialized() => Nav.NavigateTo("/dashboard");
 }

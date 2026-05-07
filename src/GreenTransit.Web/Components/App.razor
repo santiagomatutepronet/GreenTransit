@@ -19,7 +19,7 @@
 
 <body>
     <CascadingAuthenticationState>
-        <Routes />
+        <Routes @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
     </CascadingAuthenticationState>
     <ReconnectModal />
     @* ── Bootstrap Icons (iconos de marcadores del mapa) ──────────────────── *@
@@ -47,6 +47,36 @@
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        };
+    </script>
+    @* ── Sidebar toggle: JS nativo para respuesta inmediata sin esperar SignalR *@
+    <script>
+        window.gtSidebar = {
+            _dotNet: null,
+
+            // Llamado desde OnAfterRenderAsync: registra ref .NET y aplica estado inicial
+            init: function (dotNetRef, collapsed) {
+                this._dotNet = dotNetRef;
+                var shell = document.querySelector('.app-shell');
+                if (!shell) return;
+                if (collapsed) {
+                    shell.classList.add('sidebar-collapsed');
+                } else {
+                    shell.classList.remove('sidebar-collapsed');
+                }
+            },
+
+            // Llamado desde el onclick nativo de los botones
+            toggle: function () {
+                var shell = document.querySelector('.app-shell');
+                if (!shell) return;
+                var collapsed = shell.classList.toggle('sidebar-collapsed');
+                localStorage.setItem('gt-sidebar', collapsed ? '1' : '0');
+                // Notificar a Blazor para mantener el estado sincronizado
+                if (this._dotNet) {
+                    this._dotNet.invokeMethodAsync('SetSidebar', collapsed);
+                }
+            }
         };
     </script>
 </body>
