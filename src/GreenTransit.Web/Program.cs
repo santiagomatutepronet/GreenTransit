@@ -3,6 +3,7 @@ using FluentValidation;
 using GreenTransit.Application.Common;
 using GreenTransit.Application.Common.Behaviours;
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Infrastructure.Persistence.Seeding;
 using GreenTransit.Domain.Entities;
 using GreenTransit.Application.Features.ServiceOrders.Commands;
 using GreenTransit.Domain.Authorization;
@@ -456,6 +457,11 @@ try
         options.AddPolicy(PolicyConstants.CanManageMarketShares, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Admin)));
+
+        // Operaciones exclusivas de administración del sistema.
+        options.AddPolicy(PolicyConstants.AdminOnly, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Admin)));
     });
 
     // ClaimsTransformation: enriquece el principal con IdUser, OwnerId y Profile desde la BD
@@ -497,6 +503,7 @@ try
     builder.Services.AddScoped<IEntityUserProvisioningService,
         GreenTransit.Infrastructure.Services.EntityUserProvisioningService>();
     builder.Services.AddScoped<IDataScopeService, GreenTransit.Infrastructure.Services.DataScopeService>();
+    builder.Services.AddScoped<ISandboxDataSeeder, SandboxDataSeeder>();
 
     // ── Objetivos regulatorios por defecto ────────────────────────────────────
     builder.Services.AddSingleton<GreenTransit.Application.Common.Interfaces.IRegulatoryTargetDefaults,
@@ -585,6 +592,19 @@ try
     // el callback /signin-oidc del middleware OpenIdConnect
     app.MapRazorPages();
     app.MapControllers();
+
+    // ── Endpoints admin: seed/clean sandbox ───────────────────────────────────
+    app.MapPost("/api/admin/seed-sandbox", async (ISandboxDataSeeder seeder, CancellationToken ct) =>
+    {
+        await seeder.SeedAsync(ct);
+        return Results.Ok(new { message = "Sandbox data seeded successfully" });
+    }).RequireAuthorization(PolicyConstants.AdminOnly);
+
+    app.MapDelete("/api/admin/seed-sandbox", async (ISandboxDataSeeder seeder, CancellationToken ct) =>
+    {
+        await seeder.CleanAsync(ct);
+        return Results.Ok(new { message = "Sandbox data cleaned successfully" });
+    }).RequireAuthorization(PolicyConstants.AdminOnly);
     app.MapRazorComponents<App>()
         .AddInteractiveServerRenderMode();
         // IMPORTANTE: sin .RequireAuthorization() — causaría bucle en SignalR

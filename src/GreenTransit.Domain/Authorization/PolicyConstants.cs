@@ -114,4 +114,9 @@ public static class PolicyConstants
 
     /// <summary>CRUD de cuotas de mercado: solo ADMIN.</summary>
     public const string CanManageMarketShares = "CanManageMarketShares";
+
+    // ─── Administración del sistema ──────────────────────────────────
+
+    /// <summary>Operaciones exclusivas del administrador del sistema (ej. seed de datos).</summary>
+    public const string AdminOnly = "AdminOnly";
 }

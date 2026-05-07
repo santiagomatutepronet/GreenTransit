@@ -914,7 +914,7 @@ Implementa los módulos de consumo energético de plantas y gestión de factores
 
 **9. `EmissionFactorSetList.razor`**: tabla de sets con badge de estado. Botón "Activar" (con confirmación "¿Desactivar el set actual?"). Al hacer clic en un set, muestra panel lateral con la tabla de factores para previsualización antes de activar. Solo `ADMIN` puede crear/activar sets.
 
-Restricciones: solo `ADMIN` gestiona factores de emisión. Perfil `PLANT_OP` registra energías de su propia planta (filtrado por `OwnerId`). El factor de red eléctrica debe ser configurable en `appsettings.json`.
+Restricciones: solo `ADMIN` gestiona factores de emisión. Perfil `PLANT_OP` registra energías de su propia planta. El factor de red eléctrica debe ser configurable en `appsettings.json`.
 
 ---
 

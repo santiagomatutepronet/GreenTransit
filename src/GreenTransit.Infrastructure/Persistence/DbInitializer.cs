@@ -119,14 +119,35 @@ public sealed class DbInitializer : IDbInitializer
             return;
         }
 
-        // Comprobar si ya existe algún usuario administrador
-        var adminExists = await _context.AppUsers
+        // Comprobar si ya existe algún usuario administrador con OwnerId correcto
+        var adminWithOwner = await _context.AppUsers
             .IgnoreQueryFilters()
-            .AnyAsync(u => u.IdProfile == adminProfile.Id, ct);
+            .AnyAsync(u => u.IdProfile == adminProfile.Id && u.OwnerId != null, ct);
 
-        if (adminExists)
+        if (adminWithOwner)
         {
-            _logger.LogDebug("DbInitializer: usuario ADMIN ya existe. Seed omitido.");
+            _logger.LogDebug("DbInitializer: usuario ADMIN ya existe con OwnerId asignado. Seed omitido.");
+            return;
+        }
+
+        // OwnerId demo: el mismo que usa SandboxDataSeeder para que el admin vea los datos sandbox.
+        // Se puede cambiar manualmente en BD si el tenant real del admin es otro.
+        var demoOwnerId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+
+        // Si ya existe un admin con OwnerId = null, actualizarlo al OwnerId demo
+        var existingAdminWithNullOwner = await _context.AppUsers
+            .IgnoreQueryFilters()
+            .Where(u => u.IdProfile == adminProfile.Id && u.OwnerId == null)
+            .ToListAsync(ct);
+
+        if (existingAdminWithNullOwner.Count > 0)
+        {
+            foreach (var u in existingAdminWithNullOwner)
+                u.OwnerId = demoOwnerId;
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation(
+                "DbInitializer: {Count} usuario(s) admin con OwnerId=null actualizados a OwnerId={OwnerId}.",
+                existingAdminWithNullOwner.Count, demoOwnerId);
             return;
         }
 
@@ -136,9 +157,7 @@ public sealed class DbInitializer : IDbInitializer
             CompleteName = "Administrador del sistema",
             Email        = "admin@greentransit.dev",
             IdProfile    = adminProfile.Id,
-            // OwnerId = null: el admin no está ligado a un tenant concreto en el seed inicial.
-            // Asignar OwnerId manualmente tras el primer arranque si el IdP lo requiere.
-            OwnerId      = null,
+            OwnerId      = demoOwnerId,
             CreateDate   = DateTime.UtcNow,
         });
 

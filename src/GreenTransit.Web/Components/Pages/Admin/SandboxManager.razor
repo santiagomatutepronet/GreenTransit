@@ -1,0 +1,227 @@
+@page "/admin/sandbox"
+@attribute [Authorize(Policy = PolicyConstants.AdminOnly)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Domain.Authorization
+@using Microsoft.AspNetCore.Authorization
+
+@inject ISandboxDataSeeder Seeder
+@inject ILogger<SandboxManager> Logger
+
+<PageTitle>Gestión Datos Sandbox</PageTitle>
+
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-database-fill-gear me-2"></i>Gestión de Datos Sandbox
+    </h1>
+    <p class="text-muted mb-0">
+        Inserta o elimina el conjunto de datos de demostración (~1.400 registros). Operación idempotente.
+    </p>
+</div>
+
+<div class="row g-4 mt-2">
+
+    @* ── Tarjeta: Insertar datos ─────────────────────────────────────────────── *@
+    <div class="col-md-6">
+        <div class="card h-100 border-success">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-play-circle-fill me-2"></i>Insertar datos demo
+            </div>
+            <div class="card-body">
+                <p class="card-text">
+                    Ejecuta las 7 fases de seed en orden estricto de dependencias FK:<br />
+                    <small class="text-muted">
+                        Catálogos → Entidades → Residuos → Acuerdos → Operaciones logísticas →
+                        Entradas/Tratamiento → Economía → Declaraciones
+                    </small>
+                </p>
+                <ul class="list-unstyled small text-muted mb-3">
+                    <li><i class="bi bi-check2 text-success me-1"></i>40 Entidades (Productores, SCRAP, CAC, Plantas…)</li>
+                    <li><i class="bi bi-check2 text-success me-1"></i>100 Órdenes de Servicio y Traslados</li>
+                    <li><i class="bi bi-check2 text-success me-1"></i>25 Acuerdos y Liquidaciones</li>
+                    <li><i class="bi bi-check2 text-success me-1"></i>~90 Cuotas de mercado (MarketShares)</li>
+                    <li><i class="bi bi-check2 text-success me-1"></i>~35 Declaraciones de producción</li>
+                    <li><i class="bi bi-check2 text-success me-1"></i>15 Incidencias</li>
+                </ul>
+                <button class="btn btn-success w-100"
+                        @onclick="SeedAsync"
+                        disabled="@_busy">
+                    @if (_busy && _action == "seed")
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        <span>Insertando datos…</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-play-fill me-2"></i>
+                        <span>Ejecutar Seed</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @* ── Tarjeta: Limpiar datos ──────────────────────────────────────────────── *@
+    <div class="col-md-6">
+        <div class="card h-100 border-danger">
+            <div class="card-header bg-danger text-white">
+                <i class="bi bi-trash3-fill me-2"></i>Limpiar datos demo
+            </div>
+            <div class="card-body">
+                <p class="card-text">
+                    Elimina <strong>todos</strong> los registros con <code>SourceSystem = 'SEED'</code>
+                    en orden inverso de FK. No afecta datos reales.
+                </p>
+                <div class="alert alert-warning py-2 small mb-3">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                    Esta operación es <strong>irreversible</strong>. Los datos demo se borrarán permanentemente.
+                </div>
+                @if (!_confirmClean)
+                {
+                    <button class="btn btn-outline-danger w-100"
+                            @onclick="RequestConfirm"
+                            disabled="@_busy">
+                        <i class="bi bi-trash3 me-2"></i>Limpiar datos demo…
+                    </button>
+                }
+                else
+                {
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-danger flex-grow-1"
+                                @onclick="CleanAsync"
+                                disabled="@_busy">
+                            @if (_busy && _action == "clean")
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                <span>Eliminando…</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-check-lg me-1"></i>
+                                <span>Confirmar borrado</span>
+                            }
+                        </button>
+                        <button class="btn btn-secondary"
+                                @onclick="CancelConfirm"
+                                disabled="@_busy">
+                            Cancelar
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Log de resultados ───────────────────────────────────────────────────────── *@
+@if (_messages.Count > 0)
+{
+    <div class="card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-terminal-fill me-2"></i>Log de ejecución</span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="ClearLog">
+                <i class="bi bi-x-circle me-1"></i>Limpiar
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <ul class="list-group list-group-flush font-monospace small" style="max-height:340px;overflow-y:auto;">
+                @foreach (var msg in _messages)
+                {
+                    <li class="list-group-item py-1 @GetMsgClass(msg)">
+                        <i class="@GetMsgIcon(msg) me-2"></i>@msg.Text
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+}
+
+@code {
+    private bool   _busy         = false;
+    private bool   _confirmClean = false;
+    private string _action       = string.Empty;
+
+    private sealed record LogMessage(string Text, string Level);
+    private readonly List<LogMessage> _messages = [];
+
+    private async Task SeedAsync()
+    {
+        _busy   = true;
+        _action = "seed";
+        _messages.Clear();
+        StateHasChanged();
+
+        try
+        {
+            Log("Iniciando seed de datos sandbox…", "info");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            await Seeder.SeedAsync();
+            sw.Stop();
+            Log($"✅ Seed completado en {sw.Elapsed.TotalSeconds:F1}s", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error en SandboxManager.SeedAsync");
+            Log($"❌ Error: {ex.Message}", "danger");
+        }
+        finally
+        {
+            _busy   = false;
+            _action = string.Empty;
+        }
+    }
+
+    private async Task CleanAsync()
+    {
+        _busy         = true;
+        _action       = "clean";
+        _confirmClean = false;
+        StateHasChanged();
+
+        try
+        {
+            Log("Iniciando limpieza de datos sandbox…", "warning");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            await Seeder.CleanAsync();
+            sw.Stop();
+            Log($"✅ Limpieza completada en {sw.Elapsed.TotalSeconds:F1}s", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error en SandboxManager.CleanAsync");
+            Log($"❌ Error: {ex.Message}", "danger");
+        }
+        finally
+        {
+            _busy   = false;
+            _action = string.Empty;
+        }
+    }
+
+    private void RequestConfirm()  => _confirmClean = true;
+    private void CancelConfirm()   => _confirmClean = false;
+    private void ClearLog()        => _messages.Clear();
+
+    private void Log(string text, string level)
+    {
+        _messages.Add(new LogMessage($"[{DateTime.Now:HH:mm:ss}] {text}", level));
+        StateHasChanged();
+    }
+
+    private static string GetMsgClass(LogMessage m) => m.Level switch
+    {
+        "success" => "list-group-item-success",
+        "danger"  => "list-group-item-danger",
+        "warning" => "list-group-item-warning",
+        _         => string.Empty
+    };
+
+    private static string GetMsgIcon(LogMessage m) => m.Level switch
+    {
+        "success" => "bi bi-check-circle-fill text-success",
+        "danger"  => "bi bi-x-circle-fill text-danger",
+        "warning" => "bi bi-exclamation-circle-fill text-warning",
+        _         => "bi bi-info-circle text-secondary"
+    };
+}

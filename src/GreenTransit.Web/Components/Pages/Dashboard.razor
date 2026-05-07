@@ -493,7 +493,8 @@ else
 
     // ── Estado del componente ─────────────────────────────────────────────────
 
-    private bool                  _loading   = true;
+    private bool                  _loading        = true;
+    private bool                  _mapInitialized = false;
     private DashboardSummaryDto?  _summary;
     private GreenTransit.Application.Features.ProductDeclarations.Queries.DeclarationDashboardWidgetsDto? _decWidgets;
     private const string          _mapContainerId = "dashboard-map";
@@ -570,20 +571,22 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _summary is null) return;
-        await InitMapAsync();
+        if (_summary is not null && !_mapInitialized)
+        {
+            _mapInitialized = true;
+            await InitMapAsync();
+        }
     }
 
     // ── Métodos privados ──────────────────────────────────────────────────────
 
     private async Task RefreshAsync()
     {
-        _loading = true;
-        _summary = null;
+        _loading        = true;
+        _mapInitialized = false;
+        _summary        = null;
         StateHasChanged();
         await LoadDataAsync();
-        if (_summary is not null)
-            await InitMapAsync();
     }
 
     private async Task LoadDataAsync()
