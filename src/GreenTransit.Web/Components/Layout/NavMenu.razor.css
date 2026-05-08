@@ -64,6 +64,30 @@
     font-size:    0.83rem;
 }
 
+/* Sub-título de grupo anidado dentro de un nav-group (nivel 2) */
+.nav-group-title--sub {
+    padding:        5px 16px 3px 28px;
+    font-size:      9px;
+    font-weight:    700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color:          rgba(255,255,255,0.25);
+    white-space:    nowrap;
+    overflow:       hidden;
+    cursor:         default;
+    user-select:    none;
+    margin-top:     6px;
+    display:        flex;
+    align-items:    center;
+    gap:            8px;
+}
+
+/* Ítems nietos (nivel 3, dentro de un sub-grupo) */
+::deep .nav-item--grandchild {
+    padding-left: 40px;
+    font-size:    0.80rem;
+}
+
 /* Icono de nav */
 ::deep .nav-icon {
     font-size:   1rem;

@@ -1,0 +1,784 @@
+@page "/logistics/operations"
+@attribute [Authorize(Policy = PolicyConstants.CanViewOperationalDashboard)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Logistics.DTOs
+@using GreenTransit.Application.Features.Logistics.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@using GreenTransit.Web.Components.Authorization
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject ILogger<OperationalDashboard> Logger
+
+<PageTitle>Panel Operativo — GreenTransit</PageTitle>
+
+@* ── Cabecera ─────────────────────────────────────────────────────────────── *@
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-speedometer2 me-2"></i>Panel Operativo
+            @if (_data is not null)
+            {
+                <span class="ms-2 badge bg-primary-subtle text-primary-emphasis fs-6 fw-normal">
+                    @ProfileLabel(_data.ActiveProfile)
+                </span>
+            }
+        </h1>
+        <p class="text-muted mb-0">
+            Gestores · CACs · Plantas ·
+            @(_filterMonth.HasValue
+                ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", new CultureInfo("es-ES"))
+                : _filterYear.ToString())
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            {
+                <option value="@y">@y</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-select form-select-sm" @bind="_filterMonth" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            @for (int m = 1; m <= 12; m++)
+            {
+                <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", new CultureInfo("es-ES")))</option>
+            }
+        </select>
+    </div>
+</div>
+
+@* ── Estado de carga ──────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="d-flex align-items-center gap-2 text-muted py-5 justify-content-center">
+        <div class="spinner-border spinner-border-sm"></div>
+        <span>Cargando datos operativos…</span>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-circle-fill"></i>
+        <span>@_error</span>
+    </div>
+}
+else if (_data is not null)
+{
+    var isDispatch = _data.ActiveProfile == ProfileConstants.DispatchOffice
+                  || _data.ActiveProfile == ProfileConstants.Admin;
+    var isCac      = _data.ActiveProfile == ProfileConstants.CacOp
+                  || _data.ActiveProfile == ProfileConstants.Admin;
+    var isPlant    = _data.ActiveProfile == ProfileConstants.PlantOp
+                  || _data.ActiveProfile == ProfileConstants.Admin;
+
+    @* ══════════════════════════════════════════════════════════════════════
+       SECCIÓN DISPATCH_OFFICE
+       ══════════════════════════════════════════════════════════════════════ *@
+    @if (isDispatch)
+    {
+        var activeMovesCount = _data.WasteMovesFunnel
+            .Where(f => f.ServiceStatus == "EN_RUTA" || f.ServiceStatus == "RECOGIDO")
+            .Sum(f => f.Count);
+        var weeklyTotal      = _data.WeeklyPlan.Sum(w => w.Count);
+        var hasCritical      = _data.OpenIncidents.Any(i => i.Severity == "Critical");
+        var criticalCount    = _data.OpenIncidents.Count(i => i.Severity == "Critical");
+
+        @* ── KPI row Dispatch ────────────────────────────────────────────── *@
+        <div class="kpi-grid mb-4">
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(255,193,7,.12);color:#ffc107">
+                    <i class="bi bi-clipboard2-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">SO pendientes</div>
+                    <div class="kpi-value">@_data.PendingServiceOrders.Count</div>
+                    <div class="kpi-sub">sin planificar</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(13,110,253,.12);color:#0d6efd">
+                    <i class="bi bi-truck-front-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Traslados activos</div>
+                    <div class="kpi-value">@activeMovesCount</div>
+                    <div class="kpi-sub">en ruta o recogidos</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(25,135,84,.12);color:#198754">
+                    <i class="bi bi-calendar-week-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Recogidas próx. 7 días</div>
+                    <div class="kpi-value">@weeklyTotal</div>
+                    <div class="kpi-sub">planificadas</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(220,53,69,.12);color:#dc3545">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Incidencias abiertas</div>
+                    <div class="kpi-value @(hasCritical ? "text-danger" : "")">
+                        @_data.OpenIncidents.Count
+                    </div>
+                    @if (hasCritical)
+                    {
+                        <div class="kpi-sub text-danger">@criticalCount críticas</div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ── Fila 1: SO pendientes + Embudo traslados ────────────────────── *@
+        <div class="dashboard-grid-2col mb-4">
+
+            @* W1 — SO pendientes *@
+            <div class="card dashboard-card h-100">
+                <div class="card-header-gt">
+                    <i class="bi bi-clipboard2-fill me-2"></i>Órdenes pendientes de planificar
+                    @if (_data.PendingServiceOrders.Any())
+                    {
+                        <span class="ms-auto badge bg-warning-subtle text-warning-emphasis">
+                            @_data.PendingServiceOrders.Count
+                        </span>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (!_data.PendingServiceOrders.Any())
+                    {
+                        <div class="empty-state py-4">
+                            <i class="bi bi-check2-circle fs-2 text-success"></i>
+                            <p class="mt-2 text-muted">Sin órdenes pendientes.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-header-gt">
+                                <tr>
+                                    <th>Número</th>
+                                    <th>Flujo</th>
+                                    <th class="text-center">Prioridad</th>
+                                    <th>Punto recogida</th>
+                                    <th>Fecha planif.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var so in _data.PendingServiceOrders)
+                                {
+                                    <tr>
+                                        <td>
+                                            <a href="/service-orders/@so.Id" class="link-primary fw-medium">
+                                                @so.ServiceOrderNumber
+                                            </a>
+                                        </td>
+                                        <td><span class="badge bg-secondary-subtle text-secondary-emphasis">@(so.WasteStream ?? "—")</span></td>
+                                        <td class="text-center">
+                                            <span class="badge-status @PriorityCss(so.Priority)">@so.Priority</span>
+                                        </td>
+                                        <td class="small text-muted">@(so.PickupPointName ?? "—")</td>
+                                        <td class="small">
+                                            @(so.PlannedPickupStart.HasValue
+                                                ? so.PlannedPickupStart.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
+                                                : "—")
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+
+            @* W2 — Embudo traslados *@
+            <div class="card dashboard-card h-100">
+                <div class="card-header-gt">
+                    <i class="bi bi-funnel-fill me-2"></i>Estado de traslados en el periodo
+                </div>
+                <div class="card-body">
+                    @if (!_data.WasteMovesFunnel.Any())
+                    {
+                        <div class="empty-state py-4">
+                            <i class="bi bi-inbox fs-2 text-muted"></i>
+                            <p class="mt-2 text-muted">Sin traslados en el periodo.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        var maxCount = _data.WasteMovesFunnel.Max(f => f.Count);
+                        @foreach (var item in _data.WasteMovesFunnel)
+                        {
+                            var barW   = maxCount > 0 ? (double)item.Count / maxCount * 100 : 0;
+                            var barCss = FunnelBarCss(item.ServiceStatus);
+                            <div class="od-funnel-item mb-2">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span class="small fw-medium">@FunnelLabel(item.ServiceStatus)</span>
+                                    <span class="small fw-bold">@item.Count</span>
+                                </div>
+                                <div class="progress" style="height:7px;border-radius:4px">
+                                    <div class="progress-bar @barCss"
+                                         style="width:@barW.ToString("0.##", CultureInfo.InvariantCulture)%;border-radius:4px">
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ── Fila 2: Planificación semanal + Incidencias ─────────────────── *@
+        <div class="dashboard-grid-2col mb-4">
+
+            @* W3 — Planificación semanal *@
+            <div class="card dashboard-card h-100">
+                <div class="card-header-gt">
+                    <i class="bi bi-calendar-week me-2"></i>Planificación — próximos 7 días
+                </div>
+                <div class="card-body">
+                    @if (!_data.WeeklyPlan.Any())
+                    {
+                        <div class="empty-state py-4">
+                            <i class="bi bi-calendar-x fs-2 text-muted"></i>
+                            <p class="mt-2 text-muted">Sin recogidas planificadas para esta semana.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="od-weekly-grid">
+                            @foreach (var day in _data.WeeklyPlan)
+                            {
+                                var isToday = day.Date.Date == DateTime.Today;
+                                <div class="od-day-card @(isToday ? "od-day-card--today" : "")">
+                                    <div class="od-day-name">
+                                        @day.Date.ToString("ddd", new CultureInfo("es-ES")).ToUpperInvariant()
+                                    </div>
+                                    <div class="od-day-num">@day.Date.Day</div>
+                                    <div class="od-day-count @(day.Count > 0 ? "od-day-count--has" : "")">
+                                        @day.Count
+                                    </div>
+                                    @if (day.PriorityTop == "Alta")
+                                    {
+                                        <div class="od-day-alert"><i class="bi bi-exclamation-circle-fill text-warning"></i></div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* W4 — Incidencias abiertas *@
+            <div class="card dashboard-card h-100">
+                <div class="card-header-gt">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>Incidencias abiertas
+                    @if (_data.OpenIncidents.Any())
+                    {
+                        <span class="ms-auto badge @(_data.OpenIncidents.Any(i => i.Severity == "Critical") ? "bg-danger" : "bg-warning-subtle text-warning-emphasis")">
+                            @_data.OpenIncidents.Count
+                        </span>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (!_data.OpenIncidents.Any())
+                    {
+                        <div class="empty-state py-4">
+                            <i class="bi bi-shield-check fs-2 text-success"></i>
+                            <p class="mt-2 text-muted">Sin incidencias abiertas.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-header-gt">
+                                <tr>
+                                    <th>Traslado</th>
+                                    <th>Tipo</th>
+                                    <th class="text-center">Sev.</th>
+                                    <th class="text-end">Días</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var inc in _data.OpenIncidents)
+                                {
+                                    <tr>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(inc.WasteMoveReference))
+                                            {
+                                                <a href="/traceability?term=@inc.WasteMoveReference" class="link-primary small">
+                                                    @inc.WasteMoveReference
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted small">—</span>
+                                            }
+                                        </td>
+                                        <td><span class="small">@inc.Type</span></td>
+                                        <td class="text-center">
+                                            <span class="badge-status @SeverityCss(inc.Severity)">@inc.Severity</span>
+                                        </td>
+                                        <td class="text-end fw-bold @(inc.DaysOpen > 7 ? "text-danger" : "")">
+                                            @inc.DaysOpen
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ══════════════════════════════════════════════════════════════════════
+       SECCIÓN CAC_OP
+       ══════════════════════════════════════════════════════════════════════ *@
+    @if (isCac)
+    {
+        @* KPI row CAC *@
+        <div class="kpi-grid mb-4">
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(13,110,253,.12);color:#0d6efd">
+                    <i class="bi bi-collection-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Entradas en CAC hoy</div>
+                    <div class="kpi-value">@_data.CacEntriesToday.Count</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(25,135,84,.12);color:#198754">
+                    <i class="bi bi-box-seam-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">kg recibidos hoy</div>
+                    <div class="kpi-value">@_data.CacEntriesToday.Sum(e => e.TotalKg).ToString("N0") <small class="kpi-unit">kg</small></div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(108,117,125,.12);color:#6c757d">
+                    <i class="bi bi-archive-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Tipologías en stock</div>
+                    <div class="kpi-value">@_data.CacStockByResidue.Count</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(255,193,7,.12);color:#ffc107">
+                    <i class="bi bi-exclamation-square-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Tickets sin pesaje</div>
+                    <div class="kpi-value @(_data.CacTicketsPending > 0 ? "text-warning" : "")">
+                        @_data.CacTicketsPending
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid-2col mb-4">
+
+            @* W5 — Entradas CAC hoy *@
+            <div class="card dashboard-card h-100">
+                <div class="card-header-gt">
+                    <i class="bi bi-collection me-2"></i>Entradas en CAC — hoy
+                </div>
+                <div class="card-body p-0">
+                    @if (!_data.CacEntriesToday.Any())
+                    {
+                        <div class="empty-state py-4">
+                            <i class="bi bi-inbox fs-2 text-muted"></i>
+                            <p class="mt-2 text-muted">Sin entradas hoy.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-header-gt">
+                                <tr>
+                                    <th>Referencia traslado</th>
+                                    <th>Método recogida</th>
+                                    <th class="text-end">kg</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in _data.CacEntriesToday)
+                                {
+                                    <tr>
+                                        <td>
+                                            <a href="/traceability?term=@e.WasteMoveReference" class="link-primary small">
+                                                @(e.WasteMoveReference ?? "—")
+                                            </a>
+                                        </td>
+                                        <td><span class="small text-muted">@(e.CollectionMethod ?? "—")</span></td>
+                                        <td class="text-end fw-semibold">@e.TotalKg.ToString("N0")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+
+            @* W6 — Stock por residuo *@
+            <div class="card dashboard-card h-100">
+                <div class="card-header-gt">
+                    <i class="bi bi-archive me-2"></i>Stock acumulado por tipología
+                    <span class="ms-2 text-muted small">(@_data.Year@(_data.Month.HasValue ? "/" + _data.Month.Value.ToString("00") : ""))</span>
+                </div>
+                <div class="card-body">
+                    @if (!_data.CacStockByResidue.Any())
+                    {
+                        <div class="empty-state py-4">
+                            <i class="bi bi-archive fs-2 text-muted"></i>
+                            <p class="mt-2 text-muted">Sin stock registrado.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        var maxKg = _data.CacStockByResidue.Max(s => s.TotalKg);
+                        @foreach (var s in _data.CacStockByResidue)
+                        {
+                            var barW = maxKg > 0 ? (double)s.TotalKg / (double)maxKg * 100 : 0;
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span class="small fw-medium">@(s.ResidueName ?? "Sin clasificar")</span>
+                                    <span class="small text-muted">@s.TotalKg.ToString("N0") kg · @s.Entries ent.</span>
+                                </div>
+                                <div class="progress" style="height:6px;border-radius:3px">
+                                    <div class="progress-bar bg-primary"
+                                         style="width:@barW.ToString("0.##", CultureInfo.InvariantCulture)%;border-radius:3px">
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ══════════════════════════════════════════════════════════════════════
+       SECCIÓN PLANT_OP
+       ══════════════════════════════════════════════════════════════════════ *@
+    @if (isPlant)
+    {
+        @* KPI row Planta *@
+        <div class="kpi-grid mb-4">
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(13,110,253,.12);color:#0d6efd">
+                    <i class="bi bi-box-arrow-in-down-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Entradas hoy</div>
+                    <div class="kpi-value">@_data.PlantEntriesToday.Count</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(25,135,84,.12);color:#198754">
+                    <i class="bi bi-recycle"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Tasa reciclaje</div>
+                    <div class="kpi-value">@_data.TreatmentBalance.RecyclingRate.ToString("0.#")<small class="kpi-unit">%</small></div>
+                    <div class="kpi-sub">reutilizado + valorizado</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(108,117,125,.12);color:#6c757d">
+                    <i class="bi bi-layers-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Total tratado</div>
+                    <div class="kpi-value">@_data.TreatmentBalance.TotalIn.ToString("N0") <small class="kpi-unit">kg</small></div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card-icon" style="background:rgba(220,53,69,.12);color:#dc3545">
+                    <i class="bi bi-slash-circle-fill"></i>
+                </div>
+                <div class="kpi-card-body">
+                    <div class="kpi-label">Impropios</div>
+                    <div class="kpi-value @(_data.ImproperWeightKg > 0 ? "text-danger" : "")">
+                        @_data.ImproperWeightKg.ToString("N0") <small class="kpi-unit">kg</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid-2col mb-4">
+
+            @* W8 — Entradas planta hoy *@
+            <div class="card dashboard-card h-100">
+                <div class="card-header-gt">
+                    <i class="bi bi-box-arrow-in-down me-2"></i>Entradas en planta — hoy
+                </div>
+                <div class="card-body p-0">
+                    @if (!_data.PlantEntriesToday.Any())
+                    {
+                        <div class="empty-state py-4">
+                            <i class="bi bi-inbox fs-2 text-muted"></i>
+                            <p class="mt-2 text-muted">Sin entradas hoy.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-header-gt">
+                                <tr>
+                                    <th>Referencia</th>
+                                    <th>Ticket báscula</th>
+                                    <th class="text-end">Bruto</th>
+                                    <th class="text-end">Tara</th>
+                                    <th class="text-end">Neto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ep in _data.PlantEntriesToday)
+                                {
+                                    <tr>
+                                        <td>
+                                            <a href="/traceability?term=@ep.WasteMoveReference" class="link-primary small">
+                                                @(ep.WasteMoveReference ?? "—")
+                                            </a>
+                                        </td>
+                                        <td><span class="small text-muted">@(ep.TicketScale ?? "—")</span></td>
+                                        <td class="text-end small">@FormatKg(ep.GrossWeight)</td>
+                                        <td class="text-end small text-muted">@FormatKg(ep.TareWeight)</td>
+                                        <td class="text-end fw-bold">@FormatKg(ep.NetWeight)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+
+            @* W9 — Balance de tratamiento *@
+            <div class="card dashboard-card h-100">
+                <div class="card-header-gt">
+                    <i class="bi bi-arrow-repeat me-2"></i>Balance de tratamiento
+                </div>
+                <div class="card-body">
+                    @{
+                        var bal = _data.TreatmentBalance;
+                        var totalRef = bal.TotalIn > 0 ? bal.TotalIn : 1m;
+                    }
+                    @if (bal.TotalIn == 0)
+                    {
+                        <div class="empty-state py-4">
+                            <i class="bi bi-arrow-repeat fs-2 text-muted"></i>
+                            <p class="mt-2 text-muted">Sin tratamientos registrados.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="od-balance-item mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="fw-medium"><i class="bi bi-box-seam text-secondary me-1"></i>Total entrada</span>
+                                <span class="fw-bold">@bal.TotalIn.ToString("N0") kg</span>
+                            </div>
+                        </div>
+                        <div class="od-balance-item mb-2">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="small text-success fw-medium"><i class="bi bi-arrow-counterclockwise me-1"></i>Reutilizado</span>
+                                <span class="small">@bal.Reused.ToString("N0") kg · @((bal.Reused/totalRef*100m).ToString("0.#"))%</span>
+                            </div>
+                            <div class="progress" style="height:7px;border-radius:4px">
+                                <div class="progress-bar bg-success"
+                                     style="width:@((bal.Reused/totalRef*100m).ToString("0.##", CultureInfo.InvariantCulture))%;border-radius:4px">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="od-balance-item mb-2">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="small text-primary fw-medium"><i class="bi bi-lightning-charge me-1"></i>Valorizado</span>
+                                <span class="small">@bal.Valued.ToString("N0") kg · @((bal.Valued/totalRef*100m).ToString("0.#"))%</span>
+                            </div>
+                            <div class="progress" style="height:7px;border-radius:4px">
+                                <div class="progress-bar bg-primary"
+                                     style="width:@((bal.Valued/totalRef*100m).ToString("0.##", CultureInfo.InvariantCulture))%;border-radius:4px">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="od-balance-item mb-2">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="small text-danger fw-medium"><i class="bi bi-trash me-1"></i>Rechazo</span>
+                                <span class="small">@bal.Removed.ToString("N0") kg · @((bal.Removed/totalRef*100m).ToString("0.#"))%</span>
+                            </div>
+                            <div class="progress" style="height:7px;border-radius:4px">
+                                <div class="progress-bar bg-danger"
+                                     style="width:@((bal.Removed/totalRef*100m).ToString("0.##", CultureInfo.InvariantCulture))%;border-radius:4px">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3 pt-3 border-top d-flex align-items-center justify-content-between">
+                            <span class="fw-semibold">Tasa de reciclaje</span>
+                            <span class="fs-5 fw-bold @(bal.RecyclingRate >= 70 ? "text-success" : bal.RecyclingRate >= 50 ? "text-warning" : "text-danger")">
+                                @bal.RecyclingRate.ToString("0.#")%
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* W11 — Incidencias de planta *@
+        @if (_data.PlantOpenIncidents.Any())
+        {
+            <div class="card dashboard-card mb-4">
+                <div class="card-header-gt">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>Incidencias de planta abiertas
+                    <span class="ms-auto badge @(_data.PlantOpenIncidents.Any(i => i.Severity == "Critical") ? "bg-danger" : "bg-warning-subtle text-warning-emphasis")">
+                        @_data.PlantOpenIncidents.Count
+                    </span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-header-gt">
+                            <tr>
+                                <th>Traslado</th>
+                                <th>Tipo</th>
+                                <th class="text-center">Severidad</th>
+                                <th>Descripción</th>
+                                <th class="text-end">Días abierta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var inc in _data.PlantOpenIncidents)
+                            {
+                                <tr>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(inc.WasteMoveReference))
+                                        {
+                                            <a href="/traceability?term=@inc.WasteMoveReference" class="link-primary small">
+                                                @inc.WasteMoveReference
+                                            </a>
+                                        }
+                                        else { <span class="text-muted small">—</span> }
+                                    </td>
+                                    <td><span class="small">@inc.Type</span></td>
+                                    <td class="text-center">
+                                        <span class="badge-status @SeverityCss(inc.Severity)">@inc.Severity</span>
+                                    </td>
+                                    <td><span class="small text-muted">@(inc.Description?.Length > 60 ? inc.Description[..60] + "…" : inc.Description ?? "—")</span></td>
+                                    <td class="text-end fw-bold @(inc.DaysOpen > 7 ? "text-danger" : "")">@inc.DaysOpen</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    private OperationalDashboardDto? _data;
+    private bool    _loading;
+    private string? _error;
+
+    private int  _filterYear  = DateTime.Now.Year;
+    private int? _filterMonth = DateTime.Now.Month;
+
+    protected override async Task OnInitializedAsync()
+        => await LoadDataAsync();
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _error   = null;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetOperationalDashboardQuery(
+                Year:  _filterYear,
+                Month: _filterMonth == 0 ? null : _filterMonth));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar el panel operativo.");
+            _error = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshAsync() => await LoadDataAsync();
+
+    private static string ProfileLabel(string profile) => profile switch
+    {
+        ProfileConstants.DispatchOffice => "Oficina de Asignación",
+        ProfileConstants.CacOp          => "Operador CAC",
+        ProfileConstants.PlantOp        => "Operador de Planta",
+        ProfileConstants.Admin          => "Administrador",
+        _                               => profile
+    };
+
+    private static string PriorityCss(string priority) => priority switch
+    {
+        "Alta"   => "badge-status--cancelled",
+        "Media"  => "badge-status--pending",
+        _        => "badge-status--neutral"
+    };
+
+    private static string SeverityCss(string severity) => severity switch
+    {
+        "Critical" => "badge-status--cancelled",
+        "High"     => "badge-status--cancelled",
+        "Medium"   => "badge-status--pending",
+        _          => "badge-status--neutral"
+    };
+
+    private static string FunnelBarCss(string status) => status switch
+    {
+        "PLANIFICADO" => "bg-secondary",
+        "ASIGNADO"    => "bg-info",
+        "EN_RUTA"     => "bg-primary",
+        "RECOGIDO"    => "bg-warning",
+        "ENTREGADO"   => "bg-success",
+        "CANCELADO"   => "bg-danger",
+        _             => "bg-secondary"
+    };
+
+    private static string FunnelLabel(string status) => status switch
+    {
+        "PLANIFICADO" => "Planificado",
+        "ASIGNADO"    => "Asignado",
+        "EN_RUTA"     => "En ruta",
+        "RECOGIDO"    => "Recogido",
+        "ENTREGADO"   => "Entregado",
+        "CANCELADO"   => "Cancelado",
+        _             => status
+    };
+
+    private static string FormatKg(decimal? kg)
+        => kg.HasValue ? kg.Value.ToString("N0") + " kg" : "—";
+}

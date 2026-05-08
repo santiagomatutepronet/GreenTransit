@@ -1,0 +1,22 @@
+@* Fila de leyenda para el donut de cumplimiento DUM *@
+
+<div class="d-flex justify-content-between align-items-center mb-1">
+    <div class="d-flex align-items-center gap-2">
+        <div style="width:12px;height:12px;border-radius:50%;background:@Color;flex-shrink:0"></div>
+        <span style="font-size:.8rem">@Label</span>
+    </div>
+    <div class="text-end">
+        <span class="fw-semibold">@Count</span>
+        @if (Total > 0)
+        {
+            <small class="text-muted ms-1">(@((Count * 100.0 / Total).ToString("F0"))%)</small>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Color { get; set; } = "#6c757d";
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public int    Count { get; set; }
+    [Parameter, EditorRequired] public int    Total { get; set; }
+}

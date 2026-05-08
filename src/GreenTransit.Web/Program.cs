@@ -469,6 +469,24 @@ try
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Admin)));
 
+        // ── LOGÍSTICA Y OPTIMIZACIÓN ──────────────────────────────────────────
+
+        // Dashboard 1 — Panel de Optimización Logística RAEE: SCRAP, COORDINATOR y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewLogisticsOptimization, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.Admin)));
+
+        // Dashboard 2 — Panel de Monitorización para Entidades Públicas: PUBLIC_ENT y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewPublicMonitoring, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.PublicEnt, ProfileConstants.Admin)));
+
+        // Dashboard 3 — Panel Operativo Gestores/CACs/Plantas: DISPATCH_OFFICE, CAC_OP, PLANT_OP, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewOperationalDashboard, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.DispatchOffice, ProfileConstants.CacOp,
+                ProfileConstants.PlantOp, ProfileConstants.Admin)));
+
         // Operaciones exclusivas de administración del sistema.
         options.AddPolicy(PolicyConstants.AdminOnly, policy =>
             policy.AddRequirements(new ProfileRequirement(

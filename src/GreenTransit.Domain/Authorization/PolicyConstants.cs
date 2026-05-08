@@ -115,6 +115,17 @@ public static class PolicyConstants
     /// <summary>CRUD de cuotas de mercado: solo ADMIN.</summary>
     public const string CanManageMarketShares = "CanManageMarketShares";
 
+    // ─── Logística y optimización ────────────────────────────────────────────
+
+    /// <summary>Dashboard 1 — Panel de Optimización Logística RAEE: SCRAP, COORDINATOR, ADMIN.</summary>
+    public const string CanViewLogisticsOptimization = "CanViewLogisticsOptimization";
+
+    /// <summary>Dashboard 2 — Panel de Monitorización para Entidades Públicas: PUBLIC_ENT, ADMIN.</summary>
+    public const string CanViewPublicMonitoring = "CanViewPublicMonitoring";
+
+    /// <summary>Dashboard 3 — Panel Operativo Gestores/CACs/Plantas: DISPATCH_OFFICE, CAC_OP, PLANT_OP, ADMIN.</summary>
+    public const string CanViewOperationalDashboard = "CanViewOperationalDashboard";
+
     // ─── Administración del sistema ──────────────────────────────────
 
     /// <summary>Operaciones exclusivas del administrador del sistema (ej. seed de datos).</summary>

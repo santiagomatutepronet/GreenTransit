@@ -1,0 +1,461 @@
+@page "/logistics/public-monitoring"
+@attribute [Authorize(Policy = PolicyConstants.CanViewPublicMonitoring)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Logistics.DTOs
+@using GreenTransit.Application.Features.Logistics.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@using GreenTransit.Web.Components.Authorization
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject ILogger<PublicMonitoring> Logger
+
+<PageTitle>Monitorización Entidades Públicas — GreenTransit</PageTitle>
+
+@* ── Cabecera ─────────────────────────────────────────────────────────────── *@
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-building-check me-2"></i>Panel de Monitorización para Entidades Públicas
+        </h1>
+        <p class="text-muted mb-0">
+            Servicios SCRAP, recogidas, liquidaciones y objetivos municipales ·
+            @(_filterMonth.HasValue
+                ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", new CultureInfo("es-ES"))
+                : _filterYear.ToString())
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            {
+                <option value="@y">@y</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-select form-select-sm" @bind="_filterMonth" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            @for (int m = 1; m <= 12; m++)
+            {
+                <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", new CultureInfo("es-ES")))</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Flujo Residuo</label>
+        <select class="form-select form-select-sm" @bind="_filterWasteStream" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            <option value="RAEE">RAEE</option>
+            <option value="Pilas">Pilas</option>
+            <option value="Neumáticos">Neumáticos</option>
+        </select>
+    </div>
+</div>
+
+@* ── Estado ───────────────────────────────────────────────────────────────── *@
+@if (_loading)
+{
+    <div class="d-flex align-items-center gap-2 text-muted py-5 justify-content-center">
+        <div class="spinner-border spinner-border-sm"></div>
+        <span>Cargando datos…</span>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-circle-fill"></i>
+        <span>@_error</span>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── KPI cards ───────────────────────────────────────────────────────── *@
+    <div class="kpi-grid mb-4">
+
+        <div class="kpi-card">
+            <div class="kpi-card-icon" style="background:rgba(220,53,69,.12);color:#dc3545">
+                <i class="bi bi-cloud-haze2-fill"></i>
+            </div>
+            <div class="kpi-card-body">
+                <div class="kpi-label">CO₂e emitido</div>
+                <div class="kpi-value">
+                    @_data.Emissions.CurrentCO2eKg.ToString("N0")
+                    <small class="kpi-unit">kg</small>
+                </div>
+                @if (_data.Emissions.TrendPercent.HasValue)
+                {
+                    var t = _data.Emissions.TrendPercent.Value;
+                    <div class="kpi-trend @(t > 0 ? "kpi-trend--up" : "kpi-trend--down")">
+                        <i class="bi bi-arrow-@(t > 0 ? "up" : "down")-short"></i>
+                        @Math.Abs(t).ToString("0.#")% vs periodo anterior
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-card-icon" style="background:rgba(13,110,253,.12);color:#0d6efd">
+                <i class="bi bi-box-seam-fill"></i>
+            </div>
+            <div class="kpi-card-body">
+                <div class="kpi-label">kg transportados</div>
+                <div class="kpi-value">
+                    @_data.Emissions.CurrentTotalKg.ToString("N0")
+                    <small class="kpi-unit">kg</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-card-icon" style="background:rgba(255,193,7,.12);color:#ffc107">
+                <i class="bi bi-lightning-charge-fill"></i>
+            </div>
+            <div class="kpi-card-body">
+                <div class="kpi-label">CO₂e / tonelada</div>
+                <div class="kpi-value">
+                    @_data.Emissions.CO2ePerTonne.ToString("N2")
+                    <small class="kpi-unit">kg/t</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-card-icon" style="background:rgba(25,135,84,.12);color:#198754">
+                <i class="bi bi-building-fill-check"></i>
+            </div>
+            <div class="kpi-card-body">
+                <div class="kpi-label">SCRAPs activos</div>
+                <div class="kpi-value">@_data.ScrapServices.Count</div>
+                <div class="kpi-sub">prestadores en el periodo</div>
+            </div>
+        </div>
+
+    </div>
+
+    @* ── Fila superior: Servicios + Liquidaciones ─────────────────────────── *@
+    <div class="dashboard-grid-2col mb-4">
+
+        @* ── Widget 1: Servicios por SCRAP ──────────────────────────────── *@
+        <div class="card dashboard-card h-100">
+            <div class="card-header-gt">
+                <i class="bi bi-building me-2"></i>Servicios prestados por SCRAP
+            </div>
+            <div class="card-body p-0">
+                @if (!_data.ScrapServices.Any())
+                {
+                    <div class="empty-state py-5">
+                        <i class="bi bi-inbox fs-2 text-muted"></i>
+                        <p class="mt-2 text-muted">Sin datos para el periodo.</p>
+                    </div>
+                }
+                else
+                {
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-header-gt">
+                            <tr>
+                                <th>SCRAP</th>
+                                <th class="text-end">Traslados</th>
+                                <th class="text-end">kg totales</th>
+                                <th class="text-center">Pend.</th>
+                                <th class="text-center">Comp.</th>
+                                <th class="text-center">Canc.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _data.ScrapServices)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="bi bi-building text-muted"></i>
+                                            <span class="fw-medium">@row.ScrapName</span>
+                                        </div>
+                                    </td>
+                                    <td class="text-end fw-semibold">@row.TotalMoves</td>
+                                    <td class="text-end">@row.TotalKg.ToString("N0") kg</td>
+                                    <td class="text-center">
+                                        @if (row.PendingMoves > 0)
+                                        {
+                                            <span class="badge-status badge-status--pending">@row.PendingMoves</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">—</span>
+                                        }
+                                    </td>
+                                    <td class="text-center">
+                                        @if (row.CompletedMoves > 0)
+                                        {
+                                            <span class="badge-status badge-status--completed">@row.CompletedMoves</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">—</span>
+                                        }
+                                    </td>
+                                    <td class="text-center">
+                                        @if (row.CancelledMoves > 0)
+                                        {
+                                            <span class="badge-status badge-status--cancelled">@row.CancelledMoves</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+
+        @* ── Widget 3: Liquidaciones ─────────────────────────────────────── *@
+        <div class="card dashboard-card h-100">
+            <div class="card-header-gt">
+                <i class="bi bi-receipt me-2"></i>Liquidaciones / Facturas de compensación
+            </div>
+            <div class="card-body p-0">
+                @if (!_data.Settlements.Any())
+                {
+                    <div class="empty-state py-5">
+                        <i class="bi bi-receipt fs-2 text-muted"></i>
+                        <p class="mt-2 text-muted">Sin liquidaciones para el periodo.</p>
+                    </div>
+                }
+                else
+                {
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-header-gt">
+                            <tr>
+                                <th>Número</th>
+                                <th>SCRAP</th>
+                                <th class="text-center">Periodo</th>
+                                <th class="text-center">Estado</th>
+                                <th class="text-end">Importe</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var s in _data.Settlements)
+                            {
+                                <tr>
+                                    <td>
+                                        <a href="/settlements/@s.Id" class="link-primary fw-medium">
+                                            @s.SettlementNumber
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="text-muted small">@(s.ScrapName ?? "—")</span>
+                                    </td>
+                                    <td class="text-center small">
+                                        @(s.Month.HasValue
+                                            ? new DateTime(s.Year, s.Month.Value, 1).ToString("MMM yyyy", new CultureInfo("es-ES"))
+                                            : s.Year.ToString())
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge-status @SettlementStatusCss(s.Status)">
+                                            @SettlementStatusLabel(s.Status)
+                                        </span>
+                                    </td>
+                                    <td class="text-end fw-semibold">
+                                        @s.TotalAmount.ToString("N2") <span class="text-muted small">@s.Currency</span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+
+    </div>
+
+    @* ── Widget 2: Histórico mensual ─────────────────────────────────────── *@
+    <div class="card dashboard-card mb-4">
+        <div class="card-header-gt">
+            <i class="bi bi-graph-up me-2"></i>Histórico de recogidas — kg mensuales por SCRAP
+        </div>
+        <div class="card-body">
+            @if (!_data.MonthlyPickupHistory.Any())
+            {
+                <div class="empty-state py-4">
+                    <i class="bi bi-graph-up fs-2 text-muted"></i>
+                    <p class="mt-2 text-muted">Sin datos de recogidas.</p>
+                </div>
+            }
+            else
+            {
+                var allMonths = _data.MonthlyPickupHistory
+                    .SelectMany(s => s.Points)
+                    .Select(p => new { p.Year, p.Month })
+                    .Distinct()
+                    .OrderBy(x => x.Year).ThenBy(x => x.Month)
+                    .ToList();
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-header-gt">
+                            <tr>
+                                <th style="min-width:160px">SCRAP</th>
+                                @foreach (var m in allMonths)
+                                {
+                                    <th class="text-end small" style="min-width:70px">
+                                        @(new DateTime(m.Year, m.Month, 1).ToString("MM/yy"))
+                                    </th>
+                                }
+                                <th class="text-end" style="min-width:90px">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var serie in _data.MonthlyPickupHistory)
+                            {
+                                var pointsDict = serie.Points.ToDictionary(p => (p.Year, p.Month), p => p.TotalKg);
+                                var rowTotal   = serie.Points.Sum(p => p.TotalKg);
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="bi bi-building text-muted"></i>
+                                            <span class="fw-medium">@serie.ScrapName</span>
+                                        </div>
+                                    </td>
+                                    @foreach (var m in allMonths)
+                                    {
+                                        var kg = pointsDict.GetValueOrDefault((m.Year, m.Month));
+                                        <td class="text-end small @(kg > 0 ? "" : "text-muted")">
+                                            @(kg > 0 ? kg.ToString("N0") : "—")
+                                        </td>
+                                    }
+                                    <td class="text-end fw-bold text-primary">
+                                        @rowTotal.ToString("N0") kg
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Widget 5: Cumplimiento de objetivos municipales ────────────────── *@
+    <div class="card dashboard-card mb-4">
+        <div class="card-header-gt">
+            <i class="bi bi-flag-fill me-2"></i>Cumplimiento de objetivos municipales
+        </div>
+        <div class="card-body">
+            @if (!_data.MunicipalTargets.Any())
+            {
+                <div class="empty-state py-4">
+                    <i class="bi bi-flag fs-2 text-muted"></i>
+                    <p class="mt-2 text-muted">Sin objetivos configurados para el periodo.</p>
+                </div>
+            }
+            else
+            {
+                <div class="pm-targets-grid">
+                    @foreach (var t in _data.MunicipalTargets)
+                    {
+                        var pct    = Math.Min(t.CompliancePercent, 100);
+                        var barCss = pct >= 90 ? "bg-success" : pct >= 60 ? "bg-warning" : "bg-danger";
+                        var lblCss = pct >= 90 ? "text-success" : pct >= 60 ? "text-warning" : "text-danger";
+                        <div class="pm-target-item">
+                            <div class="d-flex justify-content-between align-items-baseline mb-1">
+                                <div>
+                                    <span class="fw-semibold">@t.ScrapName</span>
+                                    @if (!string.IsNullOrEmpty(t.AutonomousCommunity))
+                                    {
+                                        <span class="ms-2 badge bg-secondary-subtle text-secondary-emphasis small">
+                                            @t.AutonomousCommunity
+                                        </span>
+                                    }
+                                </div>
+                                <span class="fw-bold @lblCss">@t.CompliancePercent.ToString("0.#")%</span>
+                            </div>
+                            <div class="progress mb-1" style="height:8px;border-radius:4px">
+                                <div class="progress-bar @barCss"
+                                     style="width:@pct.ToString("0.##", CultureInfo.InvariantCulture)%;border-radius:4px"
+                                     role="progressbar">
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between small text-muted">
+                                <span>Real: <strong>@t.RealKg.ToString("N0") kg</strong></span>
+                                <span>Objetivo: @t.TargetKg.ToString("N0") kg</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private PublicMonitoringDto? _data;
+    private bool    _loading;
+    private string? _error;
+
+    private int  _filterYear        = DateTime.Now.Year;
+    private int? _filterMonth       = DateTime.Now.Month;
+    private string _filterWasteStream = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+        => await LoadDataAsync();
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _error   = null;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetPublicMonitoringQuery(
+                Year:        _filterYear,
+                Month:       _filterMonth == 0 ? null : _filterMonth,
+                WasteStream: string.IsNullOrEmpty(_filterWasteStream) ? null : _filterWasteStream));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar el dashboard de monitorización pública.");
+            _error = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshAsync() => await LoadDataAsync();
+
+    private static string SettlementStatusCss(string status) => status switch
+    {
+        "Approved"  => "badge-status--completed",
+        "Pending"   => "badge-status--pending",
+        "Rejected"  => "badge-status--cancelled",
+        _           => "badge-status--neutral"
+    };
+
+    private static string SettlementStatusLabel(string status) => status switch
+    {
+        "Approved" => "Aprobada",
+        "Pending"  => "Pendiente",
+        "Rejected" => "Rechazada",
+        _          => status
+    };
+}

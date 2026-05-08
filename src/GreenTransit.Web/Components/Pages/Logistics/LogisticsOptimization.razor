@@ -1,0 +1,511 @@
+@page "/logistics/optimization"
+@attribute [Authorize(Policy = PolicyConstants.CanViewLogisticsOptimization)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Logistics.DTOs
+@using GreenTransit.Application.Features.Logistics.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+@using System.Globalization
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject ILogger<LogisticsOptimization> Logger
+@inject IJSRuntime          JS
+
+<PageTitle>Optimización Logística — GreenTransit</PageTitle>
+
+@* ── Cabecera ─────────────────────────────────────────────────────────────── *@
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-truck me-2"></i>Panel de Optimización Logística
+        </h1>
+        <p class="text-muted mb-0">
+            Rutas, volúmenes RAEE y cumplimiento DUM ·
+            @(_filterMonth.HasValue
+                ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", new CultureInfo("es-ES"))
+                : _filterYear.ToString())
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            {
+                <option value="@y">@y</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-select form-select-sm" @bind="_filterMonth" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            @for (int m = 1; m <= 12; m++)
+            {
+                <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", new CultureInfo("es-ES")))</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Flujo residuo</label>
+        <select class="form-select form-select-sm" @bind="_filterWasteStream" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            <option value="RAEE">RAEE</option>
+            <option value="PILAS">Pilas</option>
+            <option value="NEUMATICOS">Neumáticos</option>
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="row g-3 mb-3">
+        @for (int i = 0; i < 4; i++)
+        {
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="skeleton skeleton-text mb-2" style="height:1rem;width:60%"></div>
+                        <div class="skeleton skeleton-text" style="height:2rem;width:40%"></div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-8">
+            <div class="card"><div class="card-body"><div class="skeleton" style="height:320px"></div></div></div>
+        </div>
+        <div class="col-12 col-lg-4">
+            <div class="card"><div class="card-body"><div class="skeleton" style="height:320px"></div></div></div>
+        </div>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── KPI Cards ────────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label">
+                        <i class="bi bi-truck me-1 text-primary"></i>Recogidas
+                    </div>
+                    <div class="kpi-value">@_data.RouteEfficiency.TotalPickups.ToString("N0")</div>
+                    <small class="text-muted">traslados con datos de transporte</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label">
+                        <i class="bi bi-geo-alt me-1 text-info"></i>Distancia media
+                    </div>
+                    <div class="kpi-value">@_data.RouteEfficiency.AvgDistanceKmPerPickup.ToString("N1") <small>km</small></div>
+                    <small class="text-muted">por recogida</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label">
+                        <i class="bi bi-cloud me-1 text-success"></i>kgCO₂e medio
+                    </div>
+                    <div class="kpi-value">@_data.RouteEfficiency.AvgCO2eKgPerPickup.ToString("N2") <small>kg</small></div>
+                    <div class="d-flex align-items-center gap-1">
+                        @if (_data.RouteEfficiency.CO2eTrendPercent.HasValue)
+                        {
+                            var trend = _data.RouteEfficiency.CO2eTrendPercent.Value;
+                            var cls   = trend <= 0 ? "text-success" : "text-danger";
+                            var icon  = trend <= 0 ? "bi-arrow-down" : "bi-arrow-up";
+                            <small class="@cls"><i class="bi @icon"></i> @Math.Abs(trend).ToString("N1")%</small>
+                        }
+                        <small class="text-muted">vs periodo anterior</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label">
+                        <i class="bi bi-cloud-fill me-1 text-warning"></i>CO₂e / tonelada
+                    </div>
+                    <div class="kpi-value">@_data.RouteEfficiency.CO2eKgPerTonne.ToString("N2") <small>kg/t</small></div>
+                    <small class="text-muted">intensidad de emisión</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Mapa + DUM Compliance ─────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-lg-8">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-map me-1"></i>Mapa de puntos de recogida y plantas</span>
+                    <small class="text-muted">@_data.MapPoints.Count puntos activos</small>
+                </div>
+                <div class="card-body p-0">
+                    <div id="@_mapContainerId" style="height:360px;border-radius:0 0 .5rem .5rem"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-clock-history me-1"></i>Cumplimiento ventanas DUM
+                </div>
+                <div class="card-body d-flex flex-column justify-content-center">
+                    @{
+                        var total = _data.DumCompliance.WithinWindow
+                                  + _data.DumCompliance.OutsideWindow
+                                  + _data.DumCompliance.NoZoneApplicable;
+                    }
+                    <div id="dumDonut" style="height:200px"></div>
+                    <div class="mt-3">
+                        <DumLegendRow Color="#198754" Label="Dentro de ventana" Count="@_data.DumCompliance.WithinWindow" Total="@total" />
+                        <DumLegendRow Color="#dc3545" Label="Fuera de ventana"  Count="@_data.DumCompliance.OutsideWindow" Total="@total" />
+                        <DumLegendRow Color="#6c757d" Label="Sin zona DUM"      Count="@_data.DumCompliance.NoZoneApplicable" Total="@total" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Volumen por zona + Vehículos ──────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-lg-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-bar-chart-line me-1"></i>Volumen RAEE por provincia
+                </div>
+                <div class="card-body">
+                    @if (!_data.VolumeByZone.Any())
+                    {
+                        <p class="text-muted text-center py-4">Sin datos de volumen para el periodo.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Provincia</th>
+                                        <th class="text-end">Recogidas</th>
+                                        <th class="text-end">Total kg</th>
+                                        <th>Barra</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{
+                                        var maxKg = _data.VolumeByZone.Max(v => v.TotalKg);
+                                    }
+                                    @foreach (var zone in _data.VolumeByZone.Take(15))
+                                    {
+                                        var pct = maxKg > 0 ? (double)(zone.TotalKg / maxKg * 100) : 0;
+                                        <tr>
+                                            <td>@(zone.ProvinceName ?? zone.ProvinceCode)</td>
+                                            <td class="text-end">@zone.PickupCount</td>
+                                            <td class="text-end">@FormatKg(zone.TotalKg)</td>
+                                            <td style="width:30%">
+                                                <div class="progress" style="height:10px">
+                                                    <div class="progress-bar bg-primary"
+                                                         style="width:@pct.ToString("F0")%"></div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-truck me-1"></i>Utilización por tipo de vehículo
+                </div>
+                <div class="card-body">
+                    @if (!_data.VehicleUtilization.Any())
+                    {
+                        <p class="text-muted text-center py-4">Sin datos de vehículos para el periodo.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th class="text-end">Viajes</th>
+                                        <th class="text-end">kg</th>
+                                        <th class="text-end">km</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var v in _data.VehicleUtilization)
+                                    {
+                                        <tr>
+                                            <td>@(v.VehicleType ?? "Desconocido")</td>
+                                            <td class="text-end">@v.TripCount</td>
+                                            <td class="text-end">@FormatKg(v.TotalKg)</td>
+                                            <td class="text-end">@v.TotalDistanceKm.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Heatmap llegadas planta + Incidencias ─────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-lg-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-calendar3 me-1"></i>Heatmap de llegadas a planta (día/hora)
+                </div>
+                <div class="card-body">
+                    @if (!_data.PlantArrivalHeatmap.Any())
+                    {
+                        <p class="text-muted text-center py-4">Sin entradas en planta para el periodo.</p>
+                    }
+                    else
+                    {
+                        <div class="heatmap-container overflow-auto">
+                            <table class="table table-sm heatmap-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        @for (int h = 0; h < 24; h++)
+                                        {
+                                            <th class="text-center" style="font-size:.65rem;min-width:28px">@h</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{
+                                        var dayNames = new[] { "Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb" };
+                                        var heatDict = _data.PlantArrivalHeatmap
+                                            .ToDictionary(h => (h.DayOfWeek, h.Hour), h => h.Count);
+                                        var maxCount = heatDict.Values.DefaultIfEmpty(0).Max();
+                                    }
+                                    @for (int d = 0; d < 7; d++)
+                                    {
+                                        <tr>
+                                            <td style="font-size:.75rem;font-weight:600">@dayNames[d]</td>
+                                            @for (int h = 0; h < 24; h++)
+                                            {
+                                                var cnt     = heatDict.GetValueOrDefault((d, h));
+                                                var opacity = maxCount > 0 ? cnt * 0.8 / maxCount + 0.05 : 0.05;
+                                                <td style="background:rgba(13,110,253,@opacity.ToString("F2"));
+                                                           text-align:center;font-size:.65rem;padding:2px">
+                                                    @(cnt > 0 ? cnt.ToString() : string.Empty)
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-5">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-exclamation-triangle me-1 text-warning"></i>Incidencias logísticas abiertas</span>
+                    @if (_data.OpenIncidents.Any())
+                    {
+                        <span class="badge bg-danger">@_data.OpenIncidents.Count</span>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (!_data.OpenIncidents.Any())
+                    {
+                        <p class="text-muted text-center py-4 px-3">
+                            <i class="bi bi-check-circle text-success fs-4 d-block mb-1"></i>
+                            Sin incidencias logísticas abiertas.
+                        </p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Traslado</th>
+                                        <th>Tipo</th>
+                                        <th>Sev.</th>
+                                        <th class="text-end">Días</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var inc in _data.OpenIncidents.Take(20))
+                                    {
+                                        <tr>
+                                            <td class="font-monospace small">@(inc.WasteMoveReference ?? "—")</td>
+                                            <td><span class="badge bg-secondary">@inc.Type</span></td>
+                                            <td>
+                                                <span class="badge @SeverityBadge(inc.Severity)">@inc.Severity</span>
+                                            </td>
+                                            <td class="text-end @(inc.DaysOpen > 7 ? "text-danger fw-semibold" : string.Empty)">
+                                                @inc.DaysOpen
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger">
+        <i class="bi bi-exclamation-circle me-2"></i>@_error
+    </div>
+}
+
+@code {
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private LogisticsOptimizationDto? _data;
+    private bool   _loading   = true;
+    private string? _error;
+    private bool   _mapInitialized = false;
+    private readonly string _mapContainerId = "logistics-map";
+
+    // ── Filtros ───────────────────────────────────────────────────────────────
+    private int    _filterYear        = DateTime.Now.Year;
+    private int?   _filterMonth       = DateTime.Now.Month;
+    private string _filterWasteStream = string.Empty;
+
+    // ── Ciclo de vida ─────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+        => await LoadDataAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_loading && !_mapInitialized && _data is not null)
+        {
+            _mapInitialized = true;
+            await InitMapAsync();
+        }
+    }
+
+    // ── Carga de datos ────────────────────────────────────────────────────────
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _error   = null;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetLogisticsOptimizationQuery(
+                Year:        _filterYear,
+                Month:       _filterMonth == 0 ? null : _filterMonth,
+                WasteStream: string.IsNullOrEmpty(_filterWasteStream) ? null : _filterWasteStream));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar el dashboard de optimización logística.");
+            _error = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading        = false;
+            _mapInitialized = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _mapInitialized = false;
+        await LoadDataAsync();
+    }
+
+    // ── Mapa Leaflet ──────────────────────────────────────────────────────────
+    private async Task InitMapAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            var points = _data.MapPoints
+                .Where(p => p.Latitude.HasValue && p.Longitude.HasValue)
+                .Select(p => new
+                {
+                    name       = p.Name,
+                    role       = p.EntityRole,
+                    lat        = p.Latitude!.Value,
+                    lng        = p.Longitude!.Value,
+                    accumKg    = p.AccumulatedKg,
+                    upcoming   = p.UpcomingPickups
+                })
+                .ToList();
+
+            var zones = _data.DumZones
+                .Select(z => new
+                {
+                    zoneCode     = z.ZoneCode,
+                    geometryJson = z.GeometryJson,
+                    color        = z.Color,
+                    actionType   = z.ActionType
+                })
+                .ToList();
+
+            await JS.InvokeVoidAsync("dashboardMap.initLazy",
+                _mapContainerId, points, zones);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error al inicializar el mapa logístico.");
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static string FormatKg(decimal kg) =>
+        kg >= 1_000_000 ? $"{kg / 1_000_000:N2} Mt"
+        : kg >= 1_000   ? $"{kg / 1_000:N1} t"
+        : $"{kg:N0} kg";
+
+    private static string SeverityBadge(string severity) => severity switch
+    {
+        "Critical" or "Alta"  => "bg-danger",
+        "High"                => "bg-warning text-dark",
+        "Medium" or "Media"   => "bg-primary",
+        _                     => "bg-secondary"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("dashboardMap.dispose", _mapContainerId); }
+        catch { /* componente ya desmontado */ }
+    }
+}

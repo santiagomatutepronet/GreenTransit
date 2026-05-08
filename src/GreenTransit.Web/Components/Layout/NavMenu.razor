@@ -234,6 +234,40 @@
             </Authorized>
         </ProfileAuthorizeView>
 
+        @* ── Dashboards de Optimización Logística: SCRAP, COORDINATOR, PUBLIC_ENT, ADMIN *@
+        <ProfileAuthorizeView Profiles="@_profilesAnyLogisticsDashboard">
+            <Authorized>
+                <div class="nav-group-title nav-group-title--sub">
+                    <i class="bi bi-truck-flatbed nav-icon"></i>
+                    <span class="nav-label">Dashboards Logística</span>
+                </div>
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesLogisticsOptimization">
+            <Authorized>
+                <NavLink class="nav-item nav-item--grandchild" href="/logistics/optimization">
+                    <i class="bi bi-truck nav-icon"></i>
+                    <span class="nav-label">Optimización SCRAP</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesPublicMonitoring">
+            <Authorized>
+                <NavLink class="nav-item nav-item--grandchild" href="/logistics/public-monitoring">
+                    <i class="bi bi-building-check nav-icon"></i>
+                    <span class="nav-label">Monitorización Pública</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesOperationalDashboard">
+            <Authorized>
+                <NavLink class="nav-item nav-item--grandchild" href="/logistics/operations">
+                    <i class="bi bi-speedometer2 nav-icon"></i>
+                    <span class="nav-label">Panel Operativo</span>
+                </NavLink>
+            </Authorized>
+        </ProfileAuthorizeView>
+
         @* Documentos: todos los autenticados *@
         <NavLink class="nav-item nav-item--child" href="/documents">
             <i class="bi bi-folder2-open nav-icon"></i>
@@ -339,6 +373,34 @@
     [
         ProfileConstants.Scrap, ProfileConstants.PublicEnt, ProfileConstants.PlantOp,
         ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Optimización Logística: SCRAP, COORDINATOR, ADMIN
+    private static readonly string[] _profilesLogisticsOptimization =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.Admin
+    ];
+
+    // Monitorización Pública: PUBLIC_ENT, ADMIN
+    private static readonly string[] _profilesPublicMonitoring =
+    [
+        ProfileConstants.PublicEnt, ProfileConstants.Admin
+    ];
+
+    // Sub-título Dashboards Logística: cualquiera de los dos grupos anteriores
+    private static readonly string[] _profilesAnyLogisticsDashboard =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Coordinator,
+        ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice,
+        ProfileConstants.CacOp, ProfileConstants.PlantOp,
+        ProfileConstants.Admin
+    ];
+
+    // Panel Operativo: DISPATCH_OFFICE, CAC_OP, PLANT_OP, ADMIN
+    private static readonly string[] _profilesOperationalDashboard =
+    [
+        ProfileConstants.DispatchOffice, ProfileConstants.CacOp,
+        ProfileConstants.PlantOp, ProfileConstants.Admin
     ];
 
     // Seguridad: solo ADMIN y SCRAP

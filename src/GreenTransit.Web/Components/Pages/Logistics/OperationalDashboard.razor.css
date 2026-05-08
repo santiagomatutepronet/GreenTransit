@@ -1,0 +1,106 @@
+/* ── Embudo de traslados ─────────────────────────────────────────────────────── */
+.od-funnel-item {
+    transition: opacity var(--transition-fast, 150ms);
+}
+
+/* ── Grid semanal ───────────────────────────────────────────────────────────── */
+.od-weekly-grid {
+    display:               grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap:                   0.5rem;
+}
+
+.od-day-card {
+    display:         flex;
+    flex-direction:  column;
+    align-items:     center;
+    padding:         0.6rem 0.25rem;
+    border:          1px solid var(--border-color, rgba(0,0,0,.1));
+    border-radius:   var(--radius-md, 8px);
+    background:      var(--surface-2, #fff);
+    text-align:      center;
+    gap:             2px;
+}
+
+.od-day-card--today {
+    border-color: var(--primary-muted, #4C9A6D);
+    background:   rgba(76,154,109,.08);
+}
+
+.od-day-name {
+    font-size:   0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color:       var(--text-muted);
+}
+
+.od-day-num {
+    font-size:   1.1rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.od-day-count {
+    font-size:   0.72rem;
+    color:       var(--text-muted);
+}
+
+.od-day-count--has {
+    color:       var(--primary, #1B6B3A);
+    font-weight: 700;
+}
+
+.od-day-alert {
+    font-size: 0.75rem;
+    margin-top: 2px;
+}
+
+/* ── Balance de tratamiento ─────────────────────────────────────────────────── */
+.od-balance-item {
+    transition: opacity var(--transition-fast, 150ms);
+}
+
+/* ── Icono KPI (heredado de PublicMonitoring) ────────────────────────────────── */
+.kpi-card-icon {
+    width:           42px;
+    height:          42px;
+    border-radius:   10px;
+    display:         flex;
+    align-items:     center;
+    justify-content: center;
+    font-size:       1.2rem;
+    flex-shrink:     0;
+}
+
+.kpi-card {
+    display:     flex;
+    align-items: center;
+    gap:         1rem;
+}
+
+.kpi-card-body {
+    flex:      1;
+    min-width: 0;
+}
+
+.kpi-unit {
+    font-size:   0.65rem;
+    font-weight: 400;
+    opacity:     0.7;
+    margin-left: 2px;
+}
+
+.kpi-sub {
+    font-size:  0.72rem;
+    opacity:    0.55;
+    margin-top: 2px;
+}
+
+.empty-state {
+    display:         flex;
+    flex-direction:  column;
+    align-items:     center;
+    justify-content: center;
+    text-align:      center;
+    color:           var(--text-muted);
+}
