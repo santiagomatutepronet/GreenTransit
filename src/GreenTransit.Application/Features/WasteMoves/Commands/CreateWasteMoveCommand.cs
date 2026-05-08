@@ -91,8 +91,8 @@ public sealed class CreateWasteMoveCommandHandler
             Version              = 1
         };
 
-        // ── Líneas de residuo — proporcionadas explícitamente por el usuario ────
-        foreach (var line in request.Lines)
+        // ── Líneas de residuo — solo las que tienen residuo asignado ─────────
+        foreach (var line in request.Lines.Where(l => l.IdResidue.HasValue))
         {
             wasteMove.WasteMoveResidues.Add(new WasteMoveResidue
             {

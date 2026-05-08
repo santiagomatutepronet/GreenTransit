@@ -51,7 +51,9 @@ public sealed record MarketShareComplianceDto(
     string?   AutonomousCommunity,
     decimal   TargetKg,
     decimal   ActualKg,
-    double    CompliancePercent
+    double    CompliancePercent,
+    Guid?     IdScrap    = null,
+    string?   ScrapName  = null
 );
 
 /// <summary>Orden de servicio próxima a ejecutar.</summary>

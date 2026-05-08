@@ -34,6 +34,19 @@
 
 @* ── Filtros ─────────────────────────────────────────────────────────────────── *@
 <div class="filter-bar">
+    @if (!_isScrapProfile)
+    {
+        <div class="filter-group">
+            <label>SCRAP</label>
+            <select class="form-control" @bind="_filterScrapId">
+                <option value="">— Todos —</option>
+                @foreach (var s in _scraps)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+    }
     <div class="filter-group">
         <label>Categoría</label>
         <input type="text" class="form-control" placeholder="Todas" @bind="_filterCategory" />
@@ -47,40 +60,47 @@
         <input type="number" class="form-control" style="width:90px"
                @bind="_filterYear" min="2020" max="2099" />
     </div>
-    <div class="filter-group align-self-end">
-        <button class="btn btn-secondary btn-sm" @onclick="LoadAsync">
+    <div class="filter-actions">
+        <button class="btn btn-primary btn-sm" @onclick="SearchAsync">
             <i class="bi bi-search me-1"></i>Buscar
         </button>
+        <button class="btn btn-ghost btn-sm" @onclick="ResetFilters">Limpiar</button>
     </div>
 </div>
 
 @* ── Tabla ───────────────────────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+    <div class="text-center" style="padding:3rem 0">
+        <div class="spinner spinner-lg"></div>
+    </div>
 }
 else if (_page is null || _page.Items.Count == 0)
 {
-    <div class="alert alert-info mt-3">No se encontraron cuotas de mercado con los filtros aplicados.</div>
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle alert-icon"></i>
+        <div class="alert-content">No se encontraron cuotas de mercado con los filtros aplicados.</div>
+    </div>
 }
 else
 {
-    <div class="table-responsive mt-3">
-        <table class="table table-hover table-sm">
-            <thead class="table-light">
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
                 <tr>
+                    <th>SCRAP</th>
                     <th>Categoría</th>
                     <th>CCAA</th>
                     <th>Año</th>
-                    <th class="text-end">Objetivo (kg)</th>
+                    <th class="cell-number">Objetivo (kg)</th>
                     @if (_compliance is not null)
                     {
-                        <th class="text-end">Real (kg)</th>
+                        <th class="cell-number">Real (kg)</th>
                         <th>% Cumplimiento</th>
                     }
                     <th>Tipo flujo</th>
                     <AuthorizeView Policy="@PolicyConstants.CanManageMarketShares">
-                        <Authorized><th></th></Authorized>
+                        <Authorized><th style="width:80px"></th></Authorized>
                     </AuthorizeView>
                 </tr>
             </thead>
@@ -89,27 +109,32 @@ else
                 {
                     var comp = _compliance?.FirstOrDefault(c => c.MarketShareId == ms.Id);
                     <tr>
+                        <td>@(ms.ScrapName ?? "—")</td>
                         <td>@ms.Category</td>
-                        <td>@(ms.AutonomousCommunity ?? "—")</td>
+                        <td class="cell-muted">@(ms.AutonomousCommunity ?? "—")</td>
                         <td>@ms.Year</td>
-                        <td class="text-end">@ms.Weight.ToString("N0")</td>
+                        <td class="cell-number">@ms.Weight.ToString("N0")</td>
                         @if (_compliance is not null)
                         {
-                            <td class="text-end">@(comp?.AchievedKg.ToString("N0") ?? "—")</td>
+                            <td class="cell-number">@(comp?.AchievedKg.ToString("N0") ?? "—")</td>
                             <td>@if (comp is not null) { <ProgressBar Percent="@comp.CompliancePercent" /> }</td>
                         }
-                        <td>@(ms.FlowType ?? "—")</td>
+                        <td class="cell-muted">@(ms.FlowType ?? "—")</td>
                         <AuthorizeView Policy="@PolicyConstants.CanManageMarketShares">
                             <Authorized>
-                                <td class="text-nowrap">
-                                    <button class="btn btn-outline-secondary btn-sm me-1"
-                                            @onclick="@(() => OpenEdit(ms))">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                    <button class="btn btn-outline-danger btn-sm"
-                                            @onclick="@(() => ConfirmDelete(ms))">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
+                                <td>
+                                    <div class="btn-group">
+                                        <button class="btn btn-ghost btn-sm btn-icon-only"
+                                                title="Editar"
+                                                @onclick="@(() => OpenEdit(ms))">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-ghost btn-sm btn-icon-only text-danger"
+                                                title="Eliminar"
+                                                @onclick="@(() => ConfirmDelete(ms))">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </Authorized>
                         </AuthorizeView>
@@ -117,26 +142,31 @@ else
                 }
             </tbody>
         </table>
-    </div>
 
-    @* Paginación *@
-    @if (_page.TotalPages > 1)
-    {
-        <div class="d-flex justify-content-between align-items-center mt-2">
-            <small class="text-muted">@_page.TotalCount registros</small>
-            <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary" disabled="@(!_page.HasPrevious)"
+        @if (_page.TotalPages > 1)
+        {
+            <div class="pagination">
+                <span class="pagination-info">
+                    @((_currentPage - 1) * 15 + 1)–@(Math.Min(_currentPage * 15, _page.TotalCount))
+                    de @_page.TotalCount registros
+                </span>
+                <button class="pagination-btn" disabled="@(!_page.HasPrevious)"
                         @onclick="() => ChangePage(_page.PageNumber - 1)">
                     <i class="bi bi-chevron-left"></i>
                 </button>
-                <span class="btn btn-outline-secondary disabled">@_page.PageNumber / @_page.TotalPages</span>
-                <button class="btn btn-outline-secondary" disabled="@(!_page.HasNext)"
+                @for (var i = 1; i <= _page.TotalPages; i++)
+                {
+                    var pg = i;
+                    <button class="pagination-btn @(pg == _currentPage ? "active" : "")"
+                            @onclick="() => ChangePage(pg)">@pg</button>
+                }
+                <button class="pagination-btn" disabled="@(!_page.HasNext)"
                         @onclick="() => ChangePage(_page.PageNumber + 1)">
                     <i class="bi bi-chevron-right"></i>
                 </button>
             </div>
-        </div>
-    }
+        }
+    </div>
 }
 
 @* ── Modal de alta/edición ───────────────────────────────────────────────────── *@
@@ -151,7 +181,7 @@ else
                 </div>
                 <div class="modal-body">
                     <div class="row g-3">
-                        @* SCRAP — obligatorio en alta; oculto en edición (no cambia el SCRAP de una cuota) *@
+                        @* SCRAP — selector en alta; solo lectura en edición *@
                         @if (!_editId.HasValue)
                         {
                             <div class="col-12">
@@ -163,6 +193,14 @@ else
                                         <option value="@s.Id">@s.Name@(s.NationalId is not null ? $" ({s.NationalId})" : "")</option>
                                     }
                                 </select>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="col-12">
+                                <label class="form-label">SCRAP</label>
+                                <input class="form-control" readonly
+                                       value="@(_scraps.FirstOrDefault(s => s.Id == _editScrapId)?.Name ?? "—")" />
                             </div>
                         }
                         @* Tipo de flujo — debe ir primero porque condiciona Categoría *@
@@ -293,10 +331,12 @@ else
     private GreenTransit.Application.Common.Models.PaginatedResult<MarketShareDto>? _page;
     private IReadOnlyList<MarketShareComplianceDto>? _compliance;
     private IReadOnlyList<EntitySelectorDto> _scraps = [];
-    private bool   _loading   = true;
+    private bool   _loading        = true;
+    private bool   _isScrapProfile = false;
+    private Guid?  _filterScrapId;
     private string? _filterCategory;
     private string? _filterCcaa;
-    private int?    _filterYear = DateTime.Now.Year;
+    private int?    _filterYear  = DateTime.Now.Year;
     private int     _currentPage = 1;
 
     // ── Formulario modal ─────────────────────────────────────────────────────
@@ -312,7 +352,10 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery([EntityRoles.SCRAP]));
+        _scraps        = await Mediator.Send(new GetEntitiesForSelectorQuery([EntityRoles.SCRAP]));
+        _isScrapProfile = CurrentUser.IsInProfile(ProfileConstants.Scrap);
+        if (_isScrapProfile && CurrentUser.LinkedEntityId.HasValue)
+            _filterScrapId = CurrentUser.LinkedEntityId.Value;
         await LoadAsync();
     }
 
@@ -324,6 +367,7 @@ else
         var year = _filterYear;
 
         var query = new GetMarketSharesQuery(
+            IdScrap:             _filterScrapId,
             Category:            _filterCategory,
             AutonomousCommunity: _filterCcaa,
             Year:                year,
@@ -341,6 +385,22 @@ else
             _compliance = null;
 
         _loading = false;
+    }
+
+    private async Task SearchAsync()
+    {
+        _currentPage = 1;
+        await LoadAsync();
+    }
+
+    private async Task ResetFilters()
+    {
+        if (!_isScrapProfile) _filterScrapId = null;
+        _filterCategory = null;
+        _filterCcaa     = null;
+        _filterYear     = DateTime.Now.Year;
+        _currentPage    = 1;
+        await LoadAsync();
     }
 
     private async Task ChangePage(int page)

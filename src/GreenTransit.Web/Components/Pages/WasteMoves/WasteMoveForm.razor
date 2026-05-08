@@ -6,6 +6,7 @@
 @using GreenTransit.Application.Features.WasteMoves.DTOs
 @using GreenTransit.Application.Features.ServiceOrders.DTOs
 @using GreenTransit.Application.Features.ServiceOrders.Queries
+@using GreenTransit.Application.Features.ServiceOrders.DTOs
 @using GreenTransit.Application.Features.Entities.DTOs
 @using GreenTransit.Application.Features.Entities.Queries
 @using GreenTransit.Application.Features.Residues.DTOs
@@ -90,11 +91,13 @@ else
                                         </span>
                                     </td>
                                     <td class="cell-muted">
-                                        @if (so.LerCodeCode != null)
+                                        @if (!string.IsNullOrEmpty(so.LerCodesDisplay))
                                         {
-                                            <span title="@so.LerCodeDescription">
-                                                @so.LerCodeCode
-                                            </span>
+                                            <span>@so.LerCodesDisplay</span>
+                                        }
+                                        else if (so.LerCodeCode != null)
+                                        {
+                                            <span title="@so.LerCodeDescription">@so.LerCodeCode</span>
                                         }
                                         else
                                         {
@@ -122,94 +125,133 @@ else
             }
         </div>
 
-        @* ── 2. Líneas de residuos (una sección por SO seleccionada) ─────── *@
+        @* ── 2. Líneas de residuos (agrupadas por SO) ───────────────────── *@
         @if (_lines.Count > 0)
         {
+            var includedCount = _lines.Count(l => l.IsIncluded);
             <div class="form-section">
                 <div class="form-section-title">
                     <i class="bi bi-list-ul form-section-title-icon"></i>
                     Líneas de residuos
-                    <span class="badge badge-neutral ms-2">@_lines.Count</span>
+                    <span class="badge badge-neutral ms-2">@includedCount incluida@(includedCount == 1 ? "" : "s")</span>
                 </div>
                 <p class="cell-muted mb-3">
-                    Para cada línea, selecciona el residuo concreto y ajusta la cantidad.
-                    Los residuos disponibles están filtrados por el código LER de la SO.
+                    Marca las líneas que deseas incluir en el traslado. Para cada línea activa,
+                    selecciona el residuo concreto y ajusta la cantidad.
+                    Los residuos disponibles están filtrados por el código LER de la línea.
                 </p>
 
-                @foreach (var line in _lines)
+                @foreach (var soGroup in _lines.GroupBy(l => l.SoId))
                 {
+                    var soLines     = soGroup.ToList();
+                    var soNumber    = soLines[0].SoNumber;
+                    var multiLine   = soLines.Count > 1;
+
                     <div class="card mb-3">
                         <div class="card-header d-flex align-items-center gap-3">
-                            <span class="font-semibold">@line.SoNumber</span>
-                            @if (line.LerCodeCode != null)
+                            <span class="font-semibold"><i class="bi bi-clipboard2-check me-1"></i>@soNumber</span>
+                            @if (multiLine)
                             {
-                                <span class="cell-muted" title="@line.LerCodeDescription">
-                                    <i class="bi bi-tag me-1"></i>@line.LerCodeCode
-                                </span>
+                                <span class="badge badge-neutral">@soLines.Count líneas</span>
                             }
                         </div>
-                        <div class="card-body">
-                            <div class="row g-3">
 
-                                @* Selector de residuo *@
-                                <div class="col-md-5">
-                                    <label>Residuo</label>
-                                    @if (line.LoadingResidues)
+                        @foreach (var line in soLines)
+                        {
+                            <div class="card-body border-top py-3 @(!line.IsIncluded ? "opacity-50" : "")">
+                                <div class="row g-3 align-items-center">
+
+                                    @* Checkbox incluir línea *@
+                                    @if (multiLine)
                                     {
-                                        <div class="d-flex align-items-center gap-2 mt-1">
-                                            <div class="spinner spinner-sm"></div>
-                                            <span class="cell-muted">Cargando residuos…</span>
+                                        <div class="col-auto d-flex align-items-center">
+                                            <input type="checkbox"
+                                                   checked="@line.IsIncluded"
+                                                   @onchange="e => line.IsIncluded = (bool)(e.Value ?? true)" />
+                                            <span class="ms-2 cell-muted" style="white-space:nowrap">
+                                                Línea @(line.SortOrder + 1)
+                                            </span>
                                         </div>
                                     }
-                                    else if (line.AvailableResidues.Count == 0)
+
+                                    @* Código LER *@
+                                    @if (line.LerCodeCode != null)
                                     {
-                                        <div class="alert alert-info py-1 px-2 mt-1">
-                                            No hay residuos con el código LER
-                                            <strong>@(line.LerCodeCode ?? "—")</strong>.
-                                            Puedes continuar sin asignar residuo.
+                                        <div class="col-auto">
+                                            <span class="badge badge-neutral" title="@line.LerCodeDescription">
+                                                <i class="bi bi-tag me-1"></i>@line.LerCodeCode
+                                            </span>
                                         </div>
                                     }
-                                    else
-                                    {
-                                        <select class="form-control"
-                                                value="@(line.IdResidue?.ToString() ?? "")"
-                                                @onchange="e => OnResidueChanged(line, e.Value?.ToString())">
-                                            <option value="">— Sin especificar —</option>
-                                            @foreach (var r in line.AvailableResidues)
-                                            {
-                                                <option value="@r.Id">
-                                                    @r.Name
-                                                    @(r.IsDangerous ? " ⚠️ Peligroso" : "")
-                                                    @(r.IsRAEE ? " ♻️ RAEE" : "")
-                                                </option>
-                                            }
-                                        </select>
-                                    }
-                                </div>
 
-                                @* Peso *@
-                                <div class="col-md-2">
-                                    <label>Peso (kg)</label>
-                                    <input type="number" class="form-control"
-                                           min="0" step="0.001"
-                                           placeholder="0,000"
-                                           value="@line.Weight"
-                                           @onchange="e => line.Weight = ParseDecimal(e.Value?.ToString())" />
-                                </div>
+                                    @* Selector de residuo *@
+                                    <div class="col-md-4">
+                                        <label>Residuo</label>
+                                        @if (line.LoadingResidues)
+                                        {
+                                            <div class="d-flex align-items-center gap-2 mt-1">
+                                                <div class="spinner spinner-sm"></div>
+                                                <span class="cell-muted">Cargando residuos…</span>
+                                            </div>
+                                        }
+                                        else if (line.AvailableResidues.Count == 0)
+                                        {
+                                            <div class="alert alert-info py-1 px-2 mt-1">
+                                                No hay residuos con el código LER
+                                                <strong>@(line.LerCodeCode ?? "—")</strong>.
+                                                Puedes continuar sin asignar residuo.
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <select class="form-control"
+                                                    value="@(line.IdResidue?.ToString() ?? "")"
+                                                    disabled="@(!line.IsIncluded)"
+                                                    @onchange="e => OnResidueChanged(line, e.Value?.ToString())">
+                                                <option value="">— Sin especificar —</option>
+                                                @foreach (var r in line.AvailableResidues)
+                                                {
+                                                    <option value="@r.Id">
+                                                        @r.Name
+                                                        @(r.IsDangerous ? " ⚠️ Peligroso" : "")
+                                                        @(r.IsRAEE ? " ♻️ RAEE" : "")
+                                                    </option>
+                                                }
+                                            </select>
+                                        }
+                                    </div>
 
-                                @* Unidades *@
-                                <div class="col-md-2">
-                                    <label>Unidades</label>
-                                    <input type="number" class="form-control"
-                                           min="0" step="1"
-                                           placeholder="0"
-                                           value="@line.Units"
-                                           @onchange="e => line.Units = ParseInt(e.Value?.ToString())" />
-                                </div>
+                                    @* Peso *@
+                                    <div class="col-md-2">
+                                        <label>Peso (kg)</label>
+                                        <input type="number" class="form-control"
+                                               min="0" step="0.001"
+                                               placeholder="0,000"
+                                               disabled="@(!line.IsIncluded)"
+                                               value="@line.Weight"
+                                               @onchange="e => line.Weight = ParseDecimal(e.Value?.ToString())" />
+                                    </div>
 
+                                    @* Unidades *@
+                                    <div class="col-md-2">
+                                        <label>Unidades</label>
+                                        <input type="number" class="form-control"
+                                               min="0" step="1"
+                                               placeholder="0"
+                                               disabled="@(!line.IsIncluded)"
+                                               value="@line.Units"
+                                               @onchange="e => line.Units = ParseInt(e.Value?.ToString())" />
+                                    </div>
+
+                                </div>
                             </div>
-                        </div>
+                        }
                     </div>
+                }
+
+                @if (includedCount == 0)
+                {
+                    <div class="field-error">Debes incluir al menos una línea de residuo.</div>
                 }
             </div>
         }
@@ -376,12 +418,15 @@ else
     // ── Modelo de línea de residuo ────────────────────────────────────────────
     private sealed class LineModel
     {
-        public Guid     SoId             { get; init; }
-        public string   SoNumber         { get; init; } = "";
-        public Guid?    IdLerCode        { get; init; }
-        public string?  LerCodeCode      { get; init; }
+        public Guid     SoId               { get; init; }
+        public string   SoNumber           { get; init; } = "";
+        public Guid?    SoResidueId        { get; init; }   // ID de la línea de residuo de la SO (null si no procede de una línea concreta)
+        public int      SortOrder          { get; init; }
+        public Guid?    IdLerCode          { get; init; }
+        public string?  LerCodeCode        { get; init; }
         public string?  LerCodeDescription { get; init; }
-        public bool     LoadingResidues  { get; set; } = true;
+        public bool     IsIncluded         { get; set; } = true;
+        public bool     LoadingResidues    { get; set; } = true;
         public List<ResidueDto> AvailableResidues { get; set; } = [];
 
         public Guid?    IdResidue   { get; set; }
@@ -430,34 +475,67 @@ else
 
     private async Task ToggleSoAsync(ServiceOrderDto so)
     {
-        var existing = _lines.FirstOrDefault(l => l.SoId == so.Id);
-        if (existing is not null)
+        // Si ya está seleccionada, eliminar todas sus líneas
+        var existingLines = _lines.Where(l => l.SoId == so.Id).ToList();
+        if (existingLines.Count > 0)
         {
-            _lines.Remove(existing);
+            foreach (var l in existingLines) _lines.Remove(l);
             return;
         }
-
-        // Crear línea con datos por defecto de la SO
-        var line = new LineModel
-        {
-            SoId               = so.Id,
-            SoNumber           = so.ServiceOrderNumber,
-            IdLerCode          = so.IdLERCode,
-            LerCodeCode        = so.LerCodeCode,
-            LerCodeDescription = so.LerCodeDescription,
-            LoadingResidues    = true,
-            Weight             = so.EstimatedWeight,
-            MeasureUnit        = "Kg",
-            Units              = null
-        };
-        _lines.Add(line);
 
         // Autocompletar Origen con el punto de recogida de la SO (primera SO seleccionada)
         if (_formModel.IdSource is null && so.IdPickupPoint.HasValue)
             _formModel.IdSource = so.IdPickupPoint.Value;
 
-        // Cargar residuos para el LER de esta SO
-        await LoadResiduesForLineAsync(line);
+        // Obtener el detalle de la SO para acceder a todas sus líneas de residuo
+        var detail = await Mediator.Send(new GetServiceOrderByIdQuery(so.Id));
+
+        if (detail is not null && detail.Residues.Count > 0)
+        {
+            // Crear una LineModel por cada línea de residuo de la SO.
+            // Carga secuencial para evitar race conditions en la caché y
+            // llamadas concurrentes a StateHasChanged en Blazor Server.
+            foreach (var residue in detail.Residues)
+            {
+                var line = new LineModel
+                {
+                    SoId               = so.Id,
+                    SoNumber           = so.ServiceOrderNumber,
+                    SoResidueId        = residue.Id,
+                    SortOrder          = residue.SortOrder,
+                    IdLerCode          = residue.IdLERCode,
+                    LerCodeCode        = residue.LerCodeCode,
+                    LerCodeDescription = residue.LerCodeDescription,
+                    LoadingResidues    = true,
+                    IsIncluded         = true,
+                    Weight             = residue.EstimatedWeight,
+                    MeasureUnit        = "Kg",
+                    Units              = residue.Units
+                };
+                _lines.Add(line);
+                await LoadResiduesForLineAsync(line);
+            }
+        }
+        else
+        {
+            // Fallback: SO sin líneas de residuo — crear una línea desde la cabecera
+            var line = new LineModel
+            {
+                SoId               = so.Id,
+                SoNumber           = so.ServiceOrderNumber,
+                SortOrder          = 0,
+                IdLerCode          = so.IdLERCode,
+                LerCodeCode        = so.LerCodeCode,
+                LerCodeDescription = so.LerCodeDescription,
+                LoadingResidues    = true,
+                IsIncluded         = true,
+                Weight             = so.EstimatedWeight,
+                MeasureUnit        = "Kg",
+                Units              = null
+            };
+            _lines.Add(line);
+            await LoadResiduesForLineAsync(line);
+        }
     }
 
     private async Task LoadResiduesForLineAsync(LineModel line)
@@ -521,11 +599,19 @@ else
             return;
         }
 
+        // Validar que haya al menos una línea incluida
+        if (!_lines.Any(l => l.IsIncluded))
+        {
+            _validationErrors["Lines"] = ["Debes incluir al menos una línea de residuo."];
+            return;
+        }
+
         _saving = true;
         try
         {
-            var soIds = _lines.Select(l => l.SoId).Distinct().ToArray();
-            var lineInputs = _lines.Select(l => new WasteMoveLineInput(
+            var includedLines = _lines.Where(l => l.IsIncluded).ToList();
+            var soIds = includedLines.Select(l => l.SoId).Distinct().ToArray();
+            var lineInputs = includedLines.Select(l => new WasteMoveLineInput(
                 IdResidue   : l.IdResidue,
                 Weight      : l.Weight,
                 MeasureUnit : l.MeasureUnit,

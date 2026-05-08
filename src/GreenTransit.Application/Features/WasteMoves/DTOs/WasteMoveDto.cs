@@ -64,6 +64,7 @@ public sealed record WasteMoveResidueDto(
     string?   ResidueName,
     bool      IsDangerous,
     bool      IsRAEE,
+    string?   LerCodeCode,
     decimal?  Weight,
     string?   MeasureUnit,
     int?      Units,

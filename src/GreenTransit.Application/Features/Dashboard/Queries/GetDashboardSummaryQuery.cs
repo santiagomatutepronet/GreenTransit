@@ -205,37 +205,58 @@ public sealed class GetDashboardSummaryQueryHandler
         // ── 7. Cumplimiento MarketShares (año en curso) ───────────────────────
         var marketShareTargets = await _context.MarketShares
             .AsNoTracking()
+            .Include(ms => ms.Scrap)
             .Where(ms =>
                 (ownerId == Guid.Empty || ms.OwnerId == ownerId) &&
                 ms.Year == now.Year)
             .ToListAsync(ct);
 
-        var actualByCategory = await _context.EntryPlants
+        // Peso real: WasteMoveResidues del año, agrupados por (IdScrap, ProductCategory)
+        // Solo traslados no cancelados con fecha de recogida en el año actual
+        var actualByScrapCategory = await _context.WasteMoveResidues
             .AsNoTracking()
-            .Where(ep =>
-                (ownerId == Guid.Empty || ep.OwnerId == ownerId) &&
-                ep.PlantEntryDate >= yearStart &&
-                ep.PlantEntryDate < yearEnd)
-            .GroupBy(ep => ep.ServiceOrder != null ? (ep.ServiceOrder.WasteStream ?? "General") : "General")
-            .Select(g => new { Category = g.Key, Weight = g.Sum(ep => ep.NetWeight ?? 0m) })
+            .Where(wmr =>
+                wmr.WasteMove != null &&
+                wmr.WasteMove.ServiceStatus != GreenTransit.Domain.Constants.WasteMoveStatuses.Cancelado &&
+                wmr.WasteMove.ActualPickupStart.HasValue &&
+                wmr.WasteMove.ActualPickupStart!.Value >= yearStart &&
+                wmr.WasteMove.ActualPickupStart!.Value < yearEnd &&
+                (ownerId == Guid.Empty || wmr.WasteMove.OwnerId == ownerId) &&
+                wmr.Weight.HasValue &&
+                wmr.Residue != null)
+            .GroupBy(wmr => new
+            {
+                IdScrap  = wmr.WasteMove!.IdScrap,
+                Category = wmr.Residue!.ProductCategory
+            })
+            .Select(g => new
+            {
+                g.Key.IdScrap,
+                g.Key.Category,
+                TotalWeight = g.Sum(x => x.Weight!.Value)
+            })
             .ToListAsync(ct);
 
-        var actualDict = actualByCategory.ToDictionary(x => x.Category, x => x.Weight);
-
         var compliance = marketShareTargets
-            .GroupBy(ms => ms.Category)
+            .GroupBy(ms => new { ms.IdScrap, ms.Category })
             .Select(g =>
             {
+                var first  = g.First();
                 var target = g.Sum(ms => ms.Weight);
-                var actual = actualDict.TryGetValue(g.Key, out var v) ? v : 0m;
+                var actual = actualByScrapCategory
+                    .Where(k => k.IdScrap == g.Key.IdScrap && k.Category == g.Key.Category)
+                    .Sum(k => k.TotalWeight);
                 return new MarketShareComplianceDto(
-                    g.Key,
-                    g.First().AutonomousCommunity,
+                    g.Key.Category,
+                    first.AutonomousCommunity,
                     target,
                     actual,
-                    target > 0 ? Math.Round((double)(actual / target) * 100, 1) : 0d);
+                    target > 0 ? Math.Round((double)(actual / target) * 100, 1) : 0d,
+                    g.Key.IdScrap,
+                    first.Scrap?.Name);
             })
-            .OrderBy(x => x.Category)
+            .OrderBy(x => x.ScrapName)
+            .ThenBy(x => x.Category)
             .ToList();
 
         // ── 8. Próximas recogidas (próximos 7 días) ───────────────────────────

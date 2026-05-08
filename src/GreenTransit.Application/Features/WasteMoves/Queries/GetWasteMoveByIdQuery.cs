@@ -31,6 +31,7 @@ public sealed class GetWasteMoveByIdQueryHandler
                 .ThenInclude(so => so!.LerCode)
             .Include(x => x.WasteMoveResidues)
                 .ThenInclude(r => r.Residue)
+                    .ThenInclude(res => res!.LerCode)
             .Include(x => x.WasteMoveResidues)
                 .ThenInclude(r => r.TreatmentOperationDestiny)
             .Include(x => x.WasteMoveResidues)
@@ -47,6 +48,7 @@ public sealed class GetWasteMoveByIdQueryHandler
                 r.Residue?.Name,
                 r.Residue?.IsDangerous ?? false,
                 r.Residue?.IsRAEE ?? false,
+                r.Residue?.LerCode?.Code,
                 r.Weight,
                 r.MeasureUnit,
                 r.Units,

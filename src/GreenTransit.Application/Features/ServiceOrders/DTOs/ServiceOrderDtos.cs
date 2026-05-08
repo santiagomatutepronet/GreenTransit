@@ -16,7 +16,9 @@ public sealed record ServiceOrderDto(
     string?   WasteMoveReference,
     Guid?     IdLERCode,
     string?   LerCodeCode,
-    string?   LerCodeDescription
+    string?   LerCodeDescription,
+    /// <summary>Todos los códigos LER distintos de las líneas de residuo, separados por coma.</summary>
+    string?   LerCodesDisplay
 );
 
 /// <summary>DTO de una línea de residuo de una Orden de Servicio.</summary>

@@ -299,6 +299,10 @@ else if (_summary is not null)
                                 <div class="d-flex justify-content-between small mb-1">
                                     <span class="fw-semibold text-truncate" style="max-width:60%">
                                         @ms.Category
+                                        @if (!string.IsNullOrEmpty(ms.ScrapName))
+                                        {
+                                            <span class="text-muted"> · @ms.ScrapName</span>
+                                        }
                                         @if (!string.IsNullOrEmpty(ms.AutonomousCommunity))
                                         {
                                             <span class="text-muted"> · @ms.AutonomousCommunity</span>

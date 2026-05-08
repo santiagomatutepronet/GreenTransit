@@ -96,7 +96,19 @@ else
                     <DetailRow Label="Estado"          Value="@(WasteMoveStatuses.Label(d.ServiceStatus ?? ""))" />
                     <DetailRow Label="Fecha solicitud" Value="@(d.RequestDate?.ToString("dd/MM/yyyy HH:mm") ?? "—")" />
                     <DetailRow Label="SO vinculada"    Value="@(d.ServiceOrderNumber ?? "—")" />
-                    <DetailRow Label="Código LER"      Value="@(d.LerCodeCode != null ? $"{d.LerCodeCode} — {d.LerCodeDescription}" : "—")" />
+                    @{
+                        // Códigos LER: primero los de las líneas de residuo; fallback al de la SO
+                        var lerCodes = d.Residues
+                            .Select(r => r.LerCodeCode)
+                            .Where(c => !string.IsNullOrEmpty(c))
+                            .Distinct()
+                            .OrderBy(c => c)
+                            .ToList();
+                        var lerDisplay = lerCodes.Count > 0
+                            ? string.Join(", ", lerCodes)
+                            : (d.LerCodeCode != null ? $"{d.LerCodeCode} — {d.LerCodeDescription}" : "—");
+                    }
+                    <DetailRow Label="Código LER" Value="@lerDisplay" />
                     @if (d.LerCodeIsDangerous)
                     {
                         <div class="mt-1">
@@ -206,9 +218,9 @@ else
                                 {
                                     <tr class="table-row-editing">
                                         <td class="cell-muted">
-                                            @if (d.LerCodeCode != null)
+                                            @if (r.LerCodeCode != null)
                                             {
-                                                <span title="@d.LerCodeDescription">@d.LerCodeCode</span>
+                                                <span>@r.LerCodeCode</span>
                                             }
                                             else
                                             {
@@ -262,10 +274,10 @@ else
                                 {
                                     <tr>
                                         <td class="cell-muted">
-                                            @if (d.LerCodeCode != null)
+                                            @if (r.LerCodeCode != null)
                                             {
-                                                <span title="@d.LerCodeDescription">@d.LerCodeCode</span>
-                                                @if (d.LerCodeIsDangerous)
+                                                <span>@r.LerCodeCode</span>
+                                                @if (r.IsDangerous)
                                                 {
                                                     <i class="bi bi-exclamation-triangle-fill text-danger ms-1"
                                                        title="Peligroso"></i>

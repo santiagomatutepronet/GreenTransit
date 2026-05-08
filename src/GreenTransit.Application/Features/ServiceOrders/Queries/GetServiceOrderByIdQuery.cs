@@ -123,7 +123,12 @@ public sealed class GetUpcomingServiceOrdersQueryHandler
                 s.WasteMoveReference,
                 s.IdLERCode,
                 s.LerCode != null ? s.LerCode.Code : null,
-                s.LerCode != null ? s.LerCode.Description : null))
+                s.LerCode != null ? s.LerCode.Description : null,
+                string.Join(", ", s.Residues
+                    .Where(r => r.LerCode != null && r.LerCode.Code != null)
+                    .Select(r => r.LerCode!.Code!)
+                    .Distinct()
+                    .OrderBy(c => c))))
             .ToListAsync(cancellationToken);
     }
 }
