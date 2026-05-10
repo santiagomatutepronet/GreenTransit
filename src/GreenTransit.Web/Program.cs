@@ -428,6 +428,11 @@ try
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Admin)));
 
+        // Gestión de permisos por pantalla: solo ADMIN.
+        options.AddPolicy(PolicyConstants.CanManagePagePermissions, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Admin)));
+
         // Lectura restringida de usuarios del propio ámbito: SCRAP.
         options.AddPolicy(PolicyConstants.CanViewOwnUsers, policy =>
             policy.AddRequirements(new OwnDataRequirement(
@@ -504,6 +509,8 @@ try
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
     // Abstracción de evaluación de policies para el AuthorizationBehavior de MediatR
     builder.Services.AddScoped<IPolicyEvaluator, GreenTransit.Web.Services.PolicyEvaluator>();
+    // Estado del menú de navegación: persiste entre navegaciones en el circuito Blazor Server
+    builder.Services.AddScoped<GreenTransit.Web.Services.NavMenuStateService>();
 
     // ── EF Core: AppDbContext con SQL Server ──────────────────────────────────
     // AddDbContext resuelve ICurrentUserService del contenedor al construir el contexto.
@@ -533,6 +540,18 @@ try
         GreenTransit.Infrastructure.Services.EntityUserProvisioningService>();
     builder.Services.AddScoped<IDataScopeService, GreenTransit.Infrastructure.Services.DataScopeService>();
     builder.Services.AddScoped<ISandboxDataSeeder, SandboxDataSeeder>();
+
+    // ── Descubrimiento de pantallas ───────────────────────────────────────────
+    var webAssembly = typeof(GreenTransit.Web.Components.App).Assembly;
+    builder.Services.AddScoped<IPageDiscoveryService>(sp =>
+        new GreenTransit.Infrastructure.Services.PageDiscoveryService(
+            sp.GetRequiredService<GreenTransit.Infrastructure.Persistence.AppDbContext>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GreenTransit.Infrastructure.Services.PageDiscoveryService>>(),
+            webAssembly));
+
+    // Evaluación dinámica de permisos por pantalla (tabla PagePermissions)
+    builder.Services.AddScoped<IPagePermissionService,
+        GreenTransit.Infrastructure.Services.PagePermissionService>();
 
     // ── Objetivos regulatorios por defecto ────────────────────────────────────
     builder.Services.AddSingleton<GreenTransit.Application.Common.Interfaces.IRegulatoryTargetDefaults,
@@ -569,6 +588,10 @@ try
     {
         var initializer = scope.ServiceProvider.GetRequiredService<IDbInitializer>();
         await initializer.InitializeAsync();
+
+        // Sincronizar catálogo de pantallas tras las migraciones y el seed de perfiles
+        var pageDiscovery = scope.ServiceProvider.GetRequiredService<IPageDiscoveryService>();
+        await pageDiscovery.SyncPageDefinitionsAsync();
     }
 
     if (!app.Environment.IsDevelopment())

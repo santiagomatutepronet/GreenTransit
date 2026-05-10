@@ -62,3 +62,32 @@ public class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         builder.HasIndex(e => e.IdProfile).HasDatabaseName("IX_Users_IdProfile");
     }
 }
+
+public class PageDefinitionConfiguration : IEntityTypeConfiguration<PageDefinition>
+{
+    public void Configure(EntityTypeBuilder<PageDefinition> builder)
+    {
+        builder.ToTable("PageDefinitions");
+        builder.HasKey(e => e.ID);
+        builder.Property(e => e.Route).HasMaxLength(256).IsRequired();
+        builder.Property(e => e.PageName).HasMaxLength(256).IsRequired();
+        builder.Property(e => e.ModuleName).HasMaxLength(128).IsRequired();
+        builder.Property(e => e.ComponentName).HasMaxLength(256);
+        builder.HasIndex(e => e.Route).IsUnique().HasDatabaseName("UQ_PageDefinitions_Route");
+        builder.HasMany(e => e.Permissions).WithOne(p => p.PageDefinition).HasForeignKey(p => p.IdPageDefinition);
+    }
+}
+
+public class PagePermissionConfiguration : IEntityTypeConfiguration<PagePermission>
+{
+    public void Configure(EntityTypeBuilder<PagePermission> builder)
+    {
+        builder.ToTable("PagePermissions");
+        builder.HasKey(e => e.ID);
+        builder.Property(e => e.AccessLevel).HasMaxLength(16).IsRequired();
+        builder.HasIndex(e => new { e.IdPageDefinition, e.IdProfile }).IsUnique()
+               .HasDatabaseName("UQ_PagePermissions_Page_Profile");
+        builder.HasOne(e => e.PageDefinition).WithMany(p => p.Permissions).HasForeignKey(e => e.IdPageDefinition);
+        builder.HasOne(e => e.Profile).WithMany().HasForeignKey(e => e.IdProfile);
+    }
+}

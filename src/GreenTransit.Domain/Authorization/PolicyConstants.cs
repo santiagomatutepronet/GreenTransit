@@ -90,6 +90,9 @@ public static class PolicyConstants
     /// <summary>CRUD de Perfiles: ADMIN.</summary>
     public const string CanManageProfiles = "CanManageProfiles";
 
+    /// <summary>Gestión de permisos por pantalla: solo ADMIN.</summary>
+    public const string CanManagePagePermissions = "CanManagePagePermissions";
+
     /// <summary>Lectura restringida de usuarios del propio ámbito: SCRAP.</summary>
     public const string CanViewOwnUsers = "CanViewOwnUsers";
 

@@ -23,8 +23,25 @@
     color:          rgba(255,255,255,0.35);
     white-space:    nowrap;
     overflow:       hidden;
-    cursor:         default;
+    cursor:         pointer;
     user-select:    none;
+    transition:     color var(--transition-fast);
+}
+
+.nav-group-title:hover {
+    color: rgba(255,255,255,0.60);
+}
+
+.nav-chevron {
+    margin-left:  auto;
+    font-size:    0.65rem;
+    opacity:      0.5;
+    flex-shrink:  0;
+    transition:   transform 0.2s ease;
+}
+
+.nav-chevron.rotated {
+    transform: rotate(-90deg);
 }
 
 /* Ítems de navegación */

@@ -1,3 +1,5 @@
+using System.Security.Claims;
+
 namespace GreenTransit.Application.Common.Interfaces;
 
 /// <summary>
@@ -45,5 +47,13 @@ public interface ICurrentUserService
 
     /// <summary>True si el usuario tiene alguno de los perfiles indicados (case-insensitive).</summary>
     bool IsInAnyProfile(params string[] profileRefs);
+
+    /// <summary>
+    /// Inicializa el contexto de usuario en modo interactivo Blazor Server, donde
+    /// IHttpContextAccessor.HttpContext es null (conexión WebSocket, no HTTP).
+    /// Debe llamarse desde MainLayout.OnInitializedAsync con el ClaimsPrincipal
+    /// obtenido del CascadingParameter Task&lt;AuthenticationState&gt;.
+    /// </summary>
+    void SetInteractiveUser(ClaimsPrincipal user);
 }
 

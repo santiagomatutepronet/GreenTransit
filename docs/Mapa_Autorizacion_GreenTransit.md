@@ -246,11 +246,17 @@ El `GetDashboardSummaryQuery` adapta todos sus KPIs al perfil `PRODUCER`:
 | **Vista 360° Traslado** | *(vista cruzada)* | R-P | R-P | R | R | R-P | R-P | R | R | R |
 | **KPIs** | *(vistas agregadas)* | — | — | R | R | — | R | R | R | R |
 | **Documentos** | `AgreementDocuments` + campos Doc en `WasteMoves` | R-P | R-P | R | R | R-P | R-P | R | R | CRUD |
+| **Dashboard Optimización Logística** | `WasteMoveResidues`, `DUMZones`, `Entities` | — | — | R | — | — | — | R | — | R |
+| **Dashboard Monitorización Pública** | `WasteMoves`, `Settlements`, `MarketShares` | — | — | — | R | — | — | — | — | R |
+| **Dashboard Panel Operativo** | `ServiceOrders`, `WasteMoves`, `EntryCACs`, `EntryPlants`, `Incidents` | — | — | — | — | R | R | — | R | R |
 
 **Justificación:**
 - **Trazabilidad y Vista 360°**: Todos los perfiles acceden pero ven solo los traslados en los que participan. `SCRAP`, `PUBLIC_ENT`, `COORDINATOR`, `DISPATCH_OFFICE` y `ADMIN` ven transversalmente.
 - **KPIs**: Solo perfiles con responsabilidad de supervisión o cumplimiento normativo. No tiene sentido para `PRODUCER`, `CARRIER` o `CAC_OP` aislados.
 - **Documentos**: `ADMIN` gestiona el repositorio documental. El resto consulta documentos de los traslados donde participa.
+- **Dashboard Optimización Logística** (`/logistics/optimization`): Policy `CanViewLogisticsOptimization`. Orientado a SCRAP y COORDINATOR para optimizar rutas, visualizar zonas DUM y analizar eficiencia. `SCRAP` ve solo sus traslados (`IdScrap`/`IdScrap2`).
+- **Dashboard Monitorización Pública** (`/logistics/public-monitoring`): Policy `CanViewPublicMonitoring`. Exclusivo para entidades públicas: servicios SCRAP, liquidaciones y objetivos municipales de sus acuerdos.
+- **Dashboard Panel Operativo** (`/logistics/operations`): Policy `CanViewOperationalDashboard`. Multirrol (se adapta al perfil activo): SO pendientes y planificación semanal para DISPATCH_OFFICE; stock y tickets para CAC_OP; balance de tratamiento e impropios para PLANT_OP.
 
 ---
 
@@ -293,10 +299,13 @@ El `GetDashboardSummaryQuery` adapta todos sus KPIs al perfil `PRODUCER`:
 | Vista 360° | R-P | R-P | R | R | R-P | R-P | R | R | R |
 | KPIs | — | — | R | R | — | R | R | R | R |
 | Documentos | R-P | R-P | R | R | R-P | R-P | R | R | CRUD |
+| **Dash. Optimización Logística** | — | — | **R** | — | — | — | **R** | — | R |
+| **Dash. Monitorización Pública** | — | — | — | **R** | — | — | — | — | R |
+| **Dash. Panel Operativo** | — | — | — | — | **R** | **R** | — | **R** | R |
 | Usuarios | — | — | R-P | — | — | — | — | — | **CRUD** |
 | Perfiles | — | — | R | — | — | — | — | — | **CRUD** |
 
-**Negrita** = perfil creador principal de esa pantalla.
+**Negrita** = perfil creador/acceso principal de esa pantalla.
 
 ---
 
@@ -331,26 +340,38 @@ El `GetDashboardSummaryQuery` adapta todos sus KPIs al perfil `PRODUCER`:
 ### 7.1. Policies de autorización recomendadas
 
 ```
-Policy                     Perfiles permitidos
-────────────────────────── ──────────────────────────────────────────
-CanManageMasters           DISPATCH_OFFICE, ADMIN
-CanCreateServiceOrders     PRODUCER, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN
-CanManageWasteMoves        DISPATCH_OFFICE, ADMIN
-CanUpdateAssignedMoves     CARRIER (solo los suyos)
-CanManageEntryPlants       PLANT_OP, ADMIN
-CanManageEntryCACs         CAC_OP, ADMIN
-CanManageTreatments        PLANT_OP, ADMIN
-CanCreateIncidents         Todos los perfiles autenticados
-CanResolveIncidents        DISPATCH_OFFICE, ADMIN
-CanManageDUMZones          ADMIN
-CanManagePlantEnergy       PLANT_OP, ADMIN
-CanManageEmissionFactors   ADMIN
-CanManageUsers             ADMIN
-CanManageProfiles          ADMIN
-CanViewKPIs                SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN
-CanViewReporting           Todos (con filtrado por datos propios)
-CanManageEntities          DISPATCH_OFFICE, ADMIN
-CanCreateEntitiesRestricted SCRAP (alta limitada a su ámbito)
+Policy                          Perfiles permitidos
+────────────────────────────── ──────────────────────────────────────────
+CanManageMasters                DISPATCH_OFFICE, ADMIN
+CanCreateServiceOrders          PRODUCER, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN
+CanManageWasteMoves             DISPATCH_OFFICE, ADMIN
+CanUpdateAssignedMoves          CARRIER (solo los suyos)
+CanManageEntryPlants            PLANT_OP, ADMIN
+CanManageEntryCACs              CAC_OP, ADMIN
+CanManageTreatments             PLANT_OP, ADMIN
+CanCreateIncidents              Todos los perfiles autenticados
+CanResolveIncidents             DISPATCH_OFFICE, ADMIN
+CanManageDUMZones               ADMIN
+CanManagePlantEnergy            PLANT_OP, ADMIN
+CanManageEmissionFactors        ADMIN
+CanManageUsers                  ADMIN
+CanManageProfiles               ADMIN
+CanViewKPIs                     SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN
+CanViewReporting                Todos (con filtrado por datos propios)
+CanManageEntities               DISPATCH_OFFICE, ADMIN
+CanCreateEntitiesRestricted     SCRAP (alta limitada a su ámbito)
+CanViewLogisticsOptimization    SCRAP, COORDINATOR, ADMIN          ← Dashboard 1
+CanViewPublicMonitoring         PUBLIC_ENT, ADMIN                  ← Dashboard 2
+CanViewOperationalDashboard     DISPATCH_OFFICE, CAC_OP, PLANT_OP, ADMIN  ← Dashboard 3
+CanViewMarketShares             SCRAP, ADMIN
+CanManageMarketShares           ADMIN
+CanManageAgreements             SCRAP, ADMIN
+CanManageSettlements            SCRAP, ADMIN
+CanViewProductDeclarations      ADMIN, PRODUCER, SCRAP, COORDINATOR
+CanManageProductDeclarations    PRODUCER, ADMIN
+CanValidateProductDeclarations  ADMIN
+CanManageDeclarationDicts       ADMIN
+AdminOnly                       ADMIN
 ```
 
 ### 7.2. Filtro multi-tenant (middleware)

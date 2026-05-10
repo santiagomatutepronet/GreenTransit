@@ -65,6 +65,8 @@ public interface IApplicationDbContext
     // ── Seguridad ─────────────────────────────────────────────────────────────
     DbSet<AppUser>     AppUsers     { get; }
     DbSet<UserProfile> UserProfiles { get; }
+    DbSet<PageDefinition>  PageDefinitions  { get; }
+    DbSet<PagePermission>  PagePermissions  { get; }
 
     // ── Diccionarios declaraciones ────────────────────────────────────────────
     DbSet<DicProductDeclarationCategory> DicProductDeclarationCategories { get; }

@@ -106,6 +106,9 @@
 </div>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthTask { get; set; }
+
     private bool _sidebarCollapsed;
     private bool _darkMode;
     private DotNetObjectReference<MainLayout>? _dotNetRef;
@@ -113,6 +116,19 @@
     private string TenantShort => CurrentUser.OwnerId == Guid.Empty
         ? "—"
         : CurrentUser.OwnerId.ToString()[..8] + "…";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // En modo interactivo Blazor Server, IHttpContextAccessor.HttpContext es null.
+        // Poblamos ICurrentUserService con el ClaimsPrincipal del circuito Blazor
+        // ANTES de que cualquier componente hijo (NavMenu, Dashboard...) inicialice,
+        // garantizando que todos los queries usen el usuario y tenant correctos.
+        if (AuthTask is not null)
+        {
+            var state = await AuthTask;
+            CurrentUser.SetInteractiveUser(state.User);
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

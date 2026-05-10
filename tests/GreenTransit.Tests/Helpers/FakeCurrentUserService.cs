@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using GreenTransit.Application.Common.Interfaces;
 
 namespace GreenTransit.Tests.Helpers;
@@ -29,6 +30,8 @@ public sealed class FakeCurrentUserService : ICurrentUserService
     public int ProfileId        => 1;
     public string UserProfile   { get; }
     public Guid? LinkedEntityId => null;
+
+    public void SetInteractiveUser(ClaimsPrincipal user) { /* no-op en tests */ }
 
     public bool IsInProfile(string profileRef) =>
         string.Equals(UserProfile, profileRef, StringComparison.OrdinalIgnoreCase);

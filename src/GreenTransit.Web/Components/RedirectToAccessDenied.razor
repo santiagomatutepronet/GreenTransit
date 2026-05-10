@@ -31,6 +31,6 @@
         _alreadyHere = path.Equals("/acceso-denegado", StringComparison.OrdinalIgnoreCase);
 
         if (!_alreadyHere)
-            NavigationManager.NavigateTo("/acceso-denegado", forceLoad: true);
+            NavigationManager.NavigateTo("/acceso-denegado", forceLoad: false);
     }
 }

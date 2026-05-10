@@ -1,9 +1,11 @@
 @using System.Reflection
 @using System.Security.Claims
 @using GreenTransit.Application.Common
+@using GreenTransit.Application.Common.Interfaces
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IAuthorizationService AuthorizationService
+@inject IPagePermissionService PagePermissionService
 @inject ILogger<RouteAccessGuard> Logger
 
 @if (!_initialized)
@@ -40,15 +42,22 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        _initialized = false;
-        _allow = false;
-        _isAuthenticated = false;
+        // En la primera carga mostramos el spinner (contenido aún desconocido).
+        // En navegaciones posteriores _initialized ya es true: NO lo reseteamos a false.
+        // Esto evita que Blazor descarte RouteView → MainLayout → NavMenu del árbol de
+        // componentes en cada navegación, que es lo que causaba el "refresco" visible.
+        var isFirstLoad = !_initialized;
+        if (isFirstLoad)
+        {
+            _allow           = false;
+            _isAuthenticated = false;
+        }
 
         var pageType = RouteData.PageType;
 
         if (pageType.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true).Any())
         {
-            _allow = true;
+            _allow       = true;
             _initialized = true;
             return;
         }
@@ -104,6 +113,28 @@ else
                     _initialized = true;
                     return;
                 }
+            }
+        }
+
+        // ── Verificar PagePermissions (control dinámico por BD) ───────────────
+        // Solo se aplica si la ruta está registrada en PageDefinitions.
+        // Si la tabla PagePermissions no tiene entrada para esta ruta, se permite
+        // (ruta no gestionada dinámicamente → la protección la da [Authorize] ya evaluado).
+        var routeTemplates = pageType
+            .GetCustomAttributes<RouteAttribute>(inherit: true)
+            .Select(r => r.Template)
+            .ToArray();
+
+        foreach (var template in routeTemplates)
+        {
+            var allowed = await PagePermissionService.CanAccessRouteAsync(template);
+            if (!allowed)
+            {
+                Logger.LogWarning(
+                    "Acceso denegado a {Page} (ruta {Route}): sin permiso en PagePermissions",
+                    pageType.FullName, template);
+                _initialized = true;
+                return;
             }
         }
 

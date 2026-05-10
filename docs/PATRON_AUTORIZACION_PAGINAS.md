@@ -98,10 +98,22 @@ Ejemplos: `/entities`, `/residues`, `/waste-moves`.
 
 ### 2.5. Módulo de Seguridad
 
+### 2.5. Módulo de Seguridad
+
 | Ruta | `@attribute [Authorize...]` | Notas |
 |---|---|---|
 | `/users` | `[Authorize(Policy = PolicyConstants.CanManageUsers)]` | Solo ADMIN |
 | `/profiles` | `[Authorize(Policy = PolicyConstants.CanManageProfiles)]` | Solo ADMIN |
+
+### 2.6. Módulo de Dashboards Logísticos
+
+| Ruta | `@attribute [Authorize...]` | Perfiles con acceso |
+|---|---|---|
+| `/logistics/optimization` | `[Authorize(Policy = PolicyConstants.CanViewLogisticsOptimization)]` | SCRAP, COORDINATOR, ADMIN |
+| `/logistics/public-monitoring` | `[Authorize(Policy = PolicyConstants.CanViewPublicMonitoring)]` | PUBLIC_ENT, ADMIN |
+| `/logistics/operations` | `[Authorize(Policy = PolicyConstants.CanViewOperationalDashboard)]` | DISPATCH_OFFICE, CAC_OP, PLANT_OP, ADMIN |
+
+Las tres rutas están protegidas directamente por la policy de página (Patrón B). No requieren `ProfileAuthorizeView` interno ya que cada dashboard solo es accesible al perfil que lo necesita. El componente `OperationalDashboard.razor` detecta internamente el perfil activo y adapta los widgets mostrados.
 
 ---
 

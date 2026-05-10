@@ -1,0 +1,31 @@
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.page-actions {
+    display: flex;
+    gap: .5rem;
+}
+
+.ppm-table th,
+.ppm-table td {
+    vertical-align: middle;
+    font-size: .85rem;
+}
+
+.ppm-select {
+    font-size: .78rem;
+    padding: .15rem .25rem;
+    min-width: 54px;
+}
+
+.access-none  { background: #f0f0f0; color: #999; }
+.access-read  { background: #e3f2fd; color: #1565c0; }
+.access-write { background: #fff3e0; color: #e65100; }
+.access-rw    { background: #e8f5e9; color: #2e7d32; }
+
+.ppm-new td  { background-color: #fffde7; }
+.ppm-inactive { opacity: .55; }

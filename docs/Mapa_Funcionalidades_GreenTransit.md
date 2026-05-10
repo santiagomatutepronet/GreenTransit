@@ -63,6 +63,9 @@ Reglas de transición (claves):
 
 - **Layout**: sidebar colapsable + topbar con selector de `OwnerId` (para admins multi-tenant), buscador global y notificaciones.
 - **Buscador global**: busca por `ServiceOrderNumber`, `WasteMoveReference`, `TicketScale`, `DINumber`, `NTNumber`, `AgreementNumber`, `Entities.Name` / `NationalId` / `CenterCode`. ✅ IMPLEMENTADO — `Application/Features/Search/Queries/GlobalSearchQuery.cs` + `Web/Components/Shared/GlobalSearchBar.razor` integrado en el Topbar de `MainLayout.razor`. Debounce 300 ms, navegación por teclado (↑↓ + Enter + Escape), resultados agrupados por tipo con ícono diferenciador.
+- **Menú lateral colapsable por grupos**: ✅ IMPLEMENTADO — Cada grupo del sidebar (Configuración, Operaciones, Economía, Declaraciones, Sostenibilidad, Reporting, Seguridad) puede contraerse o expandirse individualmente haciendo clic en el título del grupo. Un chevron (›) indica el estado; se anima con transición CSS. Por defecto todos los grupos arrancan contraídos al iniciar sesión.
+  - **Estado persistente entre navegaciones** ✅ IMPLEMENTADO — `Web/Services/NavMenuStateService.cs` (Scoped) mantiene el `HashSet<string>` de grupos colapsados durante toda la sesión del circuito Blazor Server. Las navegaciones entre páginas no reinicializan el componente `NavMenu`, por lo que el estado del menú se preserva hasta que el usuario cierra la sesión o recarga el navegador.
+- **Filtrado dinámico de enlaces del menú por permisos de página**: ✅ IMPLEMENTADO — `NavMenu.razor` consulta `IPagePermissionService.CanAccessRouteAsync` para cada enlace antes de renderizarlo. Los permisos se precargan en `OnInitializedAsync` desde la tabla `PagePermissions` (con caché de 5 min en `IMemoryCache`). Solo aparecen en el menú las rutas que el perfil del usuario tiene asignadas. La doble capa de seguridad se mantiene: `ProfileAuthorizeView` filtra por perfil estático → `PagePermissionService` aplica la configuración dinámica de BD → `RouteAccessGuard` protege el acceso directo por URL aunque el enlace no aparezca.
 - **Stepper de traslado**: componente visual que muestra en qué estado está cada `WasteMove` y cuáles son los siguientes pasos permitidos.
 - **Notificaciones en tiempo real**: cambios de estado, incidencias críticas, liquidaciones a validar.
 - **Modo oscuro / claro** y diseño responsive mobile-first (clave para operadores de campo en planta/CAC/transporte).
@@ -277,7 +280,10 @@ Reglas de transición (claves):
   - `IdPickupPoint` debe pertenecer a `OwnerId` o ámbito permitido.
   - Si `IdLERCode.IsDangerous = 1`, avisar al usuario de obligaciones NT/DI aguas abajo.
   - Validar cruce con `Agreements` vigente (ámbito geográfico + waste stream).
-- **Funciones**: alta rápida, duplicación de orden recurrente, adjuntar `ContainersJson` (nº y tipo de contenedores), vinculación opcional a un `Agreement`.
+- **Funciones**: alta rápida, duplicación de orden recurrente (`DuplicateServiceOrderCommand`), adjuntar `ContainersJson` (nº y tipo de contenedores), vinculación opcional a un `Agreement`, vinculación a un `WasteMove` mediante `LinkToWasteMoveCommand` (actualiza `WasteMoveReference` y cambia estado a `InProgress`), cancelación mediante `CancelServiceOrderCommand` (bloqueada si existe traslado activo vinculado).
+- **Tabla hija `ServiceOrderResidues`**: cada SO puede tener **varias líneas de residuo** (`SortOrder`, `IdLERCode`, `ProductUse`, `ProductCategory`, `EstimatedWeight`, `MeasureUnit`, `Units`). La cabecera de la SO sincroniza siempre los campos de clasificación con la primera línea (`SortOrder = 0`). Al editar, las líneas se reemplazan íntegramente con `ExecuteDeleteAsync` para evitar conflictos de concurrencia en contextos de larga vida (Blazor Server).
+- **Estados implementados** (`ServiceOrderStatuses`): `Pending`, `Scheduled`, `InProgress`, `Completed`, `Cancelled`. Solo `Pending` y `Scheduled` permiten edición (`Editable`). Cada estado tiene label y CSS badge propios.
+- **Prioridades implementadas** (`ServiceOrderPriorities`): `Low`, `Normal`, `High`, `Critical`.
 - **Roles**: **Productor**, **Entidad Pública**, **Administrador**, **Gestor logístico**.
 
 #### ✅ Decisiones de implementación (UI)
@@ -536,7 +542,88 @@ Reglas de transición (claves):
 - **Verificación de integridad**: SHA-256 recalculado en cliente y comparado con el hash almacenado. Muestra badge verde (OK) o rojo (ALTERADO).
 - **Roles**: todos con permisos acordes a visibilidad.
 
-### 5.4. Interoperabilidad y Data Space (EDC)
+### 5.4. Dashboards Logísticos Especializados ✅ IMPLEMENTADO
+
+El sistema incluye tres dashboards logísticos diferenciados según el perfil del usuario, accesibles desde la sección **Reporting → Dashboards Logística** del menú lateral.
+
+---
+
+#### 5.4.1. Dashboard 1 — Panel de Optimización Logística SCRAP (`/logistics/optimization`)
+
+- **Perfil objetivo**: SCRAP, COORDINATOR, ADMIN.
+- **Policy**: `CanViewLogisticsOptimization`.
+- **Lógica**: KPIs de eficiencia de rutas, volúmenes RAEE por zona geográfica, mapa interactivo de puntos de recogida y plantas, cumplimiento de zonas DUM y utilización de vehículos.
+- **Archivos implementados**:
+  - `Application/Features/Logistics/Queries/GetLogisticsOptimizationQuery.cs` — filtros: `Year`, `Month?`, `IdScrap?`, `WasteStream?`, `ProvinceCode?`. Aplica automáticamente filtro por `LinkedEntityId` si el perfil es SCRAP.
+  - `Application/Features/Logistics/DTOs/LogisticsOptimizationDto.cs` — `LogisticsOptimizationDto` raíz con: `RouteEfficiencyDto` (AvgDistanceKmPerPickup, AvgCO2eKgPerPickup, CO2eKgPerTonne, CO2eTrendPercent%), `VolumeByZoneDto[]` (ProvinceCode, TotalKg, PickupCount), `LogisticsMapPointDto[]` (para mapa), `DumZoneLayerDto[]` (geometría + semáforo de acción), `DumComplianceDto`, `PlantArrivalHeatmapDto[]` (distribución día/hora), `OpenLogisticsIncidentDto[]`, `VehicleUtilizationDto[]`.
+  - `Web/Components/Pages/Logistics/LogisticsOptimization.razor` — página `/logistics/optimization`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| KPIs de ruta | `WasteMoveResidues` | Distancia media/recogida, CO₂e/recogida, CO₂e/tonelada, variación % vs periodo anterior |
+| Volumen por zona | `WasteMoveResidues` + geografía | Kg y nº recogidas por `ProvinceCode` |
+| Mapa interactivo | `Entities` (Lat/Long) | Puntos de recogida, plantas, zonas DUM sobre mapa |
+| Cumplimiento DUM | `DUMZones` + `DUMRestrictionRules` | % traslados en ventana DUM vs fuera de ventana |
+| Heatmap llegadas | `EntryPlants.PlantEntryDate` | Distribución por día de semana y hora (7×24) |
+| Incidencias abiertas | `Incidents` | Solo las logísticas del periodo |
+| Utilización vehículos | `WasteMoveResidues.VehicleType` | Kg y recogidas por tipo de vehículo |
+
+---
+
+#### 5.4.2. Dashboard 2 — Panel de Monitorización Pública (`/logistics/public-monitoring`)
+
+- **Perfil objetivo**: PUBLIC_ENT, ADMIN.
+- **Policy**: `CanViewPublicMonitoring`.
+- **Lógica**: vista orientada a entidades públicas (ayuntamientos, administraciones) para supervisar los servicios prestados por los SCRAP bajo sus acuerdos, el historial de recogidas, las liquidaciones y el cumplimiento de objetivos municipales.
+- **Archivos implementados**:
+  - `Application/Features/Logistics/Queries/GetPublicMonitoringQuery.cs` — filtros: `Year`, `Month?`. Restringe automáticamente a los acuerdos donde el usuario figura como `IdPublicEntity`.
+  - `Application/Features/Logistics/DTOs/PublicMonitoringDto.cs` — `PublicMonitoringDto` con: `ScrapServiceSummaryDto[]` (resumen por SCRAP: TotalMoves, TotalKg, PendingMoves, CompletedMoves, CancelledMoves), `MonthlyPickupSeriesDto[]` (serie mensual kg/SCRAP), `SettlementRowDto[]` (liquidaciones de la entidad pública), `EmissionComparisonDto` (CO₂e actual vs anterior), `MunicipalTargetDto[]` (cumplimiento cuotas municipales por SCRAP).
+  - `Web/Components/Pages/Logistics/PublicMonitoring.razor` — página `/logistics/public-monitoring`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Servicios por SCRAP | `WasteMoves` + `Agreements` | Tabla: nº traslados, kg, estado por SCRAP |
+| Histórico mensual | `WasteMoveResidues` + `EntryPlants` | Serie de kg recogidos por SCRAP (últimos 12 meses) |
+| Liquidaciones | `Settlements` | Lista con estado, importe, validación |
+| Emisiones CO₂e | `WasteMoveResidues` | Comparativa periodo actual vs anterior |
+| Objetivos municipales | `MarketShares` + `EntryPlantResidues` | % cumplimiento por SCRAP y categoría |
+
+---
+
+#### 5.4.3. Dashboard 3 — Panel Operativo (`/logistics/operations`)
+
+- **Perfil objetivo**: DISPATCH_OFFICE, CAC_OP, PLANT_OP, ADMIN.
+- **Policy**: `CanViewOperationalDashboard`.
+- **Lógica**: panel multirrol que adapta su contenido al perfil activo. Incluye widgets específicos para la oficina de despacho, operadores de CAC y operadores de planta. El badge de perfil activo se muestra en el encabezado.
+- **Archivos implementados**:
+  - `Application/Features/Logistics/Queries/GetOperationalDashboardQuery.cs` — filtros: `Year`, `Month?`. Detecta el perfil activo y ajusta qué widgets se calculan.
+  - `Application/Features/Logistics/DTOs/OperationalDashboardDto.cs` — `OperationalDashboardDto` con: `PendingServiceOrderDto[]` (SO pendientes de planificar), `WasteMoveFunnelItemDto[]` (embudo por estado), `WeeklyPlanItemDto[]` (próximos 7 días), `OpenIncidentRowDto[]` (incidencias abiertas), `CacEntryTodayDto[]` (entradas CAC hoy), `CacStockByResidueDto[]` (stock acumulado por residuo), `CacTicketsPending` (int), `PlantEntryTodayDto[]` (entradas planta hoy), `TreatmentBalanceDto` (balance reutilizado/valorizado/rechazo), `ImproperWeightKg` (decimal), `PlantOpenIncidents` (incidencias de planta abiertas).
+  - `Web/Components/Pages/Logistics/OperationalDashboard.razor` — página `/logistics/operations`.
+  - `Web/Components/Pages/Logistics/DumLegendRow.razor` — componente de leyenda de zonas DUM reutilizable.
+
+**Widgets por sección**:
+
+| Sección | Widget | Perfil |
+|---|---|---|
+| **DISPATCH_OFFICE** | W1 SO pendientes de planificar | DISPATCH_OFFICE, ADMIN |
+| | W2 Embudo de traslados por estado | DISPATCH_OFFICE, ADMIN |
+| | W3 Planificación semanal (próximos 7 días) | DISPATCH_OFFICE, ADMIN |
+| | W4 Incidencias abiertas del ámbito | DISPATCH_OFFICE, ADMIN |
+| **CAC_OP** | W5 Entradas en CAC hoy | CAC_OP, ADMIN |
+| | W6 Stock acumulado por tipología de residuo | CAC_OP, ADMIN |
+| | W7 Tickets de pesaje pendientes | CAC_OP, ADMIN |
+| **PLANT_OP** | W8 Entradas en planta hoy | PLANT_OP, ADMIN |
+| | W9 Balance de tratamiento del periodo | PLANT_OP, ADMIN |
+| | W10 Impropios detectados (kg) | PLANT_OP, ADMIN |
+| | W11 Incidencias de planta abiertas | PLANT_OP, ADMIN |
+
+---
+
+### 5.5. Interoperabilidad y Data Space (EDC)
 
 - **Lógica**: la plataforma está preparada para participar en ecosistemas tipo IDSA/Gaia-X. Los usuarios tienen `PortalEDCProvider` y `PortalEDCConsumer` (URLs de conector EDC) que permiten publicar/consumir datasets regulados.
 - **Entidades**: `Users.PortalEDCProvider`, `Users.PortalEDCConsumer`, `SourceSystem`, `Hash` (integridad entre sistemas).

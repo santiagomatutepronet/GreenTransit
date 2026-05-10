@@ -25,9 +25,11 @@ los siguientes documentos Markdown:
 1. `docs/README.md`
 2. `docs/PATRON_AUTORIZACION_PAGINAS.md`
 3. `docs/Mapa_Funcionalidades_GreenTransit.md`
-3. `docs/Mapa_Autorizacion_GreenTransit.md`
-3. `docs/Modelo_de_Datos.md`
-3. `docs/COPILOT_CONTEXT.md`
+4. `docs/Mapa_Autorizacion_GreenTransit.md`
+5. `docs/Modelo_de_Datos.md`
+6. `docs/COPILOT_CONTEXT.md`
+7. `docs/instrucciones_adicionales.md`
+
 
 
 Estas fuentes **tienen prioridad absoluta** sobre:

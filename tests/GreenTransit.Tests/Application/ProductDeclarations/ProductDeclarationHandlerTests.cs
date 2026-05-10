@@ -301,6 +301,7 @@ file sealed class FakeProducerService : GreenTransit.Application.Common.Interfac
     public int    ProfileId       => 2;
     public string UserProfile     => ProfileConstants.Producer;
     public Guid?  LinkedEntityId  => _linkedId;
+    public void SetInteractiveUser(System.Security.Claims.ClaimsPrincipal user) { }
     public bool IsInProfile(string profileRef) =>
         string.Equals(UserProfile, profileRef, StringComparison.OrdinalIgnoreCase);
     public bool IsInAnyProfile(params string[] profileRefs) =>
@@ -324,6 +325,7 @@ file sealed class FakeScrapService : GreenTransit.Application.Common.Interfaces.
     public int    ProfileId       => 3;
     public string UserProfile     => ProfileConstants.Scrap;
     public Guid?  LinkedEntityId  => _linkedId;
+    public void SetInteractiveUser(System.Security.Claims.ClaimsPrincipal user) { }
     public bool IsInProfile(string profileRef) =>
         string.Equals(UserProfile, profileRef, StringComparison.OrdinalIgnoreCase);
     public bool IsInAnyProfile(params string[] profileRefs) =>

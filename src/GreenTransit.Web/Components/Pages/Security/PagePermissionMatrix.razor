@@ -1,0 +1,399 @@
+@page "/security/page-permissions"
+@attribute [Authorize(Policy = PolicyConstants.CanManagePagePermissions)]
+@implements IDisposable
+@using GreenTransit.Application.Features.Security.Commands
+@using GreenTransit.Application.Features.Security.DTOs
+@using GreenTransit.Application.Features.Security.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@inject IMediator Mediator
+@inject IJSRuntime JS
+
+<PageTitle>Permisos por Pantalla — GreenTransit</PageTitle>
+
+<div class="page-header">
+    <h2 class="page-title">
+        <i class="bi bi-shield-lock me-2"></i>Permisos por Pantalla
+    </h2>
+    <div class="page-actions">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="SyncAsync" disabled="@_busy">
+            <i class="bi bi-arrow-repeat me-1"></i>Sincronizar
+        </button>
+        <button class="btn btn-primary btn-sm" @onclick="SaveAsync"
+                disabled="@(_busy || _pendingChanges.Count == 0)">
+            <i class="bi bi-floppy me-1"></i>Guardar
+            @if (_pendingChanges.Count > 0)
+            {
+                <span class="badge bg-warning text-dark ms-1">@_pendingChanges.Count</span>
+            }
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_toast))
+{
+    <div class="alert @(_toastError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+        @_toast
+        <button type="button" class="btn-close" @onclick='() => _toast = null'></button>
+    </div>
+}
+
+@* ── Filtros ─────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-3 d-flex flex-wrap gap-2 align-items-center">
+    <select class="form-select form-select-sm" style="width:200px"
+            @bind="_moduleFilter" @bind:after="ApplyFilters">
+        <option value="">Todos los módulos</option>
+        @foreach (var mod in _allModules)
+        {
+            <option value="@mod">@mod</option>
+        }
+    </select>
+
+    <input class="form-control form-control-sm" style="width:220px"
+           placeholder="Buscar pantalla…"
+           @bind="_searchTerm" @bind:event="oninput" @bind:after="ApplyFilters" />
+
+    <div class="form-check ms-2">
+        <input class="form-check-input" type="checkbox" id="chkInactive"
+               @bind="_showInactive" @bind:after="ApplyFilters" />
+        <label class="form-check-label" for="chkInactive">Mostrar inactivas</label>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Cargando matriz de permisos…</p>
+    </div>
+}
+else if (_matrix is not null)
+{
+    @* ── Tabla con scroll horizontal ─────────────────────────────────────── *@
+    <div style="overflow-x:auto">
+        <table class="table table-bordered table-sm table-hover align-middle ppm-table">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th style="min-width:240px">Pantalla</th>
+                    @foreach (var profile in _matrix.Profiles)
+                    {
+                        <th class="text-center" style="min-width:80px; white-space:nowrap"
+                            title="@profile.Description">
+                            @profile.Reference
+                        </th>
+                    }
+                    <th class="text-center" style="min-width:60px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var module in _filteredModules)
+                {
+                    @* ── Cabecera de módulo ─────────────────────────────── *@
+                    <tr class="table-secondary">
+                        <td colspan="@(_matrix.Profiles.Count + 2)" class="fw-semibold">
+                            <i class="bi bi-folder2-open me-1"></i>@module.ModuleName
+                        </td>
+                    </tr>
+
+                    @foreach (var pg in module.Pages)
+                    {
+                        var hasNoPerms = _matrix.Profiles.All(
+                            p => pg.PermissionsByProfile.GetValueOrDefault(p.Id) is null);
+
+                        <tr class="@(pg.IsActive ? "" : "ppm-inactive") @(hasNoPerms ? "ppm-new" : "")">
+                            <td>
+                                @if (!pg.IsActive)
+                                {
+                                    <s class="text-muted">@pg.PageName</s>
+                                }
+                                else
+                                {
+                                    @pg.PageName
+                                }
+                                <br />
+                                <small class="text-muted">@pg.Route</small>
+                                @if (hasNoPerms)
+                                {
+                                    <span class="badge bg-warning text-dark ms-1">⚠️ Sin permisos</span>
+                                }
+                            </td>
+
+                            @foreach (var profile in _matrix.Profiles)
+                            {
+                                var currentLevel = GetEffectiveLevel(pg.Id, profile.Id,
+                                    pg.PermissionsByProfile.GetValueOrDefault(profile.Id));
+                                var isAdmin = profile.Reference == ProfileConstants.Admin;
+
+                                <td class="text-center p-1">
+                                    <select class="form-select form-select-sm ppm-select @GetSelectCss(currentLevel)"
+                                            value="@(currentLevel ?? "")"
+                                            @onchange="e => OnLevelChanged(pg.Id, profile.Id, e.Value?.ToString(), isAdmin)"
+                                            disabled="@(isAdmin && currentLevel == "ReadWrite")">
+                                        <option value="">—</option>
+                                        <option value="Read">R</option>
+                                        <option value="Write">W</option>
+                                        <option value="ReadWrite">RW</option>
+                                    </select>
+                                </td>
+                            }
+
+                            <td class="text-center">
+                                <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                                        title="Editar metadatos"
+                                        @onclick="() => OpenEditModal(pg)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@* ── Modal edición de metadatos ────────────────────────────────────────── *@
+@if (_editPage is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar pantalla</h5>
+                    <button class="btn-close" @onclick="CloseEditModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">Nombre visible</label>
+                        <input class="form-control" @bind="_editName" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Módulo</label>
+                        <input class="form-control" @bind="_editModule" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Orden</label>
+                        <input class="form-control" type="number" @bind="_editSortOrder" />
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="chkActive" @bind="_editIsActive" />
+                        <label class="form-check-label" for="chkActive">Activa</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseEditModal">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="SaveEditAsync" disabled="@_busy">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ── Estado ──────────────────────────────────────────────────────────────
+    private PagePermissionMatrixDto? _matrix;
+    private List<ModuleGroupDto>     _filteredModules = [];
+    private List<string>             _allModules = [];
+
+    private bool   _loading       = true;
+    private bool   _busy          = false;
+    private string? _toast;
+    private bool   _toastError    = false;
+
+    private string  _moduleFilter  = "";
+    private string  _searchTerm    = "";
+    private bool    _showInactive  = false;
+
+    // Cambios pendientes: clave = (pageId, profileId), valor = nivel (null = sin acceso)
+    private readonly Dictionary<(int, int), string?> _pendingChanges = [];
+
+    // Modal edición
+    private PageWithPermissionsDto? _editPage;
+    private string  _editName      = "";
+    private string  _editModule    = "";
+    private int     _editSortOrder = 0;
+    private bool    _editIsActive  = true;
+
+    // ── Ciclo de vida
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    // ── Carga ────────────────────────────────────────────────────────────────
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _matrix = await Mediator.Send(new GetPagePermissionMatrixQuery
+            {
+                IncludeInactive = _showInactive
+            });
+
+            _allModules = _matrix.Modules.Select(m => m.ModuleName).Distinct().OrderBy(x => x).ToList();
+            _pendingChanges.Clear();
+            ApplyFilters();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ── Filtros ──────────────────────────────────────────────────────────────
+    private void ApplyFilters()
+    {
+        if (_matrix is null) return;
+
+        var modules = _matrix.Modules.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_moduleFilter))
+            modules = modules.Where(m => m.ModuleName == _moduleFilter);
+
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            var term = _searchTerm.Trim().ToLower();
+            modules = modules.Select(m => new ModuleGroupDto
+            {
+                ModuleName = m.ModuleName,
+                Pages = m.Pages.Where(p =>
+                    p.Route.ToLower().Contains(term) ||
+                    p.PageName.ToLower().Contains(term)).ToList()
+            }).Where(m => m.Pages.Count > 0);
+        }
+
+        _filteredModules = modules.ToList();
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchTerm = e.Value?.ToString() ?? "";
+        ApplyFilters();
+    }
+
+    // ── Cambio en una celda ───────────────────────────────────────────────────
+    private void OnLevelChanged(int pageId, int profileId, string? value, bool isAdmin)
+    {
+        // El perfil ADMIN no puede tener menos que ReadWrite en ninguna pantalla
+        if (isAdmin && value != "ReadWrite")
+            return;
+
+        var level = string.IsNullOrEmpty(value) ? null : value;
+        _pendingChanges[(pageId, profileId)] = level;
+    }
+
+    // Devuelve el nivel efectivo (pending tiene prioridad sobre el original)
+    private string? GetEffectiveLevel(int pageId, int profileId, string? original)
+        => _pendingChanges.TryGetValue((pageId, profileId), out var pending) ? pending : original;
+
+    // ── Guardar ───────────────────────────────────────────────────────────────
+    private async Task SaveAsync()
+    {
+        if (_pendingChanges.Count == 0) return;
+        _busy = true;
+        try
+        {
+            var entries = _pendingChanges.Select(kv => new PagePermissionEntry
+            {
+                IdPageDefinition = kv.Key.Item1,
+                IdProfile        = kv.Key.Item2,
+                AccessLevel      = kv.Value
+            }).ToList();
+
+            await Mediator.Send(new BulkUpdatePagePermissionsCommand { Entries = entries });
+            ShowToast($"✅ {entries.Count} cambio(s) guardado(s).");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"❌ Error al guardar: {ex.Message}", error: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // ── Sincronizar ───────────────────────────────────────────────────────────
+    private async Task SyncAsync()
+    {
+        _busy = true;
+        try
+        {
+            var newCount = await Mediator.Send(new SyncPageDefinitionsCommand());
+            ShowToast(newCount > 0
+                ? $"✅ {newCount} pantalla(s) nueva(s) descubierta(s)."
+                : "✅ Sin pantallas nuevas. Catálogo actualizado.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"❌ Error al sincronizar: {ex.Message}", error: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // ── Modal ─────────────────────────────────────────────────────────────────
+    private void OpenEditModal(PageWithPermissionsDto page)
+    {
+        _editPage      = page;
+        _editName      = page.PageName;
+        _editModule    = page.Route; // se sobreescribirá correctamente
+        _editSortOrder = page.SortOrder;
+        _editIsActive  = page.IsActive;
+
+        // Recuperar ModuleName desde la matriz
+        var moduleName = _matrix?.Modules
+            .FirstOrDefault(m => m.Pages.Any(p => p.Id == page.Id))?.ModuleName ?? "";
+        _editModule = moduleName;
+    }
+
+    private void CloseEditModal() => _editPage = null;
+
+    private async Task SaveEditAsync()
+    {
+        if (_editPage is null) return;
+        _busy = true;
+        try
+        {
+            await Mediator.Send(new UpdatePageDefinitionCommand
+            {
+                Id         = _editPage.Id,
+                PageName   = _editName,
+                ModuleName = _editModule,
+                SortOrder  = _editSortOrder,
+                IsActive   = _editIsActive
+            });
+            ShowToast("✅ Pantalla actualizada.");
+            CloseEditModal();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"❌ Error: {ex.Message}", error: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static string GetSelectCss(string? level) => level switch
+    {
+        "Read"      => "access-read",
+        "Write"     => "access-write",
+        "ReadWrite" => "access-rw",
+        _           => "access-none"
+    };
+
+    private void ShowToast(string msg, bool error = false)
+    {
+        _toast      = msg;
+        _toastError = error;
+    }
+
+    public void Dispose() { }
+}

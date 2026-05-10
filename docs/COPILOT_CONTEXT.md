@@ -71,8 +71,8 @@ Prompt	Estado	Tablas
 5.0 — Instrucción base	✅ Completado	Reglas generales
 5.1 — Maestros 1/2	✅ Completado	Entities, LERCodes
 5.2 — Maestros 2/2	✅ Completado	Residues, TreatmentOperations
-5.3 — Contratos y Liquidaciones	 Pendiente	Agreements*, Settlements*
-5.4 — Operación Logística	✅ Completado	ServiceOrders, WasteMoves
+5.3 — Contratos y Liquidaciones	✅ Completado	Agreements*, Settlements*, MarketShares*
+5.4 — Operación Logística	✅ Completado	ServiceOrders (+ ServiceOrderResidues), WasteMoves
 5.5 — Entradas Planta	✅ Completado	EntryPlants*, TreatmentPlants*
 5.6 — Entradas CAC	✅ Completado	EntryCACs*
 5.7 — Producto y Ecodiseño	✅ Completado	Product*, EcoModulation*
@@ -107,9 +107,14 @@ Parte 2 — ClaimsTransformation (gt_* claims, gt_user_found, gt_entity_id), Cur
 Parte 3 — EntityUserProvisioningService, EntityRoles (DISPATCH_OFFICE), EntityForm mensajes
 Parte 4 — DbInitializer (seed idempotente de 9 Profiles en startup)
 
+Paso 9 — Dashboards Logísticos ✅ COMPLETADO
+Dashboard 1 — Optimización Logística SCRAP (/logistics/optimization) — Policy: CanViewLogisticsOptimization
+Dashboard 2 — Monitorización Pública (/logistics/public-monitoring) — Policy: CanViewPublicMonitoring
+Dashboard 3 — Panel Operativo (/logistics/operations) — Policy: CanViewOperationalDashboard
+
 
 📌 ESTADO FINAL
-✅ Todos los prompts hasta el Paso 7 ejecutados y completados.
+✅ Todos los prompts hasta el Paso 9 ejecutados y completados.
 El proyecto queda listo para:
 
 Implementar casos de uso reales (CQRS)

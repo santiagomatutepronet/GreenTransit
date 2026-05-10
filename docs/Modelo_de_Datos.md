@@ -208,6 +208,27 @@ Ordena y planifica el servicio:
 
 Sirve como nexo entre planificación y ejecución.
 
+Estados válidos: `Pending`, `Scheduled`, `InProgress`, `Completed`, `Cancelled`.
+Solo `Pending` y `Scheduled` permiten edición.
+
+---
+
+### 5.1.1 ServiceOrderResidues
+
+Tabla hija de `ServiceOrders`. Permite definir **múltiples líneas de residuo** por orden de servicio.
+
+Campos clave:
+- `Id` (GUID PK)
+- `IdServiceOrder` (FK → `ServiceOrders`)
+- `SortOrder` (orden de línea)
+- `IdLERCode` (FK → `LERCodes`)
+- `ProductUse`, `ProductCategory`
+- `EstimatedWeight`, `MeasureUnit`, `Units`
+
+Reglas:
+- La cabecera de la SO sincroniza sus campos de clasificación con la primera línea (`SortOrder = 0`).
+- Al actualizar una SO, las líneas se reemplazan íntegramente (`ExecuteDeleteAsync`) para evitar conflictos de concurrencia en Blazor Server.
+
 ---
 
 ### 5.2 Agreements
@@ -328,6 +349,54 @@ Usuarios del sistema con aislamiento multi-tenant por `OwnerId`.
 | `CreateDate` | `datetime?` | Fecha de alta |
 
 > **Regla**: `ClientSecret` de `UserSharePointCredentials` **nunca** se expone en queries ni DTOs de la capa Application. Solo se escribe.
+
+---
+
+#### `PageDefinitions`
+
+Catálogo de **páginas registradas** del sistema. Se sincroniza automáticamente al arrancar la aplicación mediante `IPageDiscoveryService.SyncPageDefinitionsAsync`, que descubre las rutas declaradas con `@page` en los componentes Blazor.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `ID` | `int IDENTITY` | PK |
+| `Route` | `nvarchar(256)` | Ruta Razor, p.ej. `/service-orders` (índice único) |
+| `PageName` | `nvarchar(256)` | Nombre legible de la página |
+| `ModuleName` | `nvarchar(128)` | Agrupación funcional (Operaciones, Seguridad…) |
+| `ComponentName` | `nvarchar(256)?` | Nombre del componente Blazor |
+| `IsActive` | `bit` | Solo las páginas activas participan en PagePermissions |
+| `SortOrder` | `int` | Orden de presentación en la matriz de permisos |
+| `CreatedAt` | `datetime` | Auditoría |
+| `UpdatedAt` | `datetime?` | Auditoría |
+
+> **Regla**: las rutas NO registradas en `PageDefinitions` no están sujetas a control dinámico de permisos; en ese caso la protección recae exclusivamente en el atributo `[Authorize]` de la propia página.
+
+---
+
+#### `PagePermissions`
+
+Tabla de **concesión de acceso** por perfil y página. Implementa el control dinámico configurable por el administrador.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `ID` | `int IDENTITY` | PK |
+| `IdPageDefinition` | `int` | FK → `PageDefinitions.ID` |
+| `IdProfile` | `int` | FK → `Profiles.ID` |
+| `AccessLevel` | `nvarchar(16)` | `Read` \| `Write` \| `ReadWrite` |
+| `CreatedAt` | `datetime` | Auditoría |
+| `UpdatedAt` | `datetime?` | Auditoría |
+| `IdUser` | `int?` | Usuario que concedió el permiso |
+
+**Lógica de evaluación** (triple capa):
+
+| Capa | Dónde | Qué evalúa |
+|---|---|---|
+| 1 — Perfil estático | `ProfileAuthorizeView` en `NavMenu.razor` | Tipo de perfil del usuario (PRODUCER, ADMIN…) |
+| 2 — Permiso dinámico | `IPagePermissionService.CanAccessRouteAsync` | Entrada en `PagePermissions` para el perfil + ruta |
+| 3 — Guarda de ruta | `RouteAccessGuard.razor` | Re-evalúa ambas capas en acceso directo por URL |
+
+> **Regla**: si un perfil tiene al menos una entrada en `PagePermissions`, se aplica la lista blanca estricta (solo ve lo que tiene concedido). Si el perfil **no tiene ninguna entrada** pero la ruta SÍ está en `PageDefinitions`, el acceso también se **deniega** (lista blanca estricta: sin concesión explícita = sin acceso). Solo si la ruta NO está en `PageDefinitions` el acceso se delega a la capa 1 (`[Authorize]`). Esto garantiza que perfiles con 0 permisos configurados no vean ninguna pantalla gestionada.
+
+> **Caché**: `PagePermissionService` cachea el conjunto de IDs de páginas permitidas por `ProfileId` durante **5 minutos** en `IMemoryCache`. Se invalida explícitamente al guardar cambios en la matriz de permisos. El menú lateral precarga todos los permisos del usuario en `NavMenu.OnInitializedAsync` en un único ciclo.
 
 ---
 

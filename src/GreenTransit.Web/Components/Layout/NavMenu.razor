@@ -1,11 +1,16 @@
-﻿@using GreenTransit.Application.Common.Interfaces
+@using System.Collections.Immutable
+@using Microsoft.Extensions.Logging
+@using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Domain.Authorization
 @using GreenTransit.Web.Components.Authorization
 @inject ICurrentUserService CurrentUser
+@inject GreenTransit.Web.Services.NavMenuStateService NavMenuState
+@inject IPagePermissionService PagePermissions
+@inject ILogger<NavMenu> Logger
 
 <nav class="nav-groups">
 
-    @* ── Inicio ──────────────────────────────────────────────────────────── *@
+    @* -- Inicio ------------------------------------------------------------ *@
     <div class="nav-group">
         <NavLink class="nav-item" href="/" Match="NavLinkMatch.All">
             <i class="bi bi-house-door-fill nav-icon"></i>
@@ -13,292 +18,423 @@
         </NavLink>
     </div>
 
-    @* ── Configuración ──────────────────────────────────────────────────── *@
-    @* Visible para todos los autenticados; opciones internas no varían en el menú *@
-    <div class="nav-group">
-        <div class="nav-group-title">
-            <i class="bi bi-book-fill nav-icon"></i>
-            <span class="nav-label">Configuración</span>
+    @* -- Configuraci�n: visible para cualquier perfil con al menos un permiso en la secci�n *@
+    @if (AllowAny("/entities", "/ler-codes", "/residues", "/treatment-operations", "/admin/dictionaries/product-declarations"))
+    {
+        <div class="nav-group">
+            <div class="nav-group-title" @onclick='() => ToggleGroup("config")'>
+                <i class="bi bi-book-fill nav-icon"></i>
+                <span class="nav-label">Configuraci�n</span>
+                <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("config") ? "rotated" : "")"></i>
+            </div>
+            @if (!NavMenuState.IsCollapsed("config"))
+            {
+            @if (Allow("/entities"))
+            {
+            <NavLink class="nav-item nav-item--child" href="/entities">
+                <i class="bi bi-building nav-icon"></i>
+                <span class="nav-label">Entidades</span>
+            </NavLink>
+            }
+            @if (Allow("/ler-codes"))
+            {
+            <NavLink class="nav-item nav-item--child" href="/ler-codes">
+                <i class="bi bi-list-ol nav-icon"></i>
+                <span class="nav-label">LER</span>
+            </NavLink>
+            }
+            @if (Allow("/residues"))
+            {
+            <NavLink class="nav-item nav-item--child" href="/residues">
+                <i class="bi bi-recycle nav-icon"></i>
+                <span class="nav-label">Residuos</span>
+            </NavLink>
+            }
+            @if (Allow("/treatment-operations"))
+            {
+            <NavLink class="nav-item nav-item--child" href="/treatment-operations">
+                <i class="bi bi-gear-fill nav-icon"></i>
+                <span class="nav-label">Operaciones R/D</span>
+            </NavLink>
+            }
+            @if (Allow("/admin/dictionaries/product-declarations"))
+            {
+            <NavLink class="nav-item nav-item--child"
+                     href="/admin/dictionaries/product-declarations">
+                <i class="bi bi-sliders nav-icon"></i>
+                <span class="nav-label">Diccionarios Declaraci�n</span>
+            </NavLink>
+            }
+            }
         </div>
-        <NavLink class="nav-item nav-item--child" href="/entities">
-            <i class="bi bi-building nav-icon"></i>
-            <span class="nav-label">Entidades</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/ler-codes">
-            <i class="bi bi-list-ol nav-icon"></i>
-            <span class="nav-label">LER</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/residues">
-            <i class="bi bi-recycle nav-icon"></i>
-            <span class="nav-label">Residuos</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child" href="/treatment-operations">
-            <i class="bi bi-gear-fill nav-icon"></i>
-            <span class="nav-label">Operaciones R/D</span>
-        </NavLink>
-        <NavLink class="nav-item nav-item--child"
-                 href="/admin/dictionaries/product-declarations">
-            <i class="bi bi-sliders nav-icon"></i>
-            <span class="nav-label">Diccionarios Declaración</span>
-        </NavLink>
-    </div>
+    }
 
-    @* ── Operaciones ─────────────────────────────────────────────────────── *@
+    @* -- Operaciones ---------------------------------------------- *@
     <div class="nav-group">
-        <div class="nav-group-title">
+        <div class="nav-group-title" @onclick='() => ToggleGroup("operaciones")'>
             <i class="bi bi-truck nav-icon"></i>
             <span class="nav-label">Operaciones</span>
+            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("operaciones") ? "rotated" : "")"></i>
         </div>
-
-        @* Órdenes de Servicio: todos los autenticados *@
+        @if (!NavMenuState.IsCollapsed("operaciones"))
+        {
+        @if (Allow("/service-orders"))
+        {
         <NavLink class="nav-item nav-item--child" href="/service-orders">
             <i class="bi bi-clipboard2-check nav-icon"></i>
-            <span class="nav-label">Órdenes de Servicio</span>
+            <span class="nav-label">�rdenes de Servicio</span>
         </NavLink>
+        }
 
         @* Traslados: todos excepto PRODUCER (ve los suyos en reporting) *@
         <ProfileAuthorizeView Profiles="@_profilesWasteMoves">
             <Authorized>
+                @if (Allow("/waste-moves"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/waste-moves">
                     <i class="bi bi-arrow-left-right nav-icon"></i>
                     <span class="nav-label">Traslados</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
 
         @* Entradas Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesEntryPlants">
             <Authorized>
+                @if (Allow("/entry-plants"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/entry-plants">
                     <i class="bi bi-box-arrow-in-down nav-icon"></i>
                     <span class="nav-label">Entradas Planta</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
 
         @* Entradas CAC: CAC_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesEntryCACs">
             <Authorized>
+                @if (Allow("/entry-cacs"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/entry-cacs">
                     <i class="bi bi-collection nav-icon"></i>
                     <span class="nav-label">Entradas CAC</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
 
         @* Tratamiento: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesTreatments">
             <Authorized>
+                @if (Allow("/treatment-plants"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/treatment-plants">
                     <i class="bi bi-arrow-repeat nav-icon"></i>
                     <span class="nav-label">Tratamiento</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
+        }
     </div>
 
-    @* ── Economía ────────────────────────────────────────────────────────── *@
+    @* -- Econom�a ---------------------------------------------- *@
     <ProfileAuthorizeView Profiles="@(new[]{ ProfileConstants.Scrap, ProfileConstants.Admin, ProfileConstants.PublicEnt, ProfileConstants.Coordinator })">
         <Authorized>
             <div class="nav-group">
-                <div class="nav-group-title">
+                <div class="nav-group-title" @onclick='() => ToggleGroup("economia")'>
                     <i class="bi bi-currency-euro nav-icon"></i>
-                    <span class="nav-label">Economía</span>
+                    <span class="nav-label">Econom�a</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("economia") ? "rotated" : "")"></i>
                 </div>
+                @if (!NavMenuState.IsCollapsed("economia"))
+                {
+                @if (Allow("/agreements"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/agreements">
                     <i class="bi bi-file-earmark-text nav-icon"></i>
                     <span class="nav-label">Acuerdos</span>
                 </NavLink>
+                }
+                @if (Allow("/settlements"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/settlements">
                     <i class="bi bi-receipt nav-icon"></i>
                     <span class="nav-label">Liquidaciones</span>
                 </NavLink>
+                }
+                @if (Allow("/market-shares"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/market-shares">
                     <i class="bi bi-pie-chart-fill nav-icon"></i>
                     <span class="nav-label">Cuotas</span>
                 </NavLink>
+                }
+                }
             </div>
         </Authorized>
     </ProfileAuthorizeView>
 
-    @* ── Declaraciones de Producción ────────────────────────────────────── *@
+    @* -- Declaraciones de Producci�n -------------------------------- *@
     <ProfileAuthorizeView Profiles="@_profilesDeclarations">
         <Authorized>
             <div class="nav-group">
-                <div class="nav-group-title">
+                <div class="nav-group-title" @onclick='() => ToggleGroup("declaraciones")'>
                     <i class="bi bi-box-seam-fill nav-icon"></i>
                     <span class="nav-label">Declaraciones</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("declaraciones") ? "rotated" : "")"></i>
                 </div>
+                @if (!NavMenuState.IsCollapsed("declaraciones"))
+                {
+                @if (Allow("/product-declarations"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/product-declarations">
                     <i class="bi bi-list-check nav-icon"></i>
                     <span class="nav-label">Listado</span>
                 </NavLink>
+                }
+                @if (Allow("/product-declarations/dashboard"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/product-declarations/dashboard">
                     <i class="bi bi-bar-chart-line nav-icon"></i>
                     <span class="nav-label">Dashboard</span>
                 </NavLink>
+                }
                 <ProfileAuthorizeView Profiles="@_profilesManageDeclarations">
                     <Authorized>
+                        @if (Allow("/product-declarations/new"))
+                        {
                         <NavLink class="nav-item nav-item--child" href="/product-declarations/new">
                             <i class="bi bi-plus-circle nav-icon"></i>
-                            <span class="nav-label">Nueva declaración</span>
+                            <span class="nav-label">Nueva declaraci�n</span>
                         </NavLink>
+                        }
                     </Authorized>
                 </ProfileAuthorizeView>
+                }
             </div>
         </Authorized>
     </ProfileAuthorizeView>
 
-    @* ── Sostenibilidad ──────────────────────────────────────────────────── *@
+    @* -- Sostenibilidad --------------------------------------------- *@
     <div class="nav-group">
-        <div class="nav-group-title">
+        <div class="nav-group-title" @onclick='() => ToggleGroup("sostenibilidad")'>
             <i class="bi bi-tree-fill nav-icon"></i>
             <span class="nav-label">Sostenibilidad</span>
+            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("sostenibilidad") ? "rotated" : "")"></i>
         </div>
-
-        @* Incidencias: todos los autenticados *@
+        @if (!NavMenuState.IsCollapsed("sostenibilidad"))
+        {
+        @if (Allow("/incidents"))
+        {
         <NavLink class="nav-item nav-item--child" href="/incidents">
             <i class="bi bi-exclamation-triangle-fill nav-icon"></i>
             <span class="nav-label">Incidencias</span>
         </NavLink>
+        }
 
         @* Zonas DUM: todos excepto CAC_OP y PLANT_OP *@
         <ProfileAuthorizeView Profiles="@_profilesDumZones">
             <Authorized>
+                @if (Allow("/dum-zones"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/dum-zones">
                     <i class="bi bi-geo-alt-fill nav-icon"></i>
                     <span class="nav-label">Zonas DUM</span>
                 </NavLink>
+                }
+                @if (Allow("/dum-zones/simulator"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/dum-zones/simulator">
                     <i class="bi bi-geo-fill nav-icon"></i>
                     <span class="nav-label">Simulador DUM</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
 
         @* Emisiones: todos excepto CAC_OP *@
         <ProfileAuthorizeView Profiles="@_profilesEmissions">
             <Authorized>
+                @if (Allow("/emissions"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/emissions">
                     <i class="bi bi-cloud-haze2-fill nav-icon"></i>
                     <span class="nav-label">Emisiones</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
 
-        @* Energía Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
+        @* Energ�a Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesPlantEnergy">
             <Authorized>
+                @if (Allow("/plant-energies"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/plant-energies">
                     <i class="bi bi-lightning-charge-fill nav-icon"></i>
-                    <span class="nav-label">Energía Planta</span>
+                    <span class="nav-label">Energ�a Planta</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
 
-        @* Factores de Emisión: ADMIN, SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE *@
+        @* Factores de Emisi�n: ADMIN, SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesEmissionFactors">
             <Authorized>
+                @if (Allow("/emission-factor-sets"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/emission-factor-sets">
                     <i class="bi bi-cloud-haze2-fill nav-icon"></i>
-                    <span class="nav-label">Factores Emisión</span>
+                    <span class="nav-label">Factores Emisi�n</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
+        }
     </div>
 
-    @* ── Reporting ──────────────────────────────────────────────────────── *@
+    @* -- Reporting ----------------------------------------------- *@
     <div class="nav-group">
-        <div class="nav-group-title">
+        <div class="nav-group-title" @onclick='() => ToggleGroup("reporting")'>
             <i class="bi bi-bar-chart-fill nav-icon"></i>
             <span class="nav-label">Reporting</span>
+            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting") ? "rotated" : "")"></i>
         </div>
-
-        @* Trazabilidad y Vista 360°: todos los autenticados *@
+        @if (!NavMenuState.IsCollapsed("reporting"))
+        {
+        @if (Allow("/traceability"))
+        {
         <NavLink class="nav-item nav-item--child" href="/traceability">
             <i class="bi bi-diagram-3-fill nav-icon"></i>
             <span class="nav-label">Trazabilidad</span>
         </NavLink>
+        }
+        @if (Allow("/waste-moves"))
+        {
         <NavLink class="nav-item nav-item--child" href="/waste-moves">
             <i class="bi bi-search-heart nav-icon"></i>
-            <span class="nav-label">Vista 360º Traslado</span>
+            <span class="nav-label">Vista 360� Traslado</span>
         </NavLink>
+        }
 
         @* KPIs: SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN *@
         <ProfileAuthorizeView Profiles="@_profilesKPIs">
             <Authorized>
+                @if (Allow("/kpis"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/kpis">
                     <i class="bi bi-graph-up-arrow nav-icon"></i>
                     <span class="nav-label">KPIs</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
 
-        @* ── Dashboards de Optimización Logística: SCRAP, COORDINATOR, PUBLIC_ENT, ADMIN *@
+        @* -- Dashboards de Optimizaci�n Log�stica: SCRAP, COORDINATOR, PUBLIC_ENT, ADMIN *@
         <ProfileAuthorizeView Profiles="@_profilesAnyLogisticsDashboard">
             <Authorized>
                 <div class="nav-group-title nav-group-title--sub">
                     <i class="bi bi-truck-flatbed nav-icon"></i>
-                    <span class="nav-label">Dashboards Logística</span>
+                    <span class="nav-label">Dashboards Log�stica</span>
                 </div>
             </Authorized>
         </ProfileAuthorizeView>
         <ProfileAuthorizeView Profiles="@_profilesLogisticsOptimization">
             <Authorized>
+                @if (Allow("/logistics/optimization"))
+                {
                 <NavLink class="nav-item nav-item--grandchild" href="/logistics/optimization">
                     <i class="bi bi-truck nav-icon"></i>
-                    <span class="nav-label">Optimización SCRAP</span>
+                    <span class="nav-label">Optimizaci�n SCRAP</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
         <ProfileAuthorizeView Profiles="@_profilesPublicMonitoring">
             <Authorized>
+                @if (Allow("/logistics/public-monitoring"))
+                {
                 <NavLink class="nav-item nav-item--grandchild" href="/logistics/public-monitoring">
                     <i class="bi bi-building-check nav-icon"></i>
-                    <span class="nav-label">Monitorización Pública</span>
+                    <span class="nav-label">Monitorizaci�n P�blica</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
         <ProfileAuthorizeView Profiles="@_profilesOperationalDashboard">
             <Authorized>
+                @if (Allow("/logistics/operations"))
+                {
                 <NavLink class="nav-item nav-item--grandchild" href="/logistics/operations">
                     <i class="bi bi-speedometer2 nav-icon"></i>
                     <span class="nav-label">Panel Operativo</span>
                 </NavLink>
+                }
             </Authorized>
         </ProfileAuthorizeView>
 
         @* Documentos: todos los autenticados *@
+        @if (Allow("/documents"))
+        {
         <NavLink class="nav-item nav-item--child" href="/documents">
             <i class="bi bi-folder2-open nav-icon"></i>
             <span class="nav-label">Documentos</span>
         </NavLink>
+        }
+        }
     </div>
 
-    @* ── Seguridad: solo ADMIN y SCRAP ──────────────────────────────────── *@
+    @* -- Seguridad: solo ADMIN y SCRAP ------------------------------------ *@
     <ProfileAuthorizeView Profiles="@_profilesSecurity">
         <Authorized>
             <div class="nav-group">
-                <div class="nav-group-title">
+                <div class="nav-group-title" @onclick='() => ToggleGroup("seguridad")'>
                     <i class="bi bi-shield-lock-fill nav-icon"></i>
                     <span class="nav-label">Seguridad</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("seguridad") ? "rotated" : "")"></i>
                 </div>
+                @if (!NavMenuState.IsCollapsed("seguridad"))
+                {
+                @if (Allow("/users"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/users">
                     <i class="bi bi-people-fill nav-icon"></i>
                     <span class="nav-label">Usuarios</span>
                 </NavLink>
+                }
+                @if (Allow("/profiles"))
+                {
                 <NavLink class="nav-item nav-item--child" href="/profiles">
                     <i class="bi bi-person-badge-fill nav-icon"></i>
                     <span class="nav-label">Perfiles</span>
                 </NavLink>
+                }
                 <ProfileAuthorizeView Profiles="@(new[]{ ProfileConstants.Admin })">
                     <Authorized>
+                        @if (Allow("/security/page-permissions"))
+                        {
+                        <NavLink class="nav-item nav-item--child" href="/security/page-permissions">
+                            <i class="bi bi-shield-lock nav-icon"></i>
+                            <span class="nav-label">Permisos por Pantalla</span>
+                        </NavLink>
+                        }
+                    </Authorized>
+                </ProfileAuthorizeView>
+                <ProfileAuthorizeView Profiles="@(new[]{ ProfileConstants.Admin })">
+                    <Authorized>
+                        @if (Allow("/admin/sandbox"))
+                        {
                         <NavLink class="nav-item nav-item--child" href="/admin/sandbox">
                             <i class="bi bi-database-fill-gear nav-icon"></i>
                             <span class="nav-label">Sandbox</span>
                         </NavLink>
+                        }
                     </Authorized>
                 </ProfileAuthorizeView>
+                }
                         </div>
                     </Authorized>
                 </ProfileAuthorizeView>
@@ -306,8 +442,46 @@
 </nav>
 
 @code {
-    // Perfiles permitidos para cada sección del menú.
-    // Se definen aquí para evitar new[] inline en el markup y facilitar el mantenimiento.
+    // ?? Permisos de p�gina ????????????????????????????????????????????????????
+    // Se cargan en OnAfterRenderAsync (no corre durante SSR pre-rendering) para
+    // evitar concurrencia con otros componentes sobre el mismo DbContext scoped.
+    private IReadOnlySet<string> _allowed = ImmutableHashSet<string>.Empty;
+    private bool _permissionsLoaded;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _permissionsLoaded) return;
+        if (CurrentUser.ProfileId == 0) return;
+
+        _permissionsLoaded = true;
+
+        try
+        {
+            var routes = await PagePermissions.GetAllowedRoutesAsync();
+            // Solo re-renderizar si el conjunto cambi� respecto al estado inicial vac�o
+            if (routes.Count > 0)
+            {
+                _allowed = routes;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando permisos de navegaci�n para perfil {ProfileId}",
+                CurrentUser.ProfileId);
+        }
+    }
+
+    /// <summary>Devuelve true si el usuario tiene acceso a la ruta seg�n PagePermissions.</summary>
+    private bool Allow(string route) => _allowed.Contains(route);
+
+    /// <summary>Devuelve true si el usuario tiene acceso a al menos una de las rutas indicadas.</summary>
+    private bool AllowAny(params string[] routes) => routes.Any(r => _allowed.Contains(r));
+
+    private void ToggleGroup(string key) => NavMenuState.Toggle(key);
+
+    // Perfiles permitidos para cada secci�n del men�.
+    // Se definen aqu� para evitar new[] inline en el markup y facilitar el mantenimiento.
 
     // Traslados: todos excepto PRODUCER
     private static readonly string[] _profilesWasteMoves =
@@ -354,14 +528,14 @@
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Energía Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE
+    // Energ�a Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE
     private static readonly string[] _profilesPlantEnergy =
     [
         ProfileConstants.PlantOp, ProfileConstants.Admin, ProfileConstants.Scrap,
         ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
     ];
 
-    // Factores de Emisión: ADMIN, SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE
+    // Factores de Emisi�n: ADMIN, SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE
     private static readonly string[] _profilesEmissionFactors =
     [
         ProfileConstants.Admin, ProfileConstants.Scrap, ProfileConstants.PublicEnt,
@@ -375,19 +549,19 @@
         ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Optimización Logística: SCRAP, COORDINATOR, ADMIN
+    // Optimizaci�n Log�stica: SCRAP, COORDINATOR, ADMIN
     private static readonly string[] _profilesLogisticsOptimization =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.Admin
     ];
 
-    // Monitorización Pública: PUBLIC_ENT, ADMIN
+    // Monitorizaci�n P�blica: PUBLIC_ENT, ADMIN
     private static readonly string[] _profilesPublicMonitoring =
     [
         ProfileConstants.PublicEnt, ProfileConstants.Admin
     ];
 
-    // Sub-título Dashboards Logística: cualquiera de los dos grupos anteriores
+    // Sub-t�tulo Dashboards Log�stica: cualquiera de los dos grupos anteriores
     private static readonly string[] _profilesAnyLogisticsDashboard =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator,
@@ -401,6 +575,12 @@
     [
         ProfileConstants.DispatchOffice, ProfileConstants.CacOp,
         ProfileConstants.PlantOp, ProfileConstants.Admin
+    ];
+
+    // Configuraci�n: DISPATCH_OFFICE, SCRAP, ADMIN
+    private static readonly string[] _profilesConfig =
+    [
+        ProfileConstants.DispatchOffice, ProfileConstants.Scrap, ProfileConstants.Admin
     ];
 
     // Seguridad: solo ADMIN y SCRAP

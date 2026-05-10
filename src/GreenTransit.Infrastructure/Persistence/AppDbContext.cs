@@ -94,6 +94,8 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<UserSharePointCredential> UserSharePointCredentials => Set<UserSharePointCredential>();
+    public DbSet<PageDefinition> PageDefinitions => Set<PageDefinition>();
+    public DbSet<PagePermission> PagePermissions => Set<PagePermission>();
 
     // ─────────────────────────────────────────────────────────────────────────
 
