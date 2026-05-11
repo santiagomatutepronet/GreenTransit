@@ -26,6 +26,13 @@ public interface IPagePermissionService
     /// </summary>
     Task<IReadOnlySet<string>> GetAllowedRoutesAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Devuelve true si el usuario tiene permiso de escritura sobre la ruta
+    /// (AccessLevel == "Write" | "ReadWrite").
+    /// Devuelve false si la ruta no está gestionada o el nivel es solo "Read".
+    /// </summary>
+    Task<bool> CanWriteRouteAsync(string routeTemplate, CancellationToken ct = default);
+
     /// <summary>Invalida la caché de permisos para un perfil concreto (tras guardar cambios).</summary>
     Task InvalidateCacheForProfileAsync(int profileId);
 }

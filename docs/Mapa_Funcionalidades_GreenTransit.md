@@ -845,6 +845,41 @@ Reglas de transición:
 
 ---
 
+---
+
+## 11. 🌐 Módulo EcoDataNet — Espacio de Datos
+
+> Epígrafe dedicado a la integración de GreenTransit con el **data space EcoDataNet** mediante conectores EDC (Eclipse Dataspace Components). En esta primera fase la funcionalidad es de tipo **atrezzo / mock frontend**: permite visualizar el flujo de publicación y validar la propuesta UX antes de conectar el backend real.
+
+### 11.1. Publicar Datos en EcoDataNet
+
+- **Lógica (mock)**: permite al usuario iniciar un proceso de publicación de sus datos de gestión de residuos hacia la plataforma EcoDataNet. No realiza llamadas reales a ningún API; el proceso de publicación se simula en el frontend mediante una barra de progreso animada.
+- **Ruta**: `/ecodatanet/publish`
+- **Acceso**: `@attribute [Authorize]` — cualquier usuario autenticado.
+- **Entidades / campos referenciados**:
+  - `Users.PortalEDCProvider` → campo de solo lectura que identifica el conector EDC del participante (actualmente simulado con un valor mock constante).
+- **Componentes de la pantalla**:
+  | Elemento | Detalle |
+  |---|---|
+  | Bloque informativo | Texto descriptivo sobre EcoDataNet: soberanía del dato, interoperabilidad, trazabilidad y cumplimiento regulatorio. |
+  | Diagrama de integración | Imagen estática `wwwroot/images/ecodatanet/integracion-greentransit-ecodatanet.png` que ilustra el flujo GreenTransit → Secure API / Data ingestion / HTTPS REST → EcoDataNet (Data Platform, Data Catalog, Observability). |
+  | Campo "Conector EDC EcoDataNet del participante" | Solo lectura. Valor procedente de `Users.PortalEDCProvider` (mock: `https://edc.greentransit.example.com/connector`). |
+  | Campo "API Key" | Solo lectura. GUID autogenerado en el frontend al cargar la pantalla (`Guid.NewGuid()`). Botón de regeneración disponible. |
+  | Barra de progreso | Visible únicamente durante la simulación. Avanza de 0 % a 100 % en 20 pasos de 80 ms cada uno. |
+  | Alerta de éxito | Aparece al completar el proceso: `"Proceso completado con éxito"`. |
+  | Botón principal | `"Publicar datos en EcoDataNet"`. Deshabilitado mientras el proceso está en curso. |
+- **Comportamiento del botón**:
+  1. Inicia `_publishing = true` → deshabilita el botón.
+  2. Itera 20 pasos con `Task.Delay(80 ms)` actualizando `_progress` (0 → 100 %).
+  3. Al finalizar: `_publishing = false`, `_completed = true` → muestra alerta de éxito.
+- **Ficheros**:
+  - `src/GreenTransit.Web/Components/Pages/EcoDataNet/PublishData.razor`
+  - `src/GreenTransit.Web/Components/Pages/EcoDataNet/PublishData.razor.css`
+- **Menú lateral**: nuevo epígrafe colapsable **EcoDataNet** (icono `bi-broadcast`) con ítem hijo **Publicar Datos** (icono `bi-cloud-upload-fill`). Posicionado antes del epígrafe Seguridad en `NavMenu.razor`.
+- **Estado**: ✅ IMPLEMENTADO (mock frontend) — pendiente de conectar con backend EDC real.
+
+---
+
 ### 10.1. Listado de Declaraciones de Producción
 
 - **Lógica**: vista paginada de todas las declaraciones del tenant, con filtros y acciones contextuales según estado y perfil.

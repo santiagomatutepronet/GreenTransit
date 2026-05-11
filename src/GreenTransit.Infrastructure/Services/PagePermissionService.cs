@@ -55,12 +55,28 @@ public sealed class PagePermissionService : IPagePermissionService
         var granted = await GetProfilePermissionsAsync(profileId, ct);
 
         if (granted.Count > 0)
-            return granted.Contains(definition.ID);
+            return granted.ContainsKey(definition.ID);
 
         // Ruta gestionada + perfil con 0 entradas → lista blanca estricta = denegado
         _logger.LogDebug(
             "Perfil {ProfileId} sin permisos → denegado para {Route}", profileId, routeTemplate);
         return false;
+    }
+
+    public async Task<bool> CanWriteRouteAsync(string routeTemplate, CancellationToken ct = default)
+    {
+        var definition = await GetDefinitionAsync(routeTemplate, ct);
+        if (definition is null)
+            return false;                             // ruta no gestionada → no concede escritura implícita
+
+        var profileId = _currentUser.ProfileId;
+        if (profileId == 0)
+            return false;
+
+        var granted = await GetProfilePermissionsAsync(profileId, ct);
+
+        return granted.TryGetValue(definition.ID, out var level)
+               && level is "Write" or "ReadWrite";
     }
 
     public async Task<IReadOnlySet<string>> GetAllowedRoutesAsync(CancellationToken ct = default)
@@ -78,7 +94,7 @@ public sealed class PagePermissionService : IPagePermissionService
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var def in allDefs)
         {
-            if (granted.Contains(def.ID))
+            if (granted.ContainsKey(def.ID))
                 result.Add(def.Route);
         }
         return result;
@@ -127,10 +143,10 @@ public sealed class PagePermissionService : IPagePermissionService
         return def;
     }
 
-    private async Task<HashSet<int>> GetProfilePermissionsAsync(int profileId, CancellationToken ct)
+    private async Task<Dictionary<int, string>> GetProfilePermissionsAsync(int profileId, CancellationToken ct)
     {
         var key = ProfileCacheKey(profileId);
-        if (_cache.TryGetValue(key, out HashSet<int>? hit) && hit is not null)
+        if (_cache.TryGetValue(key, out Dictionary<int, string>? hit) && hit is not null)
             return hit;
 
         await using var scope = _scopeFactory.CreateAsyncScope();
@@ -139,8 +155,7 @@ public sealed class PagePermissionService : IPagePermissionService
         var ids = await ctx.PagePermissions
             .AsNoTracking()
             .Where(p => p.IdProfile == profileId)
-            .Select(p => p.IdPageDefinition)
-            .ToHashSetAsync(ct);
+            .ToDictionaryAsync(p => p.IdPageDefinition, p => p.AccessLevel, ct);
 
         _cache.Set(key, ids, CacheDuration);
         _logger.LogDebug("Permisos cargados para perfil {ProfileId}: {Count} páginas", profileId, ids.Count);

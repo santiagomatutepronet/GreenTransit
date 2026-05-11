@@ -387,6 +387,22 @@
         }
     </div>
 
+    @* -- EcoDataNet ---------------------------------------------------- *@
+    <div class="nav-group">
+        <div class="nav-group-title" @onclick='() => ToggleGroup("ecodatanet")'>
+            <i class="bi bi-broadcast nav-icon"></i>
+            <span class="nav-label">EcoDataNet</span>
+            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("ecodatanet") ? "rotated" : "")"></i>
+        </div>
+        @if (!NavMenuState.IsCollapsed("ecodatanet"))
+        {
+        <NavLink class="nav-item nav-item--child" href="/ecodatanet/publish">
+            <i class="bi bi-cloud-upload-fill nav-icon"></i>
+            <span class="nav-label">Publicar Datos</span>
+        </NavLink>
+        }
+    </div>
+
     @* -- Seguridad: solo ADMIN y SCRAP ------------------------------------ *@
     <ProfileAuthorizeView Profiles="@_profilesSecurity">
         <Authorized>
