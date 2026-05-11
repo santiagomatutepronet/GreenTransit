@@ -110,6 +110,33 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
         if (newPages.Count > 0)
             await _db.SaveChangesAsync(ct);
 
+        // 5b. Reparar páginas que fueron registradas como "General" (excluidas) pero
+        //     que ahora tienen un módulo válido tras actualizar InferModuleName.
+        //     Las reactiva y les asigna el módulo correcto.
+        var discoveredByRoute = discovered.ToDictionary(
+            dp => dp.Route, dp => dp, StringComparer.OrdinalIgnoreCase);
+
+        var wrongModulePages = await _db.PageDefinitions
+            .Where(d => d.ModuleName == "General")
+            .ToListAsync(ct);
+
+        int repaired = 0;
+        foreach (var page in wrongModulePages)
+        {
+            if (!discoveredByRoute.TryGetValue(page.Route, out var disc)) continue;
+
+            page.ModuleName    = disc.ModuleName;
+            page.ComponentName = disc.ComponentName;
+            page.IsActive      = true;
+            page.UpdatedAt     = DateTime.UtcNow;
+            repaired++;
+            _logger.LogInformation(
+                "Página reparada: {Route} → módulo '{Module}'", page.Route, disc.ModuleName);
+        }
+
+        if (repaired > 0)
+            await _db.SaveChangesAsync(ct);
+
         // 6. Auto-asignar ReadWrite al perfil ADMIN en todas las páginas que no lo tengan
         await EnsureAdminHasFullAccessAsync(ct);
 
@@ -125,6 +152,7 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
         if (ns?.Contains("Security") == true) return "Seguridad";
         if (ns?.Contains("Reporting") == true) return "Reporting";
         if (ns?.Contains("Logistics") == true) return "Dashboards Logísticos";
+        if (ns?.Contains("Mobility") == true)  return "Movilidad Urbana";
         if (ns?.Contains("Sustainability") == true) return "Sostenibilidad";
 
         return route switch
@@ -147,12 +175,14 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
                        r.StartsWith("/emission-factor")    => "Sostenibilidad",
             var r when r.StartsWith("/users")              ||
                        r.StartsWith("/profiles")           ||
-                       r.StartsWith("/security")           => "Seguridad",
+                       r.StartsWith("/security")           ||
+                       r.StartsWith("/admin")              => "Seguridad",
             var r when r.StartsWith("/product-declarations") => "Declaraciones de Producto",
             var r when r.StartsWith("/logistics")          ||
                        r.StartsWith("/kpis")               ||
                        r.StartsWith("/traceability")       ||
                        r.StartsWith("/documents")          => "Reporting",
+            var r when r.StartsWith("/mobility")           => "Movilidad Urbana",
             _ => "General"
         };
     }
@@ -171,6 +201,7 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["UserList"]              = "Usuarios",
             ["ProfileList"]           = "Perfiles",
             ["PagePermissionMatrix"]  = "Permisos por Pantalla",
+            ["SandboxManager"]        = "Sandbox — Generación de Datos",
             ["LerCodeList"]           = "Códigos LER",
             ["ResidueList"]           = "Residuos",
             ["EntityList"]            = "Entidades",

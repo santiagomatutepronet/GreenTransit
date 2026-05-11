@@ -1,0 +1,329 @@
+@page "/mobility/municipal-monitoring"
+@attribute [Authorize(Policy = PolicyConstants.CanViewMobilityMunicipalMonitoring)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Mobility.DTOs
+@using GreenTransit.Application.Features.Mobility.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+@using System.Globalization
+
+@inject IMediator            Mediator
+@inject ICurrentUserService  CurrentUser
+@inject ILogger<MunicipalMonitoring> Logger
+@inject IJSRuntime           JS
+
+<PageTitle>Monitorización Movilidad — Ayuntamiento — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-building-check me-2"></i>Monitorización de Movilidad — Ayuntamiento
+        </h1>
+        <p class="text-muted mb-0">
+            Impacto de recogidas RAEE en la movilidad del municipio ·
+            @(_filterMonth.HasValue
+                ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", _es)
+                : _filterYear.ToString())
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-select form-select-sm" @bind="_filterMonth" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            @for (int m = 1; m <= 12; m++)
+            { <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", _es))</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Flujo residuo</label>
+        <select class="form-select form-select-sm" @bind="_filterWasteStream" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            <option value="RAEE">RAEE</option>
+            <option value="PILAS">Pilas</option>
+            <option value="NEUMATICOS">Neumáticos</option>
+            <option value="NFU">NFU</option>
+            <option value="VFU">VFU</option>
+            <option value="OIL">Aceite</option>
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Cargando datos de movilidad…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── KPI cards ─────────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        @foreach (var kpi in _data.KpiCards)
+        {
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card kpi-card h-100">
+                    <div class="card-body">
+                        <p class="kpi-label">@kpi.Label</p>
+                        <p class="kpi-value">@kpi.Value.ToString("N0") <small class="fs-6 text-muted">@kpi.Unit</small></p>
+                        @if (kpi.TrendPercent.HasValue)
+                        {
+                            <p class="mb-0 @(kpi.TrendPercent >= 0 ? "text-success" : "text-danger")">
+                                <i class="bi @(kpi.TrendPercent >= 0 ? "bi-arrow-up" : "bi-arrow-down")"></i>
+                                @kpi.TrendPercent.Value.ToString("F1")% vs periodo anterior
+                            </p>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @* ── Notificaciones activas ────────────────────────────────────────────── *@
+    @if (_data.ActiveNotifications.Any())
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <div class="card border-warning">
+                    <div class="card-header bg-warning text-dark">
+                        <i class="bi bi-bell-fill me-1"></i>Notificaciones activas (@_data.ActiveNotifications.Count)
+                    </div>
+                    <div class="card-body py-2">
+                        @foreach (var n in _data.ActiveNotifications)
+                        {
+                            <div class="d-flex align-items-start gap-2 mb-1">
+                                <i class="bi bi-exclamation-triangle-fill text-warning mt-1"></i>
+                                <span>@n.Message</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Histórico mensual ─────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-graph-up me-1"></i>Histórico de recogidas e incidencias
+                </div>
+                <div class="card-body">
+                    <div id="municipalHistoryChart" style="min-height:250px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Recogidas planificadas ────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-calendar3 me-1"></i>Recogidas planificadas próximas
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Referencia SO</th>
+                                    <th>Fecha planificada</th>
+                                    <th>SCRAP</th>
+                                    <th>Estado movilidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in _data.PlannedPickups)
+                                {
+                                    <tr>
+                                        <td>@p.ServiceOrderNumber</td>
+                                        <td>@(p.PlannedPickupStart?.ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
+                                        <td>@p.ScrapName</td>
+                                        <td>
+                                            <span class="badge @TrafficLightBadge(p.TrafficLight)">
+                                                @TrafficLightLabel(p.TrafficLight)
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                                @if (!_data.PlannedPickups.Any())
+                                {
+                                    <tr><td colspan="4" class="text-center text-muted py-3">Sin recogidas planificadas próximamente.</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Cumplimiento por SCRAP ────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-table me-1"></i>Cumplimiento por SCRAP
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>SCRAP</th>
+                                    <th class="text-end">Traslados</th>
+                                    <th class="text-end">% Hora pico</th>
+                                    <th class="text-end">% Cumple DUM</th>
+                                    <th class="text-end">Incidencias</th>
+                                    <th class="text-end">Índice</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in _data.ScrapCompliance)
+                                {
+                                    <tr>
+                                        <td>@s.ScrapName</td>
+                                        <td class="text-end">@s.TotalMoves</td>
+                                        <td class="text-end">@s.PeakHourPercent.ToString("F1")%</td>
+                                        <td class="text-end">@s.DumCompliancePercent.ToString("F1")%</td>
+                                        <td class="text-end">@s.OpenIncidents</td>
+                                        <td class="text-end fw-semibold">@s.ConflictIndex.ToString("F0")</td>
+                                        <td>
+                                            <span class="badge @TrafficLightBadge(s.TrafficLight)">
+                                                @TrafficLightLabel(s.TrafficLight)
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                                @if (!_data.ScrapCompliance.Any())
+                                {
+                                    <tr><td colspan="7" class="text-center text-muted py-3">Sin datos.</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private MobilityMunicipalMonitoringDto? _data;
+    private bool    _loading           = true;
+    private int     _filterYear        = DateTime.Now.Year;
+    private int?    _filterMonth       = DateTime.Now.Month;
+    private string  _filterWasteStream = string.Empty;
+
+    private static readonly CultureInfo _es = new("es-ES");
+    private bool _jsReady = false;
+    private DotNetObjectReference<MunicipalMonitoring>? _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+        => await RefreshAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsReady   = true;
+            _dotNetRef = DotNetObjectReference.Create(this);
+            // Si los datos ya están cargados (caché rápida), renderizar ahora
+            if (_data is not null)
+                await RenderChartsAsync();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetMobilityMunicipalMonitoringQuery(
+                Year:        _filterYear,
+                Month:       _filterMonth,
+                WasteStream: string.IsNullOrEmpty(_filterWasteStream) ? null : _filterWasteStream));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando monitorización municipal de movilidad");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+        // Si JS ya está listo (filtro cambiado después de carga inicial), renderizar directamente
+        if (_jsReady)
+            await RenderChartsAsync();
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        if (!_data.HistoricalSeries.Any())
+        {
+            // Sin datos históricos: ocultar gráfico via JS (no error)
+            try { await JS.InvokeVoidAsync("mobilityMunicipalHistory.clear", "municipalHistoryChart"); } catch { /* ignorar */ }
+            return;
+        }
+        try
+        {
+            var categories = _data.HistoricalSeries.Select(s => s.Period).ToArray();
+            var pickups    = _data.HistoricalSeries.Select(s => (double)s.PickupCount).ToArray();
+            var incidents  = _data.HistoricalSeries.Select(s => (double)s.IncidentCount).ToArray();
+
+            await JS.InvokeVoidAsync("mobilityMunicipalHistory.render",
+                "municipalHistoryChart", categories, pickups, incidents);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráficos de movilidad municipal");
+        }
+    }
+
+    private static string TrafficLightBadge(string light) => light switch
+    {
+        "Red"    => "bg-danger",
+        "Orange" => "bg-warning text-dark",
+        _        => "bg-success"
+    };
+
+    private static string TrafficLightLabel(string light) => light switch
+    {
+        "Red"    => "Conflicto",
+        "Orange" => "Moderado",
+        _        => "Correcto"
+    };
+
+    public ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

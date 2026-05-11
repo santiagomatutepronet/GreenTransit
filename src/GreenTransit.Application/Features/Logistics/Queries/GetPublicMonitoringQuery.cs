@@ -38,7 +38,8 @@ public sealed class GetPublicMonitoringQueryHandler
     {
         var ownerId        = _currentUser.OwnerId;
         var linkedEntityId = _currentUser.LinkedEntityId;
-        var isPublicEnt    = _currentUser.IsInProfile(ProfileConstants.PublicEnt);
+        var isAdmin        = _currentUser.IsInProfile(ProfileConstants.Admin);
+        var isPublicEnt    = !isAdmin && _currentUser.IsInProfile(ProfileConstants.PublicEnt);
 
         // ── Rango temporal ────────────────────────────────────────────────────
         DateTime dateFrom, dateTo;

@@ -632,6 +632,59 @@ El sistema incluye tres dashboards logísticos diferenciados según el perfil de
 
 ---
 
+### 5.6. Módulo de Movilidad Urbana — Impacto RAEE ✅ IMPLEMENTADO
+
+> Agrupa las vistas UC3 orientadas a analizar el impacto de los traslados RAEE en la movilidad urbana: horas punta, cumplimiento de zonas DUM, planificación semanal y serie histórica mensual.
+
+#### 5.6.1. UC3-C — Datos de Impacto RAEE en Movilidad (Oficina de Asignación)
+
+- **Ruta**: `/mobility/dispatch-data`
+- **Perfil objetivo**: `DISPATCH_OFFICE`, `ADMIN`.
+- **Policy**: `CanViewMobilityDispatchData`.
+- **Lógica**: KPIs de movilidad calculados a partir de los traslados del periodo. Identifica recogidas en hora punta y mide el cumplimiento de franjas DUM.
+
+**Archivos implementados**:
+- `Application/Features/Mobility/Queries/GetMobilityDispatchDataQuery.cs` — handler principal con filtros: `Year`, `Month?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`.
+- `Application/Features/Mobility/DTOs/MobilityDtos.cs` — DTOs: `MobilityDispatchDataDto`, `MobilityExportRowDto`, `DispatchScrapSummaryDto`, `WeeklyPlanMobilityItemDto`, `MonthlyMobilitySeriesDto`.
+- `Application/Features/Mobility/Queries/ExportMobilityDataToExcelQuery.cs` — genera XLSX en memoria (ClosedXML) con los datos del `ExportDataset`.
+- `Application/Features/Mobility/Services/MobilityRecommendationEngine.cs` — motor de recomendaciones para replanificación de recogidas conflictivas.
+- `Web/Components/Pages/Mobility/DispatchData.razor` — página `/mobility/dispatch-data`.
+
+**Cálculo de hora punta** (configurable en `appsettings.json` → sección `MobilitySettings`):
+
+| Parámetro | Default | Descripción |
+|---|---|---|
+| `PeakHourStart1` | 7.5 | Inicio franja matutina (07:30) |
+| `PeakHourEnd1` | 9.5 | Fin franja matutina (09:30) |
+| `PeakHourStart2` | 17.5 | Inicio franja vespertina (17:30) |
+| `PeakHourEnd2` | 19.5 | Fin franja vespertina (19:30) |
+
+Una recogida se considera **en hora punta** si `hora_decimal ∈ [Start1, End1) ∪ [Start2, End2)` donde `hora_decimal = Hour + Minute/60`.
+
+**Cálculo de emisiones CO₂e** (campo `CO2eKg` en `MobilityExportRowDto`):
+- Se lee directamente de `WasteMoveResidues.TransportInfo_TransportCarbonEmissions`.
+- Dicho campo es calculado por `CalculateEmissionsCommand` al confirmar la recogida (estado → `RECOGIDO`):
+  ```
+  CO₂e (kg) = TransportInfo_TransportDistance (km) × EmissionFactor.Value (kgCO₂e/km)
+  ```
+- El `EmissionFactor` se selecciona del `EmissionFactorSet` activo más reciente (`Status = "Active"`, `ValidFrom <= UtcNow`), cruzando `VehicleType` + `FuelType` + `EuroClass`.
+- La versión del set aplicado queda almacenada en `WasteMoveResidues.EmissionFactorVersion`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Dataset exportable | `WasteMoves` + `WasteMoveResidues` + `BusinessEntities` | Tabla detallada por traslado: distancia, duración, CO₂e, hora punta, cumplimiento DUM |
+| Resumen por SCRAP | `WasteMoves` agrupado | `TotalPickups`, `PeakHourPercent`, `DumCompliancePercent`, `OpenIncidents` |
+| Planificación semanal | `ServiceOrders` (próximos 7 días, estado `Pending`/`Scheduled`) | Semáforo `Red/Green` según si la hora planificada cae en hora punta |
+| Serie mensual | `WasteMoves` (últimos 12 meses) | `PeakHourPercent`, `DumCompliancePercent`, `AvgConflictIndex` por periodo `YYYY-MM` |
+
+**Filtros disponibles**: `Year` (obligatorio), `Month?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`.
+
+**Exportación**: botón "Exportar XLSX" → `ExportMobilityDataToExcelQuery` genera el `ExportDataset` como hoja Excel.
+
+---
+
 ## 6. 👥 Gestión de Usuarios, Perfiles y Seguridad
 
 > **Estado**: ✅ Implementado — Application + Web layers completos.

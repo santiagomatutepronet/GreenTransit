@@ -39,7 +39,8 @@ public sealed class GetLogisticsOptimizationQueryHandler
     {
         var ownerId        = _currentUser.OwnerId;
         var linkedEntityId = _currentUser.LinkedEntityId;
-        var isScrap        = _currentUser.IsInProfile(ProfileConstants.Scrap);
+        var isAdmin        = _currentUser.IsInProfile(ProfileConstants.Admin);
+        var isScrap        = !isAdmin && _currentUser.IsInProfile(ProfileConstants.Scrap);
 
         // ── Rango temporal ────────────────────────────────────────────────────
         DateTime dateFrom, dateTo;

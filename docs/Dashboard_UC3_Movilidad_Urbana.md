@@ -184,7 +184,7 @@ Este caso de uso se alinea con programas como **Living Lab**, que buscan solucio
 
 > **No se crean tablas nuevas**. Todo el UC3 se alimenta de las tablas existentes del modelo v4.1. Las nuevas métricas (% hora pico, índice de conflicto) se calculan en las Queries CQRS.
 
-| Tabla | Campos principales para este UC2 |
+| Tabla | Campos principales para este UC3 |
 |-------|----------------------------------|
 | `Entities` | `Id`, `Name`, `EntityRole`, `Latitude`, `Longitude`, `ProvinceCode`, `MunicipalityCode` |
 | `ServiceOrders` | `Id`, `Status`, `IdPickupPoint`, `IdIssuedBy`, `PlannedPickupStart`, `PlannedPickupEnd`, `WasteStream`, `OwnerId` |
@@ -205,7 +205,7 @@ Este caso de uso se alinea con programas como **Living Lab**, que buscan solucio
 | `COORDINATOR` | UC3-A | Ve transversalmente los SCRAPs vinculados a sus acuerdos (`Agreements.IdCoordinator = LinkedEntityId`). |
 | `PUBLIC_ENT` | UC3-B | Solo ve recogidas cuyo punto de recogida (`IdPickupPoint` → `Entities.MunicipalityCode`) pertenece a su municipio, o cuya SO fue emitida por su entidad (`ServiceOrders.IdIssuedBy = LinkedEntityId`). |
 | `DISPATCH_OFFICE` | UC3-C | Ve todos los traslados del tenant (`OwnerId`). |
-| `ADMIN` | UC3-A, UC3-B, UC2-C | Sin restricciones dentro del tenant. Puede filtrar por cualquier coordinador, ayuntamiento o SCRAP. |
+| `ADMIN` | UC3-A, UC3-B, UC3-C | Sin restricciones dentro del tenant. Puede filtrar por cualquier coordinador, ayuntamiento o SCRAP. |
 
 **Patrón de filtrado**: usar `ICurrentUserService.LinkedEntityId` + `ICurrentUserService.IsInAnyProfile(...)` (ya implementado).
 

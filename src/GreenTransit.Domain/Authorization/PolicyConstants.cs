@@ -118,6 +118,17 @@ public static class PolicyConstants
     /// <summary>CRUD de cuotas de mercado: solo ADMIN.</summary>
     public const string CanManageMarketShares = "CanManageMarketShares";
 
+    // ─── Movilidad Urbana (UC3) ───────────────────────────────────────────────
+
+    /// <summary>Dashboard UC3-A — Análisis de Impacto en Movilidad — Coordinador: COORDINATOR, ADMIN.</summary>
+    public const string CanViewMobilityCoordinatorAnalysis = "CanViewMobilityCoordinatorAnalysis";
+
+    /// <summary>Dashboard UC3-B — Monitorización de Movilidad — Ayuntamiento: PUBLIC_ENT, ADMIN.</summary>
+    public const string CanViewMobilityMunicipalMonitoring = "CanViewMobilityMunicipalMonitoring";
+
+    /// <summary>Vista UC3-C — Datos de Impacto RAEE en Movilidad — Oficina de Asignación: DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewMobilityDispatchData = "CanViewMobilityDispatchData";
+
     // ─── Logística y optimización ────────────────────────────────────────────
 
     /// <summary>Dashboard 1 — Panel de Optimización Logística RAEE: SCRAP, COORDINATOR, ADMIN.</summary>

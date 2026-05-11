@@ -6,6 +6,45 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace GreenTransit.Application.Features.Geography.Queries;
 
+// ── GetAllProvincesQuery ──────────────────────────────────────────────────────
+
+/// <summary>Devuelve todas las provincias ordenadas por nombre. Catálogo compartido.</summary>
+public sealed record GetAllProvincesQuery : IRequest<IEnumerable<ProvinceDto>>;
+
+public sealed class GetAllProvincesQueryHandler
+    : IRequestHandler<GetAllProvincesQuery, IEnumerable<ProvinceDto>>
+{
+    private const string CacheKey = "geo:provinces:all";
+    private static readonly TimeSpan Ttl = TimeSpan.FromHours(24);
+
+    private readonly IApplicationDbContext _context;
+    private readonly IMemoryCache _cache;
+
+    public GetAllProvincesQueryHandler(IApplicationDbContext context, IMemoryCache cache)
+    {
+        _context = context;
+        _cache   = cache;
+    }
+
+    public async Task<IEnumerable<ProvinceDto>> Handle(
+        GetAllProvincesQuery request, CancellationToken cancellationToken)
+    {
+        if (_cache.TryGetValue(CacheKey, out IEnumerable<ProvinceDto>? cached) && cached is not null)
+            return cached;
+
+        var result = await _context.Provinces
+            .AsNoTracking()
+            .OrderBy(p => p.Name ?? p.Ref)
+            .Select(p => new ProvinceDto(p.Id, p.Name ?? p.Ref, p.Code))
+            .ToListAsync(cancellationToken);
+
+        _cache.Set(CacheKey, (IEnumerable<ProvinceDto>)result,
+            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = Ttl });
+
+        return result;
+    }
+}
+
 // ── GetCountriesQuery ─────────────────────────────────────────────────────────
 
 /// <summary>Devuelve todos los países. Catálogo compartido sin filtro OwnerId.</summary>

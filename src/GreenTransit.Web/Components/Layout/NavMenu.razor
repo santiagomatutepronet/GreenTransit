@@ -376,6 +376,52 @@
             </Authorized>
         </ProfileAuthorizeView>
 
+        @* -- Dashboards de Movilidad Urbana (UC3): COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN *@
+        @if (AllowAny("/mobility/coordinator-analysis", "/mobility/municipal-monitoring", "/mobility/dispatch-data"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesAnyMobilityDashboard">
+            <Authorized>
+                <div class="nav-group-title nav-group-title--sub">
+                    <i class="bi bi-signpost-2-fill nav-icon"></i>
+                    <span class="nav-label">Movilidad Urbana</span>
+                </div>
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesMobilityCoordinator">
+            <Authorized>
+                @if (Allow("/mobility/coordinator-analysis"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/mobility/coordinator-analysis">
+                    <i class="bi bi-diagram-3-fill nav-icon"></i>
+                    <span class="nav-label">Análisis Coordinador</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesMobilityMunicipal">
+            <Authorized>
+                @if (Allow("/mobility/municipal-monitoring"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/mobility/municipal-monitoring">
+                    <i class="bi bi-building-check nav-icon"></i>
+                    <span class="nav-label">Monitorización Municipio</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesMobilityDispatch">
+            <Authorized>
+                @if (Allow("/mobility/dispatch-data"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/mobility/dispatch-data">
+                    <i class="bi bi-database-fill-gear nav-icon"></i>
+                    <span class="nav-label">Datos Oficina Asignación</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        }
+
         @* Documentos: todos los autenticados *@
         @if (Allow("/documents"))
         {
@@ -384,6 +430,22 @@
             <span class="nav-label">Documentos</span>
         </NavLink>
         }
+        }
+    </div>
+
+    @* -- EcoDataNet
+    <div class="nav-group">
+        <div class="nav-group-title" @onclick='() => ToggleGroup("ecodatanet")'>
+            <i class="bi bi-broadcast nav-icon"></i>
+            <span class="nav-label">EcoDataNet</span>
+            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("ecodatanet") ? "rotated" : "")"></i>
+        </div>
+        @if (!NavMenuState.IsCollapsed("ecodatanet"))
+        {
+        <NavLink class="nav-item nav-item--child" href="/ecodatanet/publish">
+            <i class="bi bi-cloud-upload-fill nav-icon"></i>
+            <span class="nav-label">Publicar Datos</span>
+        </NavLink>
         }
     </div>
 
@@ -616,5 +678,30 @@
     private static readonly string[] _profilesManageDeclarations =
     [
         ProfileConstants.Producer, ProfileConstants.Admin
+    ];
+
+    // Movilidad UC3-A — Coordinador: COORDINATOR, ADMIN
+    private static readonly string[] _profilesMobilityCoordinator =
+    [
+        ProfileConstants.Coordinator, ProfileConstants.Admin
+    ];
+
+    // Movilidad UC3-B — Ayuntamiento: PUBLIC_ENT, ADMIN
+    private static readonly string[] _profilesMobilityMunicipal =
+    [
+        ProfileConstants.PublicEnt, ProfileConstants.Admin
+    ];
+
+    // Movilidad UC3-C — Oficina de Asignación: DISPATCH_OFFICE, ADMIN
+    private static readonly string[] _profilesMobilityDispatch =
+    [
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Sub-título Movilidad Urbana: cualquiera de los tres grupos anteriores
+    private static readonly string[] _profilesAnyMobilityDashboard =
+    [
+        ProfileConstants.Coordinator, ProfileConstants.PublicEnt,
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 }

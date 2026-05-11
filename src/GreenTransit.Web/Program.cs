@@ -474,6 +474,23 @@ try
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Admin)));
 
+        // ── MOVILIDAD URBANA (UC3) ────────────────────────────────────────────
+
+        // Dashboard UC3-A — Análisis de Impacto en Movilidad (Coordinador): COORDINATOR y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewMobilityCoordinatorAnalysis, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Coordinator, ProfileConstants.Admin)));
+
+        // Dashboard UC3-B — Monitorización de Movilidad (Ayuntamiento): PUBLIC_ENT y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewMobilityMunicipalMonitoring, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.PublicEnt, ProfileConstants.Admin)));
+
+        // Vista UC3-C — Datos de Impacto RAEE en Movilidad (Oficina de Asignación): DISPATCH_OFFICE y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewMobilityDispatchData, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
         // ── LOGÍSTICA Y OPTIMIZACIÓN ──────────────────────────────────────────
 
         // Dashboard 1 — Panel de Optimización Logística RAEE: SCRAP, COORDINATOR y ADMIN.
@@ -556,6 +573,10 @@ try
     // ── Objetivos regulatorios por defecto ────────────────────────────────────
     builder.Services.AddSingleton<GreenTransit.Application.Common.Interfaces.IRegulatoryTargetDefaults,
         GreenTransit.Web.Services.RegulatoryTargetDefaults>();
+
+    // ── Motor de recomendaciones de movilidad ─────────────────────────────────
+    builder.Services.AddTransient<GreenTransit.Application.Features.Mobility.Services.IMobilityRecommendationEngine,
+        GreenTransit.Application.Features.Mobility.Services.MobilityRecommendationEngine>();
 
     // ── Opciones de configuración ─────────────────────────────────────────────
     builder.Services.Configure<GreenTransit.Application.Features.PlantEnergies.Queries.PlantEnergyOptions>(

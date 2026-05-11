@@ -1,0 +1,382 @@
+@page "/mobility/dispatch-data"
+@attribute [Authorize(Policy = PolicyConstants.CanViewMobilityDispatchData)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Geography.DTOs
+@using GreenTransit.Application.Features.Geography.Queries
+@using GreenTransit.Application.Features.Mobility.DTOs
+@using GreenTransit.Application.Features.Mobility.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+@using System.Globalization
+
+@inject IMediator            Mediator
+@inject ICurrentUserService  CurrentUser
+@inject ILogger<DispatchData> Logger
+@inject IJSRuntime           JS
+
+<PageTitle>Datos de Movilidad — Oficina de Asignación — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-database-fill-gear me-2"></i>Datos de Impacto RAEE en Movilidad
+        </h1>
+        <p class="text-muted mb-0">
+            Oficina de Asignación · Dataset exportable para Living Lab ·
+            @(_filterMonth.HasValue
+                ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", _es)
+                : _filterYear.ToString())
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-success btn-sm" @onclick="ExportXlsxAsync" disabled="@(_loading || _exporting)">
+            <i class="bi bi-file-earmark-excel me-1"></i>Exportar XLSX
+        </button>
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-select form-select-sm" @bind="_filterMonth" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            @for (int m = 1; m <= 12; m++)
+            { <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", _es))</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Provincia</label>
+        <select class="form-select form-select-sm" @bind="_filterProvinceId" @bind:after="OnProvinceChangedAsync">
+            <option value="0">Todas</option>
+            @foreach (var p in _provinces)
+            { <option value="@p.Id">@p.Name</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Municipio</label>
+        <select class="form-select form-select-sm" @bind="_filterMunicipalityCode" @bind:after="RefreshAsync"
+                disabled="@(_filterProvinceId == 0)">
+            <option value="">Todos</option>
+            @foreach (var m in _municipalities)
+            { <option value="@m.Code">@m.Name</option> }
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Cargando datos de movilidad…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── Resumen por SCRAP ─────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        @foreach (var s in _data.ScrapSummaries)
+        {
+            <div class="col-12 col-md-6 col-xl-4">
+                <div class="card h-100">
+                    <div class="card-header fw-semibold">@s.ScrapName</div>
+                    <div class="card-body">
+                        <ul class="list-unstyled mb-0 small">
+                            <li><span class="text-muted">Recogidas:</span> <strong>@s.TotalPickups</strong></li>
+                            <li><span class="text-muted">% Hora pico:</span>
+                                <strong class="@(s.PeakHourPercent > 30 ? "text-danger" : "text-success")">
+                                    @s.PeakHourPercent.ToString("F1")%
+                                </strong>
+                            </li>
+                            <li><span class="text-muted">% Cumple DUM:</span> <strong>@s.DumCompliancePercent.ToString("F1")%</strong></li>
+                            <li><span class="text-muted">Incidencias abiertas:</span>
+                                <strong class="@(s.OpenIncidents > 0 ? "text-warning" : "")">@s.OpenIncidents</strong>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        }
+        @if (!_data.ScrapSummaries.Any())
+        {
+            <div class="col-12"><p class="text-muted">Sin datos de SCRAPs para el periodo.</p></div>
+        }
+    </div>
+
+    @* ── Planificación semanal con semáforo ────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-calendar-week me-1"></i>Planificación semanal (próximos 7 días)
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Referencia SO</th>
+                                    <th>Punto de recogida</th>
+                                    <th>Municipio</th>
+                                    <th>SCRAP</th>
+                                    <th>Conflicto movilidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var w in _data.WeeklyPlan)
+                                {
+                                    <tr>
+                                        <td>@(w.PlannedPickupStart?.ToString("dd/MM HH:mm") ?? "—")</td>
+                                        <td>@w.ServiceOrderNumber</td>
+                                        <td>@w.PickupPointName</td>
+                                        <td>@(w.MunicipalityName ?? w.MunicipalityCode ?? "—")</td>
+                                        <td>@w.ScrapName</td>
+                                        <td>
+                                            <span class="badge @TrafficLightBadge(w.TrafficLight)">
+                                                @TrafficLightLabel(w.TrafficLight)
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                                @if (!_data.WeeklyPlan.Any())
+                                {
+                                    <tr><td colspan="6" class="text-center text-muted py-3">Sin recogidas planificadas esta semana.</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Tendencia mensual ─────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-graph-up-arrow me-1"></i>Evolución mensual de métricas de movilidad
+                </div>
+                <div class="card-body">
+                    <div id="dispatchMonthlyChart" style="min-height:250px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Preview del dataset ───────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <span><i class="bi bi-table me-1"></i>Dataset (primeras 50 filas)</span>
+                    <small class="text-muted">@_data.ExportDataset.Count filas totales</small>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="sticky-top bg-white">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Municipio</th>
+                                    <th>Provincia</th>
+                                    <th>SCRAP</th>
+                                    <th class="text-end">Kg</th>
+                                    <th class="text-end">Km</th>
+                                    <th class="text-end">CO₂e (kg)</th>
+                                    <th>Cumple DUM</th>
+                                    <th>Hora pico</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var r in _data.ExportDataset.Take(50))
+                                {
+                                    <tr>
+                                        <td>@(r.PickupDate?.ToString("dd/MM/yy HH:mm") ?? "—")</td>
+                                        <td>@(r.MunicipalityName ?? r.MunicipalityCode ?? "—")</td>
+                                        <td>@(r.ProvinceName ?? r.ProvinceCode ?? "—")</td>
+                                        <td>@(r.ScrapName ?? "—")</td>
+                                        <td class="text-end">@r.WeightKg.ToString("N0")</td>
+                                        <td class="text-end">@r.DistanceKm.ToString("N1")</td>
+                                        <td class="text-end">@r.CO2eKg.ToString("N2")</td>
+                                        <td><span class="badge @(r.DumCompliant ? "bg-success" : "bg-danger")">@(r.DumCompliant ? "Sí" : "No")</span></td>
+                                        <td><span class="badge @(r.InPeakHour ? "bg-warning text-dark" : "bg-light text-dark")">@(r.InPeakHour ? "Sí" : "No")</span></td>
+                                    </tr>
+                                }
+                                @if (!_data.ExportDataset.Any())
+                                {
+                                    <tr><td colspan="9" class="text-center text-muted py-3">Sin datos para los filtros seleccionados.</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private MobilityDispatchDataDto? _data;
+    private bool   _loading              = true;
+    private bool   _exporting            = false;
+    private int    _filterYear           = DateTime.Now.Year;
+    private int?   _filterMonth          = DateTime.Now.Month;
+
+    // Filtros geográficos en cascada
+    private int    _filterProvinceId       = 0;    // 0 = Todas
+    private string _filterProvinceCode     = "";
+    private string _filterMunicipalityCode = "";
+
+    private IReadOnlyList<ProvinceDto>     _provinces     = [];
+    private IReadOnlyList<MunicipalityDto> _municipalities = [];
+
+    private static readonly CultureInfo _es = new("es-ES");
+    private bool _jsReady;
+    private DotNetObjectReference<DispatchData>? _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var provList = await Mediator.Send(new GetAllProvincesQuery());
+        _provinces = provList.ToList();
+        await RefreshAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsReady   = true;
+            _dotNetRef = DotNetObjectReference.Create(this);
+            if (_data is not null)
+                await RenderChartsAsync();
+        }
+    }
+
+    // Al cambiar provincia: carga municipios y limpia seleccion de municipio
+    private async Task OnProvinceChangedAsync()
+    {
+        _filterMunicipalityCode = "";
+        if (_filterProvinceId > 0)
+        {
+            var prov = _provinces.FirstOrDefault(p => p.Id == _filterProvinceId);
+            _filterProvinceCode = prov?.Code ?? "";
+            var munList = await Mediator.Send(new GetMunicipalitiesByProvinceQuery(_filterProvinceId));
+            _municipalities = munList.ToList();
+        }
+        else
+        {
+            _filterProvinceCode = "";
+            _municipalities = [];
+        }
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetMobilityDispatchDataQuery(
+                Year:             _filterYear,
+                Month:            _filterMonth,
+                ProvinceCode:     string.IsNullOrEmpty(_filterProvinceCode)     ? null : _filterProvinceCode,
+                MunicipalityCode: string.IsNullOrEmpty(_filterMunicipalityCode) ? null : _filterMunicipalityCode));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando datos de movilidad oficina de asignación");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+        if (_jsReady)
+            await RenderChartsAsync();
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null || !_data.MonthlySeries.Any()) return;
+        try
+        {
+            var categories = _data.MonthlySeries.Select(s => s.Period).ToArray();
+            var peakHour   = _data.MonthlySeries.Select(s => s.PeakHourPercent).ToArray();
+            var dumComp    = _data.MonthlySeries.Select(s => s.DumCompliancePercent).ToArray();
+            var conflict   = _data.MonthlySeries.Select(s => s.AvgConflictIndex).ToArray();
+
+            await JS.InvokeVoidAsync("mobilityMonthlyTrend.render",
+                "dispatchMonthlyChart", categories, peakHour, dumComp, conflict);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráfico de tendencia mensual de movilidad");
+        }
+    }
+
+    private async Task ExportXlsxAsync()
+    {
+        _exporting = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Mediator.Send(new ExportMobilityDataToExcelQuery(
+                Year:             _filterYear,
+                Month:            _filterMonth,
+                ProvinceCode:     string.IsNullOrEmpty(_filterProvinceCode)     ? null : _filterProvinceCode,
+                MunicipalityCode: string.IsNullOrEmpty(_filterMunicipalityCode) ? null : _filterMunicipalityCode));
+
+            var base64 = Convert.ToBase64String(result.Content);
+            await JS.InvokeVoidAsync("downloadBase64File", base64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                result.FileName);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exportando XLSX de movilidad");
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string TrafficLightBadge(string light) => light switch
+    {
+        "Red"    => "bg-danger",
+        "Orange" => "bg-warning text-dark",
+        _        => "bg-success"
+    };
+
+    private static string TrafficLightLabel(string light) => light switch
+    {
+        "Red"    => "Conflicto",
+        "Orange" => "Moderado",
+        _        => "Sin conflicto"
+    };
+
+    public ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}
