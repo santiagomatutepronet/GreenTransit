@@ -576,8 +576,9 @@ else
     [Parameter] public Guid WasteMoveId { get; set; }
 
     private WasteMoveTimelineDto? _tl;
-    private bool _loading    = true;
-    private bool _exportingPdf = false;
+    private bool _loading       = true;
+    private bool _exportingPdf  = false;
+    private bool _mapInitialized = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -587,8 +588,9 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && _tl is not null)
+        if (!_mapInitialized && _tl is not null)
         {
+            _mapInitialized = true;
             await InitMapAsync(_tl);
         }
     }

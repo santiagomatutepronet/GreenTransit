@@ -80,7 +80,7 @@ window.mobilityHeatmap = (function () {
             var el = document.getElementById(containerId);
             if (!el) return;
 
-            if (_chart) { _chart.destroy(); _chart = null; }
+            if (_chart) { try { _chart.destroy(); } catch (e) { /* ignorar */ } _chart = null; }
 
             var options = {
                 chart: {
@@ -188,7 +188,7 @@ window.mobilityComparison = (function () {
             var el = document.getElementById(containerId);
             if (!el) return;
 
-            if (_chart) { _chart.destroy(); _chart = null; }
+            if (_chart) { try { _chart.destroy(); } catch (e) { /* ignorar */ } _chart = null; }
 
             var options = {
                 chart: {

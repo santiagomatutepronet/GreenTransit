@@ -305,6 +305,7 @@
         </div>
         @if (!NavMenuState.IsCollapsed("reporting"))
         {
+        @* Trazabilidad: oculto del menú (accesible desde otras ventanas)
         @if (Allow("/traceability"))
         {
         <NavLink class="nav-item nav-item--child" href="/traceability">
@@ -312,6 +313,8 @@
             <span class="nav-label">Trazabilidad</span>
         </NavLink>
         }
+        *@
+        @* Vista 360 Traslado: oculto del menú (accesible desde otras ventanas)
         @if (Allow("/waste-moves"))
         {
         <NavLink class="nav-item nav-item--child" href="/waste-moves">
@@ -319,8 +322,9 @@
             <span class="nav-label">Vista 360º Traslado</span>
         </NavLink>
         }
+        *@
 
-        @* KPIs: SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN *@
+        @* KPIs: oculto del menú (accesible desde otras ventanas)
         <ProfileAuthorizeView Profiles="@_profilesKPIs">
             <Authorized>
                 @if (Allow("/kpis"))
@@ -332,16 +336,20 @@
                 }
             </Authorized>
         </ProfileAuthorizeView>
+        *@
 
         @* -- Dashboards de Optimización Logística: SCRAP, COORDINATOR, PUBLIC_ENT, ADMIN *@
         <ProfileAuthorizeView Profiles="@_profilesAnyLogisticsDashboard">
             <Authorized>
-                <div class="nav-group-title nav-group-title--sub">
+                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-logistics")'>
                     <i class="bi bi-truck-flatbed nav-icon"></i>
                     <span class="nav-label">Dashboards Logística</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-logistics") ? "rotated" : "")"></i>
                 </div>
             </Authorized>
         </ProfileAuthorizeView>
+        @if (!NavMenuState.IsCollapsed("reporting-logistics"))
+        {
         <ProfileAuthorizeView Profiles="@_profilesLogisticsOptimization">
             <Authorized>
                 @if (Allow("/logistics/optimization"))
@@ -375,18 +383,22 @@
                 }
             </Authorized>
         </ProfileAuthorizeView>
+        }
 
         @* -- Dashboards de Movilidad Urbana (UC3): COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN *@
         @if (AllowAny("/mobility/coordinator-analysis", "/mobility/municipal-monitoring", "/mobility/dispatch-data"))
         {
         <ProfileAuthorizeView Profiles="@_profilesAnyMobilityDashboard">
             <Authorized>
-                <div class="nav-group-title nav-group-title--sub">
+                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-mobility")'>
                     <i class="bi bi-signpost-2-fill nav-icon"></i>
                     <span class="nav-label">Movilidad Urbana</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-mobility") ? "rotated" : "")"></i>
                 </div>
             </Authorized>
         </ProfileAuthorizeView>
+        @if (!NavMenuState.IsCollapsed("reporting-mobility"))
+        {
         <ProfileAuthorizeView Profiles="@_profilesMobilityCoordinator">
             <Authorized>
                 @if (Allow("/mobility/coordinator-analysis"))
@@ -420,6 +432,7 @@
                 }
             </Authorized>
         </ProfileAuthorizeView>
+        }
         }
 
         @* Documentos: todos los autenticados *@

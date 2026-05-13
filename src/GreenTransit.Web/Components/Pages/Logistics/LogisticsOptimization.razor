@@ -194,7 +194,8 @@ else if (_data is not null)
         <div class="col-12 col-lg-7">
             <div class="card h-100">
                 <div class="card-header">
-                    <i class="bi bi-bar-chart-line me-1"></i>Volumen RAEE por provincia
+                    <i class="bi bi-bar-chart-line me-1"></i>
+                    Volumen @(string.IsNullOrEmpty(_filterWasteStream) ? "de residuos" : _filterWasteStream) por provincia
                 </div>
                 <div class="card-body">
                     @if (!_data.VolumeByZone.Any())
@@ -320,7 +321,7 @@ else if (_data is not null)
                                             {
                                                 var cnt     = heatDict.GetValueOrDefault((d, h));
                                                 var opacity = maxCount > 0 ? cnt * 0.8 / maxCount + 0.05 : 0.05;
-                                                <td style="background:rgba(13,110,253,@opacity.ToString("F2"));
+                                                <td style="background:rgba(13,110,253,@opacity.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
                                                            text-align:center;font-size:.65rem;padding:2px">
                                                     @(cnt > 0 ? cnt.ToString() : string.Empty)
                                                 </td>

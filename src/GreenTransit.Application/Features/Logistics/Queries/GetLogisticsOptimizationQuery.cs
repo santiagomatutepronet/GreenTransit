@@ -67,7 +67,7 @@ public sealed class GetLogisticsOptimizationQueryHandler
         var scopeFilterScrapId  = request.IdScrap;
 
         // ── 1. Eficiencia de rutas — proyección anónima → mapeo en memoria ────
-        var currentRaw = await _context.WasteMoveResidues
+        var baseResiduesQuery = _context.WasteMoveResidues
             .AsNoTracking()
             .Where(r => (scopeOwnerId == Guid.Empty || r.WasteMove.OwnerId == scopeOwnerId)
                      && (!scopeIsScrap || !scopeLinkedEntityId.HasValue
@@ -78,16 +78,23 @@ public sealed class GetLogisticsOptimizationQueryHandler
                          || r.WasteMove.IdScrap2 == scopeFilterScrapId.Value)
                      && r.WasteMove.GatheredDate >= dateFrom
                      && r.WasteMove.GatheredDate <  dateTo
-                     && r.TransportInfo_TransportCarbonEmissions != null)
+                     && r.TransportInfo_TransportCarbonEmissions != null);
+
+        var currentRaw = await baseResiduesQuery
             .GroupBy(_ => 1)
             .Select(g => new
             {
                 TotalCO2e   = g.Sum(r => r.TransportInfo_TransportCarbonEmissions ?? 0m),
                 TotalDistKm = g.Sum(r => r.TransportInfo_TransportDistance        ?? 0m),
                 TotalKg     = g.Sum(r => r.Weight ?? 0m),
-                Count       = g.Count()
             })
             .FirstOrDefaultAsync(ct);
+
+        // Contar traslados distintos (no filas de residuo) con datos de transporte
+        var pickups = await baseResiduesQuery
+            .Select(r => r.IdWasteMove)
+            .Distinct()
+            .CountAsync(ct);
 
         var prevCO2e = await _context.WasteMoveResidues
             .AsNoTracking()
@@ -103,7 +110,6 @@ public sealed class GetLogisticsOptimizationQueryHandler
         var co2e    = currentRaw?.TotalCO2e   ?? 0m;
         var distKm  = currentRaw?.TotalDistKm ?? 0m;
         var totalKg = currentRaw?.TotalKg     ?? 0m;
-        var pickups = currentRaw?.Count       ?? 0;
 
         double? trendPct = prevCO2e > 0
             ? (double)Math.Round((co2e - prevCO2e) / prevCO2e * 100m, 1)
@@ -150,13 +156,23 @@ public sealed class GetLogisticsOptimizationQueryHandler
 
             var provinceByEntity = pickupEntities.ToDictionary(e => e.Id, e => e.ProvinceCode!);
 
+            var presentCodes = provinceByEntity.Values.Distinct().ToList();
+            var provinceNames = await _context.Provinces
+                .AsNoTracking()
+                .Where(p => p.Code != null && presentCodes.Contains(p.Code))
+                .Select(p => new { p.Code, p.Name })
+                .ToListAsync(ct);
+            var nameByCode = provinceNames
+                .Where(p => p.Code != null)
+                .ToDictionary(p => p.Code!, p => p.Name);
+
             volumeByZone = soPickupData
                 .Where(x => x.IdPickupPoint.HasValue
                          && provinceByEntity.ContainsKey(x.IdPickupPoint.Value))
                 .GroupBy(x => provinceByEntity[x.IdPickupPoint!.Value])
                 .Select(g => new VolumeByZoneDto(
                     g.Key,
-                    null,
+                    nameByCode.GetValueOrDefault(g.Key),
                     Math.Round(g.Sum(x => x.EstimatedWeight ?? 0m), 2),
                     g.Count()))
                 .OrderByDescending(v => v.TotalKg)

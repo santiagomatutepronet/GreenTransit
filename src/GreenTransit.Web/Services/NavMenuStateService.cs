@@ -10,7 +10,7 @@ public sealed class NavMenuStateService
     private readonly HashSet<string> _collapsed =
     [
         "config", "operaciones", "economia", "declaraciones",
-        "sostenibilidad", "reporting", "seguridad"
+        "sostenibilidad", "reporting", "reporting-logistics", "reporting-mobility", "seguridad"
     ];
 
     public bool IsCollapsed(string key) => _collapsed.Contains(key);

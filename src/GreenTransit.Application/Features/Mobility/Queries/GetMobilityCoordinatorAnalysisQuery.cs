@@ -122,20 +122,26 @@ public sealed class GetMobilityCoordinatorAnalysisQueryHandler
             .ToDictionaryAsync(e => e.Id, ct);
 
         // ── Resolución nombres geográficos ────────────────────────────────────
-        var allMunCodes  = entityMap.Values.Select(e => e.MunicipalityCode).Where(c => c != null).Distinct().ToList();
-        var allProvCodes = entityMap.Values.Select(e => e.ProvinceCode).Where(c => c != null).Distinct().ToList();
+        // Municipality.Code almacena el código local de 3 dígitos (INE local),
+        // mientras que BusinessEntity.MunicipalityCode almacena el código INE
+        // completo de 5 dígitos (Province.Code[2] + Municipality.Code[3]).
+        // Se construye la clave Province.Code + Municipality.Code para que coincida.
+        var allMunCodes  = entityMap.Values.Where(e => e.MunicipalityCode != null).Select(e => e.MunicipalityCode!).Distinct().ToList();
+        var allProvCodes = entityMap.Values.Where(e => e.ProvinceCode     != null).Select(e => e.ProvinceCode!).Distinct().ToList();
 
-        var munNameMap = await _context.Municipalities
-            .AsNoTracking()
-            .Where(m => allMunCodes.Contains(m.Code))
-            .Select(m => new { m.Code, m.Name })
-            .ToDictionaryAsync(m => m.Code, m => m.Name, ct);
+        var munNameMap = await (
+            from m in _context.Municipalities.AsNoTracking()
+            join p in _context.Provinces.AsNoTracking() on m.IdProvince equals p.Id
+            where p.Code != null && allProvCodes.Contains(p.Code)
+            select new { FullCode = p.Code + m.Code, m.Name }
+        ).Where(x => allMunCodes.Contains(x.FullCode))
+         .ToDictionaryAsync(x => x.FullCode, x => x.Name, ct);
 
         var provNameMap = await _context.Provinces
             .AsNoTracking()
-            .Where(p => allProvCodes.Contains(p.Code))
+            .Where(p => p.Code != null && allProvCodes.Contains(p.Code))
             .Select(p => new { p.Code, p.Name })
-            .ToDictionaryAsync(p => p.Code, p => p.Name, ct);
+            .ToDictionaryAsync(p => p.Code!, p => p.Name ?? string.Empty, ct);
 
         // ── Incidencias logísticas del periodo ────────────────────────────────
         var incidentsByRef = await _context.Incidents
