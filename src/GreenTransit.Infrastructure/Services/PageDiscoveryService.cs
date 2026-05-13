@@ -150,6 +150,7 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
     private static string InferModuleName(string? ns, string route)
     {
         if (ns?.Contains("Security") == true) return "Seguridad";
+        if (ns?.Contains("TratamientoReciclaje") == true) return "Tratamiento y Reciclaje";
         if (ns?.Contains("Reporting") == true) return "Reporting";
         if (ns?.Contains("Logistics") == true) return "Dashboards Logísticos";
         if (ns?.Contains("Mobility") == true)  return "Movilidad Urbana";
@@ -223,7 +224,11 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["PublicMonitoring"]      = "Monitorización Pública",
             ["OperationalDashboard"]  = "Panel Operativo",
             ["Dashboard"]             = "Dashboard",
-            ["Home"]                  = "Inicio"
+            ["Home"]                  = "Inicio",
+            ["TRScrapAnalysis"]           = "Análisis de Calidad y Revalorización — SCRAP",
+            ["TRMunicipalMonitoring"]     = "Monitorización de Reciclaje — Ayuntamiento",
+            ["TRCoordinatorValidation"]   = "Validación y Datos Multi-SCRAP — Coordinador",
+            ["TRDispatchData"]            = "Datos Operativos de Tratamiento — Oficina de Asignación"
         };
 
         if (map.TryGetValue(componentName, out var name)) return name;

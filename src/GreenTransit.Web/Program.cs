@@ -509,6 +509,28 @@ try
                 ProfileConstants.DispatchOffice, ProfileConstants.CacOp,
                 ProfileConstants.PlantOp, ProfileConstants.Admin)));
 
+        // ── TRATAMIENTO Y RECICLAJE (TR) ──────────────────────────────────────
+
+        // Dashboard TR-A — Análisis de Calidad y Revalorización — SCRAP: SCRAP y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewTRScrapAnalysis, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.Admin)));
+
+        // Dashboard TR-B — Monitorización de Reciclaje — Ayuntamiento: PUBLIC_ENT y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewTRMunicipalMonitoring, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.PublicEnt, ProfileConstants.Admin)));
+
+        // Dashboard TR-C — Validación y Datos Multi-SCRAP — Coordinador: COORDINATOR y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewTRCoordinatorValidation, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Coordinator, ProfileConstants.Admin)));
+
+        // Vista TR-D — Datos Operativos de Tratamiento — Oficina de Asignación: DISPATCH_OFFICE y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewTRDispatchData, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
         // Operaciones exclusivas de administración del sistema.
         options.AddPolicy(PolicyConstants.AdminOnly, policy =>
             policy.AddRequirements(new ProfileRequirement(

@@ -435,6 +435,70 @@
         }
         }
 
+        @* -- Dashboards Tratamiento y Reciclaje (TR): SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE, ADMIN *@
+        @if (AllowAny("/reporting/tratamiento-reciclaje/scrap-analysis",
+                      "/reporting/tratamiento-reciclaje/municipal-monitoring",
+                      "/reporting/tratamiento-reciclaje/coordinator-validation",
+                      "/reporting/tratamiento-reciclaje/dispatch-data"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesAnyTRDashboard">
+            <Authorized>
+                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-tr")'>
+                    <i class="bi bi-recycle nav-icon"></i>
+                    <span class="nav-label">Tratamiento y Reciclaje</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-tr") ? "rotated" : "")"></i>
+                </div>
+            </Authorized>
+        </ProfileAuthorizeView>
+        @if (!NavMenuState.IsCollapsed("reporting-tr"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesTRScrap">
+            <Authorized>
+                @if (Allow("/reporting/tratamiento-reciclaje/scrap-analysis"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/tratamiento-reciclaje/scrap-analysis">
+                    <i class="bi bi-recycle nav-icon"></i>
+                    <span class="nav-label">Análisis Revalorización SCRAP</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesTRMunicipal">
+            <Authorized>
+                @if (Allow("/reporting/tratamiento-reciclaje/municipal-monitoring"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/tratamiento-reciclaje/municipal-monitoring">
+                    <i class="bi bi-building-check nav-icon"></i>
+                    <span class="nav-label">Monitorización Reciclaje Municipal</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesTRCoordinator">
+            <Authorized>
+                @if (Allow("/reporting/tratamiento-reciclaje/coordinator-validation"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/tratamiento-reciclaje/coordinator-validation">
+                    <i class="bi bi-diagram-3-fill nav-icon"></i>
+                    <span class="nav-label">Validación Multi-SCRAP</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesTRDispatch">
+            <Authorized>
+                @if (Allow("/reporting/tratamiento-reciclaje/dispatch-data"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/tratamiento-reciclaje/dispatch-data">
+                    <i class="bi bi-database-fill-gear nav-icon"></i>
+                    <span class="nav-label">Datos Operativos TR</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        }
+        }
+
         @* Documentos: todos los autenticados *@
         @if (Allow("/documents"))
         {
@@ -716,5 +780,36 @@
     [
         ProfileConstants.Coordinator, ProfileConstants.PublicEnt,
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // TR-A — Análisis Revalorización SCRAP: SCRAP y ADMIN
+    private static readonly string[] _profilesTRScrap =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Admin
+    ];
+
+    // TR-B — Monitorización Reciclaje Municipal: PUBLIC_ENT y ADMIN
+    private static readonly string[] _profilesTRMunicipal =
+    [
+        ProfileConstants.PublicEnt, ProfileConstants.Admin
+    ];
+
+    // TR-C — Validación Multi-SCRAP — Coordinador: COORDINATOR y ADMIN
+    private static readonly string[] _profilesTRCoordinator =
+    [
+        ProfileConstants.Coordinator, ProfileConstants.Admin
+    ];
+
+    // TR-D — Datos Operativos TR — Oficina de Asignación: DISPATCH_OFFICE y ADMIN
+    private static readonly string[] _profilesTRDispatch =
+    [
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Sub-título Tratamiento y Reciclaje: cualquiera de los cuatro grupos
+    private static readonly string[] _profilesAnyTRDashboard =
+    [
+        ProfileConstants.Scrap, ProfileConstants.PublicEnt,
+        ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 }

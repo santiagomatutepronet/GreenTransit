@@ -140,6 +140,20 @@ public static class PolicyConstants
     /// <summary>Dashboard 3 — Panel Operativo Gestores/CACs/Plantas: DISPATCH_OFFICE, CAC_OP, PLANT_OP, ADMIN.</summary>
     public const string CanViewOperationalDashboard = "CanViewOperationalDashboard";
 
+    // ─── Tratamiento y Reciclaje (TR) ────────────────────────────────────────
+
+    /// <summary>Dashboard TR-A — Análisis de Calidad y Revalorización — SCRAP: SCRAP, ADMIN.</summary>
+    public const string CanViewTRScrapAnalysis = "CanViewTRScrapAnalysis";
+
+    /// <summary>Dashboard TR-B — Monitorización de Reciclaje — Ayuntamiento: PUBLIC_ENT, ADMIN.</summary>
+    public const string CanViewTRMunicipalMonitoring = "CanViewTRMunicipalMonitoring";
+
+    /// <summary>Dashboard TR-C — Validación y Datos Multi-SCRAP — Coordinador: COORDINATOR, ADMIN.</summary>
+    public const string CanViewTRCoordinatorValidation = "CanViewTRCoordinatorValidation";
+
+    /// <summary>Vista TR-D — Datos Operativos de Tratamiento — Oficina de Asignación: DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewTRDispatchData = "CanViewTRDispatchData";
+
     // ─── Administración del sistema ──────────────────────────────────
 
     /// <summary>Operaciones exclusivas del administrador del sistema (ej. seed de datos).</summary>

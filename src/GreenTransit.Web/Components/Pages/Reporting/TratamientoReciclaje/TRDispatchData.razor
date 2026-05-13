@@ -1,0 +1,308 @@
+@page "/reporting/tratamiento-reciclaje/dispatch-data"
+@attribute [Authorize(Policy = PolicyConstants.CanViewTRDispatchData)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Reporting.TratamientoReciclaje.DTOs
+@using GreenTransit.Application.Features.Reporting.TratamientoReciclaje.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+@using System.Globalization
+
+@inject IMediator              Mediator
+@inject ICurrentUserService    CurrentUser
+@inject IJSRuntime             JS
+@inject ILogger<TRDispatchData> Logger
+
+<PageTitle>Datos Operativos Tratamiento — Oficina de Asignación — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-database-fill-gear me-2"></i>Datos Operativos de Tratamiento y Reciclaje
+        </h1>
+        <p class="text-muted mb-0">
+            Oficina de Asignación · Tratamiento y Reciclaje ·
+            @(_filterMonth.HasValue
+                ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", _es)
+                : _filterYear.ToString())
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-success btn-sm" @onclick="ExportXlsxAsync" disabled="@(_loading || _exporting)">
+            <i class="bi bi-file-earmark-excel me-1"></i>Exportar XLSX
+        </button>
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-select form-select-sm" @bind="_filterMonth" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            @for (int m = 1; m <= 12; m++)
+            { <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", _es))</option> }
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Cargando datos operativos…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── Balance agregado ─────────────────────────────────────────────────── *@
+    @if (_data.AggregatedBalance is not null)
+    {
+        var b = _data.AggregatedBalance;
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-xl-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <p class="text-muted small mb-1">Kg totales tratados</p>
+                        <h4>@b.WeightTotal.ToString("N0")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <p class="text-muted small mb-1">Kg reutilizados</p>
+                        <h4 class="text-success">@b.WeightReused.ToString("N0")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <p class="text-muted small mb-1">Kg valorizados</p>
+                        <h4 class="text-primary">@b.WeightValued.ToString("N0")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <p class="text-muted small mb-1">Tasa de reciclaje global</p>
+                        <h4 class="@RecyclingClass(b.RecyclingRate)">@b.RecyclingRate.ToString("F1")%</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Resumen por SCRAP ─────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        @foreach (var s in _data.ScrapSummaries)
+        {
+            <div class="col-12 col-md-6 col-xl-4">
+                <div class="card h-100">
+                    <div class="card-header fw-semibold">@s.ScrapName</div>
+                    <div class="card-body">
+                        <ul class="list-unstyled mb-0 small">
+                            <li><span class="text-muted">Recogidas:</span> <strong>@s.TotalMoves</strong></li>
+                            <li><span class="text-muted">Kg tratados:</span> <strong>@s.TotalWeightKg.ToString("N0")</strong></li>
+                            <li><span class="text-muted">Tasa reciclaje:</span>
+                                <strong class="@RecyclingClass(s.RecyclingRate)">@s.RecyclingRate.ToString("F1")%</strong>
+                            </li>
+                            <li><span class="text-muted">% Impropios:</span> <strong>@s.ImproperRate.ToString("F1")%</strong></li>
+                            <li><span class="text-muted">Incidencias abiertas:</span>
+                                <strong class="@(s.OpenIncidents > 0 ? "text-warning" : "")">@s.OpenIncidents</strong>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        }
+        @if (!_data.ScrapSummaries.Any())
+        { <div class="col-12"><p class="text-muted">Sin datos de SCRAPs para el periodo.</p></div> }
+    </div>
+
+    @* ── Evolución mensual ─────────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-graph-up me-1"></i>Evolución mensual de métricas de reciclaje (últimos 12 meses)
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Periodo</th>
+                            <th class="text-end">Tasa reciclaje</th>
+                            <th class="text-end">% Impropios</th>
+                            <th class="text-end">Kg valorizados</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _data.MonthlyTrend)
+                        {
+                            <tr>
+                                <td>@t.Period</td>
+                                <td class="text-end">@t.RecyclingRate.ToString("F1")%</td>
+                                <td class="text-end">@t.ImproperRate.ToString("F1")%</td>
+                                <td class="text-end">@t.WeightValued.ToString("N0")</td>
+                            </tr>
+                        }
+                        @if (!_data.MonthlyTrend.Any())
+                        { <tr><td colspan="4" class="text-muted text-center py-3">Sin datos</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Distribución operaciones R/D ─────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-grid-3x3-gap-fill me-1"></i>Distribución de operaciones de tratamiento
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th>Tipo</th>
+                            <th class="text-end">Kg tratados</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var o in _data.OperationsDistribution)
+                        {
+                            <tr>
+                                <td><code>@o.OperationCode</code></td>
+                                <td>@o.OperationDescription</td>
+                                <td>
+                                    <span class="badge @(o.OperationType == "R" ? "bg-success" : "bg-danger")">@o.OperationType</span>
+                                </td>
+                                <td class="text-end">@o.WeightTotal.ToString("N0")</td>
+                            </tr>
+                        }
+                        @if (!_data.OperationsDistribution.Any())
+                        { <tr><td colspan="4" class="text-muted text-center py-3">Sin datos</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private TRDispatchDataDto? _data;
+    private bool  _loading   = true;
+    private bool  _exporting = false;
+    private int   _filterYear  = DateTime.Now.Year;
+    private int?  _filterMonth = null;
+
+    private static readonly CultureInfo _es = new("es-ES");
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetTRDispatchDataQuery(
+                Year:  _filterYear,
+                Month: _filterMonth));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando TR-D DispatchData");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ExportXlsxAsync()
+    {
+        if (_data is null) return;
+        _exporting = true;
+        try
+        {
+            using var wb  = new ClosedXML.Excel.XLWorkbook();
+            var ws = wb.Worksheets.Add("Datos Operativos TR");
+            var headers = new[]
+            {
+                "Fecha tratamiento", "Fecha recogida", "Municipio", "Provincia",
+                "SCRAP", "Planta", "Transportista", "Código LER", "Residuo",
+                "Tipo vehículo", "Distancia (km)", "Duración (min)", "Emisiones CO₂",
+                "Operación R/D", "Kg totales", "Kg reutilizados", "Kg valorizados",
+                "Kg rechazados", "Impropios", "Tasa reciclaje (%)"
+            };
+            for (int c = 0; c < headers.Length; c++)
+                ws.Cell(1, c + 1).Value = headers[c];
+
+            int row = 2;
+            foreach (var r in _data.ExportDataset)
+            {
+                ws.Cell(row,  1).Value = r.TreatmentDate   ?? "";
+                ws.Cell(row,  2).Value = r.PickupDate       ?? "";
+                ws.Cell(row,  3).Value = r.MunicipalityName ?? "";
+                ws.Cell(row,  4).Value = r.ProvinceName     ?? "";
+                ws.Cell(row,  5).Value = r.ScrapName        ?? "";
+                ws.Cell(row,  6).Value = r.PlantName        ?? "";
+                ws.Cell(row,  7).Value = r.CarrierName      ?? "";
+                ws.Cell(row,  8).Value = r.LERCode          ?? "";
+                ws.Cell(row,  9).Value = r.ResidueName      ?? "";
+                ws.Cell(row, 10).Value = r.VehicleType      ?? "";
+                ws.Cell(row, 11).Value = (double?)r.DistanceKm   ?? 0;
+                ws.Cell(row, 12).Value = (double?)r.DurationMin   ?? 0;
+                ws.Cell(row, 13).Value = (double?)r.CO2Emissions  ?? 0;
+                ws.Cell(row, 14).Value = r.TreatmentOperationCode ?? "";
+                ws.Cell(row, 15).Value = (double?)r.WeightTotal   ?? 0;
+                ws.Cell(row, 16).Value = (double?)r.WeightReused  ?? 0;
+                ws.Cell(row, 17).Value = (double?)r.WeightValued  ?? 0;
+                ws.Cell(row, 18).Value = (double?)r.WeightRemove  ?? 0;
+                ws.Cell(row, 19).Value = (double?)r.ImproperWeight ?? 0;
+                ws.Cell(row, 20).Value = r.RecyclingRate ?? 0;
+                row++;
+            }
+            ws.Columns().AdjustToContents();
+
+            using var ms = new System.IO.MemoryStream();
+            wb.SaveAs(ms);
+            var b64  = Convert.ToBase64String(ms.ToArray());
+            var name = $"TR_DispatchData_{_filterYear}_{(_filterMonth.HasValue ? _filterMonth.Value.ToString("00") : "anual")}.xlsx";
+            await JS.InvokeVoidAsync("downloadBase64File", b64, name,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exportando TR-D a XLSX");
+        }
+        finally
+        {
+            _exporting = false;
+        }
+    }
+
+    private static string RecyclingClass(double rate) =>
+        rate > 70 ? "text-success" : rate >= 40 ? "text-warning" : "text-danger";
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

@@ -1,0 +1,338 @@
+@page "/reporting/tratamiento-reciclaje/scrap-analysis"
+@attribute [Authorize(Policy = PolicyConstants.CanViewTRScrapAnalysis)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Reporting.TratamientoReciclaje.DTOs
+@using GreenTransit.Application.Features.Reporting.TratamientoReciclaje.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+
+@inject IMediator            Mediator
+@inject ICurrentUserService  CurrentUser
+@inject ILogger<TRScrapAnalysis> Logger
+
+<PageTitle>Análisis de Calidad y Revalorización — SCRAP — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-recycle me-2"></i>Análisis de Calidad y Revalorización
+        </h1>
+        <p class="text-muted mb-0">
+            SCRAP · Tratamiento y Reciclaje ·
+            @(_filterMonth.HasValue
+                ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", _es)
+                : _filterYear.ToString())
+        </p>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-select form-select-sm" @bind="_filterMonth" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            @for (int m = 1; m <= 12; m++)
+            { <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", _es))</option> }
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Cargando análisis de reciclaje…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── Balance de tratamiento ────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-bar-chart-fill me-1"></i>Balance de tratamiento por planta
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Planta</th>
+                            <th class="text-end">Kg reutilizados</th>
+                            <th class="text-end">Kg valorizados</th>
+                            <th class="text-end">Kg rechazados</th>
+                            <th class="text-end">Tasa reciclaje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var b in _data.TreatmentBalance)
+                        {
+                            <tr>
+                                <td>@b.PlantName</td>
+                                <td class="text-end">@b.WeightReused.ToString("N0")</td>
+                                <td class="text-end">@b.WeightValued.ToString("N0")</td>
+                                <td class="text-end">@b.WeightRemove.ToString("N0")</td>
+                                <td class="text-end">
+                                    <span class="badge @RecyclingBadge(b.RecyclingRate)">
+                                        @b.RecyclingRate.ToString("F1")%
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                        @if (!_data.TreatmentBalance.Any())
+                        { <tr><td colspan="5" class="text-muted text-center py-3">Sin datos</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Tasa de revalorización por residuo ───────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-pie-chart-fill me-1"></i>Tasa de revalorización por tipo de residuo
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Código LER</th>
+                            <th>Residuo</th>
+                            <th class="text-end">Kg totales</th>
+                            <th class="text-end">Tasa revalorización</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _data.RecyclingRateByResidue)
+                        {
+                            <tr>
+                                <td><code>@r.LERCode</code></td>
+                                <td>@r.ResidueName</td>
+                                <td class="text-end">@r.WeightTotal.ToString("N0")</td>
+                                <td class="text-end">
+                                    <span class="badge @TrafficLightBadge(r.TrafficLight)">
+                                        @r.RecyclingRate.ToString("F1")%
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                        @if (!_data.RecyclingRateByResidue.Any())
+                        { <tr><td colspan="4" class="text-muted text-center py-3">Sin datos</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Evolución mensual ─────────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-graph-up me-1"></i>Evolución mensual de calidad (últimos 12 meses)
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Periodo</th>
+                            <th class="text-end">Tasa reciclaje</th>
+                            <th class="text-end">% Impropios</th>
+                            <th class="text-end">Kg valorizados</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _data.MonthlyTrend)
+                        {
+                            <tr>
+                                <td>@t.Period</td>
+                                <td class="text-end">@t.RecyclingRate.ToString("F1")%</td>
+                                <td class="text-end">@t.ImproperRate.ToString("F1")%</td>
+                                <td class="text-end">@t.WeightValued.ToString("N0")</td>
+                            </tr>
+                        }
+                        @if (!_data.MonthlyTrend.Any())
+                        { <tr><td colspan="4" class="text-muted text-center py-3">Sin datos</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Comparativa Multi-SCRAP ──────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-table me-1"></i>Comparativa Multi-SCRAP
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>SCRAP</th>
+                            <th class="text-end">Traslados</th>
+                            <th class="text-end">Kg tratados</th>
+                            <th class="text-end">Tasa reciclaje</th>
+                            <th class="text-end">% Impropios</th>
+                            <th class="text-end">Incidencias</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in _data.ScrapComparison)
+                        {
+                            <tr>
+                                <td>@s.ScrapName</td>
+                                <td class="text-end">@s.TotalMoves</td>
+                                <td class="text-end">@s.TotalWeightKg.ToString("N0")</td>
+                                <td class="text-end">
+                                    <span class="badge @RecyclingBadge(s.RecyclingRate)">@s.RecyclingRate.ToString("F1")%</span>
+                                </td>
+                                <td class="text-end">@s.ImproperRate.ToString("F1")%</td>
+                                <td class="text-end">
+                                    @if (s.OpenIncidents > 0)
+                                    { <span class="badge bg-warning text-dark">@s.OpenIncidents</span> }
+                                    else
+                                    { <span class="text-muted">0</span> }
+                                </td>
+                            </tr>
+                        }
+                        @if (!_data.ScrapComparison.Any())
+                        { <tr><td colspan="6" class="text-muted text-center py-3">Sin datos</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Distribución operaciones R/D ─────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-diagram-3-fill me-1"></i>Distribución de operaciones de tratamiento R/D
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th>Tipo</th>
+                            <th class="text-end">Kg tratados</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var o in _data.OperationsDistribution)
+                        {
+                            <tr>
+                                <td><code>@o.OperationCode</code></td>
+                                <td>@o.OperationDescription</td>
+                                <td>
+                                    <span class="badge @(o.OperationType == "R" ? "bg-success" : "bg-danger")">
+                                        @o.OperationType
+                                    </span>
+                                </td>
+                                <td class="text-end">@o.WeightTotal.ToString("N0")</td>
+                            </tr>
+                        }
+                        @if (!_data.OperationsDistribution.Any())
+                        { <tr><td colspan="4" class="text-muted text-center py-3">Sin datos</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Incidencias abiertas ──────────────────────────────────────────────── *@
+    @if (_data.OpenIncidents.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold text-warning">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>Incidencias de tratamiento abiertas
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Referencia</th>
+                                <th>Tipo</th>
+                                <th>Severidad</th>
+                                <th>Apertura</th>
+                                <th class="text-end">Días abierta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var i in _data.OpenIncidents)
+                            {
+                                <tr>
+                                    <td>
+                                        <a href="/incidents/@i.IncidentId">@(i.WasteMoveReference ?? i.IncidentId.ToString()[..8])</a>
+                                    </td>
+                                    <td>@(i.IncidentType ?? "—")</td>
+                                    <td>@(i.Severity ?? "—")</td>
+                                    <td>@i.OpenedAt.ToString("dd/MM/yyyy")</td>
+                                    <td class="text-end @(i.DaysOpen > 30 ? "text-danger fw-semibold" : "")">@i.DaysOpen</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private TRScrapAnalysisDto? _data;
+    private bool  _loading = true;
+    private int   _filterYear  = DateTime.Now.Year;
+    private int?  _filterMonth = null;
+
+    private static readonly CultureInfo _es = new("es-ES");
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetTRScrapAnalysisQuery(
+                Year:  _filterYear,
+                Month: _filterMonth));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando TR-A ScrapAnalysis");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string RecyclingBadge(double rate) =>
+        rate > 70 ? "bg-success" : rate >= 40 ? "bg-warning text-dark" : "bg-danger";
+
+    private static string TrafficLightBadge(string light) => light switch
+    {
+        "Green"  => "bg-success",
+        "Orange" => "bg-warning text-dark",
+        _        => "bg-danger"
+    };
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
