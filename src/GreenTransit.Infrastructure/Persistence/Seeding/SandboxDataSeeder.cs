@@ -18,7 +18,12 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     /// <summary>OwnerId de fallback cuando el admin no tiene tenant asignado.</summary>
     private static readonly Guid DemoOwnerId = Guid.Parse("00000000-0000-0000-0000-000000000001");
     private const int SeedUser = 1;
-    private static readonly DateTime Now = DateTime.UtcNow;
+
+    // Calculado en tiempo de ejecución para que las fechas sean siempre relativas al momento actual
+    private DateTime _now;
+
+    // Horas variadas para distribuir las fechas con realismo en heatmaps
+    private static readonly int[] SeedHours = { 7, 8, 8, 9, 10, 10, 11, 12, 13, 14, 15, 16, 17, 17, 18, 19, 20 };
 
     // Resuelto en tiempo de ejecución según el usuario autenticado
     private Guid _ownerId;
@@ -44,6 +49,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     {
         // Usar el OwnerId del usuario actual; si es vacío (admin sin tenant) usar el demo
         _ownerId = _currentUser.OwnerId != Guid.Empty ? _currentUser.OwnerId : DemoOwnerId;
+        _now = DateTime.UtcNow;
         _log.LogInformation("🌱 SandboxDataSeeder — inicio (OwnerId={OwnerId})", _ownerId);
         _db.IgnoreTenantFilter();
 
@@ -59,6 +65,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             await Phase7_DeclarationsAsync(ct);
             await Phase8_UsersAsync(ct);
             await Phase9_DumAndEcoAsync(ct);
+            await Phase10_RegulatoryTargetsAsync(ct);
+            await Phase11_PlantEnergiesAsync(ct);
         }
         finally
         {
@@ -74,15 +82,25 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     public async Task CleanAsync(CancellationToken ct = default)
     {
         _ownerId = _currentUser.OwnerId != Guid.Empty ? _currentUser.OwnerId : DemoOwnerId;
+        _now = DateTime.UtcNow;
         _log.LogInformation("🧹 SandboxDataSeeder — limpieza (OwnerId={OwnerId})", _ownerId);
         _db.IgnoreTenantFilter();
         try
         {
-            // Orden inverso de FK
+            // ── Orden estricto inverso de FK ──────────────────────────────────
+            // Las tablas HIJO se filtran siempre por OwnerId para garantizar que
+            // no quede ninguna fila colgante independientemente de su SourceSystem.
+            // Las tablas RAÍZ (sin OwnerId o sin FK entrante) usan SourceSystem==Seed.
+
+            // Nivel 5 – hojas de TreatmentPlants
             await _db.TreatmentPlantResidues
-                .Where(x => x.TreatmentPlant.SourceSystem == Seed).ExecuteDeleteAsync(ct);
+                .Where(x => x.TreatmentPlant.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.PlantEnergies
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.TreatmentPlants
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+
+            // Nivel 4 – hojas de EntryPlants / EntryCACs
             await _db.EntryPlantResidues
                 .Where(x => x.EntryPlant.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.EntryPlants
@@ -91,32 +109,48 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 .Where(x => x.EntryCAC.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.EntryCACs
                 .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+
+            // Nivel 3 – hojas de WasteMoves / ServiceOrders / Incidents
             await _db.WasteMoveResidues
-                .Where(x => x.WasteMove.SourceSystem == Seed).ExecuteDeleteAsync(ct);
+                .Where(x => x.WasteMove.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.WasteMoves
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
-            await _db.ServiceOrders
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.Incidents
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.ServiceOrders
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+
+            // Nivel 2 – Settlements / MarketShares / Declarations / Agreements
             await _db.SettlementLines
-                .Where(x => x.Settlement.SourceSystem == Seed).ExecuteDeleteAsync(ct);
+                .Where(x => x.Settlement.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.Settlements
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.MarketShares
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.Products
                 .Where(x => x.ProductDeclaration.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.ProductDeclarations
                 .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.AgreementDocuments
-                .Where(x => x.Agreement.SourceSystem == Seed).ExecuteDeleteAsync(ct);
+                .Where(x => x.Agreement.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.Agreements
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+
+            // Nivel 1 – DUM, Ecomodulación, Regulatory, Residues
+            await _db.DumRestrictionRules
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.DumZones
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.EcoModulationRules
+                .Where(x => x.RuleSet.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.EcoModulationRuleSets
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.RegulatoryTargets
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.Residues
                 .Where(x => x.SourceSystem == Seed).ExecuteDeleteAsync(ct);
 
-            // Borrar usuarios seed (@greentransit.dev) preservando el admin
+            // Nivel 0 – usuarios seed y entidades raíz
             var adminProfileId = await _db.UserProfiles
                 .IgnoreQueryFilters()
                 .Where(p => p.Reference == "ADMIN")
@@ -129,22 +163,12 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                          && u.Login != null
                          && u.Login.EndsWith("@greentransit.dev"))
                 .ExecuteDeleteAsync(ct);
-
             await _db.BusinessEntities
                 .Where(x => x.SourceSystem == Seed).ExecuteDeleteAsync(ct);
 
-            // DUM y Ecomodulación
-            await _db.DumRestrictionRules
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
-            await _db.DumZones
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
-            await _db.EcoModulationRules
-                .Where(x => x.RuleSet.SourceSystem == Seed && x.RuleSet.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
-            await _db.EcoModulationRuleSets
-                .Where(x => x.SourceSystem == Seed && x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
-
+            // Catálogos seed
             await _db.TreatmentOperations
-                .Where(x => x.CreatedAt == Now.Date).ExecuteDeleteAsync(ct);
+                .Where(x => x.CreatedAt >= _now.Date).ExecuteDeleteAsync(ct);
             await _db.LerCodes
                 .Where(x => !x.IsActive).ExecuteDeleteAsync(ct);
 
@@ -195,17 +219,17 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         {
             Id            = SeedGuid("efs", 1),
             OwnerId       = _ownerId,
-            FactorSetName = "Set Demo 2026",
+            FactorSetName = "Set Demo GreenTransit",
             Version       = "1.0",
             Status        = "Active",
-            ValidFrom     = new DateTime(2026, 1, 1),
+            ValidFrom     = _now.AddYears(-1),
             Publisher     = "GreenTransit Seed",
-            CreatedAt     = Now,
-            UpdatedAt     = Now,
+            CreatedAt     = _now,
+            UpdatedAt     = _now,
             IdUser        = SeedUser
         };
         _db.EmissionFactorSets.Add(set);
-        foreach (var ef in BuildEmissionFactors(set.Id))
+        foreach (var ef in BuildEmissionFactors(set.Id, _now))
             _db.EmissionFactors.Add(ef);
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("    EmissionFactorSet insertado");
@@ -223,7 +247,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             return;
         }
 
-        var entities = BuildEntities(_ownerId);
+        var entities = BuildEntities(_ownerId, _now);
         _db.BusinessEntities.AddRange(entities);
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("  Fase 1 completada — {N} entidades en {Ms}ms",
@@ -276,7 +300,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             .Where(x => x.EntityRole == "Coordinator" && x.SourceSystem == Seed)
             .Select(x => x.Id).FirstOrDefaultAsync(ct);
 
-        var (agreements, docs) = BuildAgreements(scraps, publicEntities, coordinator, _ownerId);
+        var (agreements, docs) = BuildAgreements(scraps, publicEntities, coordinator, _ownerId, _now);
         _db.Agreements.AddRange(agreements);
         await _db.SaveChangesAsync(ct);
         _db.AgreementDocuments.AddRange(docs);
@@ -328,7 +352,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
 
         var (serviceOrders, wasteMoves, wmResidues) = BuildOperations(
             producers, publicEnts, carriers, plants, cacs, scraps, opTransfers,
-            lerIds, wasteResidueIds, treatOpIds, _ownerId);
+            lerIds, wasteResidueIds, treatOpIds, _ownerId, _now);
 
         _db.ServiceOrders.AddRange(serviceOrders);
         await _db.SaveChangesAsync(ct);
@@ -367,7 +391,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             .Where(x => x.SourceSystem == Seed && x.ResidueType == "Product")
             .Select(x => x.Id).ToListAsync(ct);
 
-        var incidents = BuildIncidents(wasteMoves.Select(x => (x.Id, x.WasteMoveReference ?? "", x.ServiceOrderId)).ToList(), _ownerId);
+        var incidents = BuildIncidents(wasteMoves.Select(x => (x.Id, x.WasteMoveReference ?? "", x.ServiceOrderId)).ToList(), _ownerId, _now);
         _db.Incidents.AddRange(incidents);
         await _db.SaveChangesAsync(ct);
 
@@ -376,17 +400,17 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         var (entryCACs, cacResidues) = BuildEntryCACs(
             wasteMoves.Where(x => x.ServiceStatus is "EN_CAC" or "EN_PLANTA" or "RECOGIDO" or "CLASIFICADO").ToList()
                       .Select(x => (x.Id, x.WasteMoveReference ?? "", x.PlantEntryDate)).ToList(),
-            wasteResidueIds, _ownerId);
+            wasteResidueIds, _ownerId, _now);
 
         var (entryPlants, plantResidues) = BuildEntryPlants(
             wasteMoves.Where(x => x.ServiceStatus is "EN_PLANTA" or "CLASIFICADO").ToList()
                       .Select(x => (x.Id, x.WasteMoveReference ?? "", x.ServiceOrderId, x.PlantEntryDate)).ToList(),
-            wasteResidueIds, _ownerId);
+            wasteResidueIds, _ownerId, _now);
 
         var (treatPlants, treatResidues) = BuildTreatmentPlants(
             wasteMoves.Where(x => x.ServiceStatus == "CLASIFICADO").ToList()
                       .Select(x => (x.Id, x.WasteMoveReference ?? "", x.ServiceOrderId, x.PlantEntryDate)).ToList(),
-            treatOpIds, wasteResidueIds, productResidueIds, closedIncidentIds, _ownerId);
+            treatOpIds, wasteResidueIds, productResidueIds, closedIncidentIds, _ownerId, _now);
 
         _db.EntryCACs.AddRange(entryCACs);
         await _db.SaveChangesAsync(ct);
@@ -427,8 +451,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             .Select(x => x.Id).ToListAsync(ct);
 
         var (settlements, lines) = BuildSettlements(
-            agreements.Select(a => (a.Id, a.IdScrap, a.IdPublicEntity)).ToList(), lerIds, _ownerId);
-        var marketShares = BuildMarketShares(scraps, _ownerId);
+            agreements.Select(a => (a.Id, a.IdScrap, a.IdPublicEntity)).ToList(), lerIds, _ownerId, _now);
+        var marketShares = BuildMarketShares(scraps, _ownerId, _now);
 
         _db.Settlements.AddRange(settlements);
         await _db.SaveChangesAsync(ct);
@@ -461,7 +485,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             .Select(x => x.Id).ToListAsync(ct);
 
         var (declarations, products) = BuildProductDeclarations(
-            producers.Select(p => (p.Id, p.CenterCode ?? "CC")).ToList(), productResidueIds, _ownerId);
+            producers.Select(p => (p.Id, p.CenterCode ?? "CC")).ToList(), productResidueIds, _ownerId, _now);
 
         _db.ProductDeclarations.AddRange(declarations);
         await _db.SaveChangesAsync(ct);
@@ -541,7 +565,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 IdProfile    = profileId,
                 OwnerId      = _ownerId,
                 IsActive     = true,
-                CreateDate   = Now,
+                CreateDate   = _now,
             });
         }
 
@@ -596,13 +620,13 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             return;
         }
 
-        var (zones, restrictions) = BuildDumZones(_ownerId);
+        var (zones, restrictions) = BuildDumZones(_ownerId, _now);
         _db.DumZones.AddRange(zones);
         await _db.SaveChangesAsync(ct);
         _db.DumRestrictionRules.AddRange(restrictions);
         await _db.SaveChangesAsync(ct);
 
-        var (ruleSets, ecoRules) = BuildEcoModulation(_ownerId);
+        var (ruleSets, ecoRules) = BuildEcoModulation(_ownerId, _now);
         _db.EcoModulationRuleSets.AddRange(ruleSets);
         await _db.SaveChangesAsync(ct);
         _db.EcoModulationRules.AddRange(ecoRules);
@@ -614,7 +638,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     }
 
     // ── DumZones + DumRestrictionRules ────────────────────────────────────────
-    private static (List<DumZone>, List<DumRestrictionRule>) BuildDumZones(Guid ownerId)
+    private static (List<DumZone>, List<DumRestrictionRule>) BuildDumZones(Guid ownerId, DateTime now)
     {
         var zoneDefs = new[]
         {
@@ -655,8 +679,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 SourceSystem = Seed,
                 Version      = 1,
                 Hash         = $"seed-{code}",
-                CreatedAt    = Now,
-                UpdatedAt    = Now,
+                CreatedAt    = now,
+                UpdatedAt    = now,
                 IdUser       = SeedUser,
             });
 
@@ -668,14 +692,14 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 ZoneId         = zoneId,
                 RuleCode       = $"{code}-R01",
                 Status         = "Active",
-                ValidFrom      = new DateTime(2026, 1, 1),
+                ValidFrom      = now.AddMonths(-6),
                 ConditionsJson = "{\"days\":[\"Mon\",\"Tue\",\"Wed\",\"Thu\",\"Fri\"],\"startHour\":21,\"endHour\":7,\"vehicleTypes\":[\"Camión 12t\",\"Camión 26t\"]}",
                 ActionType     = "Deny",
                 ActionReason   = "Restricción horaria nocturna",
                 SourceSystem   = Seed,
                 Version        = 1,
-                CreatedAt      = Now,
-                UpdatedAt      = Now,
+                CreatedAt      = now,
+                UpdatedAt      = now,
             });
 
             // Regla 2: límite de tonelaje
@@ -686,14 +710,14 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 ZoneId         = zoneId,
                 RuleCode       = $"{code}-R02",
                 Status         = "Active",
-                ValidFrom      = new DateTime(2026, 1, 1),
+                ValidFrom      = now.AddMonths(-6),
                 ConditionsJson = "{\"maxWeightTon\":3.5,\"vehicleTypes\":[\"Camión 26t\"]}",
                 ActionType     = "Restrict",
                 ActionReason   = "Límite de tonelaje en zona urbana",
                 SourceSystem   = Seed,
                 Version        = 1,
-                CreatedAt      = Now,
-                UpdatedAt      = Now,
+                CreatedAt      = now,
+                UpdatedAt      = now,
             });
         }
 
@@ -701,7 +725,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     }
 
     // ── EcoModulationRuleSets + EcoModulationRules ────────────────────────────
-    private static (List<EcoModulationRuleSet>, List<EcoModulationRule>) BuildEcoModulation(Guid ownerId)
+    private static (List<EcoModulationRuleSet>, List<EcoModulationRule>) BuildEcoModulation(Guid ownerId, DateTime now)
     {
         // 3 conjuntos: estándar, reducido y premium
         var setDefs = new[]
@@ -739,14 +763,14 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 RuleSetName         = name,
                 Version             = "1.0",
                 Status              = "Active",
-                ValidFrom           = new DateTime(2026, 1, 1),
+                ValidFrom           = now.AddMonths(-6),
                 PublisherName       = "GreenTransit Demo",
                 PublisherNationalId = $"B0000000{s + 1}",
                 PublisherCenterCode = $"CC-DEMO-{s + 1:D2}",
                 SourceSystem        = Seed,
                 Hash                = $"seed-{code}",
-                CreatedAt           = Now,
-                UpdatedAt           = Now,
+                CreatedAt           = now,
+                UpdatedAt           = now,
                 IdUser              = SeedUser,
             });
 
@@ -762,7 +786,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                     CriteriaJson    = $"{{\"productCategory\":\"{catNames[c]}\",\"minWeightKg\":100}}",
                     FeeImpactType   = impactType,
                     FeeImpactValue  = impact,
-                    CreatedAt       = Now,
+                    CreatedAt       = now,
                 });
             }
         }
@@ -821,8 +845,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             IsPreparationForReuse = o.Reuse,
             SortOrder             = i + 1,
             IsActive              = true,
-            CreatedAt             = Now,
-            UpdatedAt             = Now
+            CreatedAt             = DateTime.UtcNow,
+            UpdatedAt             = DateTime.UtcNow
         }).ToList();
     }
 
@@ -863,13 +887,13 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             IsRAEE                 = r.Item5,
             DefaultProductCategory = r.Item6,
             IsActive               = true,
-            CreatedAt              = Now,
-            UpdatedAt              = Now
+            CreatedAt              = DateTime.UtcNow,
+            UpdatedAt              = DateTime.UtcNow
         }).ToList();
     }
 
     // ── EmissionFactors ───────────────────────────────────────────────────────
-    private static List<EmissionFactor> BuildEmissionFactors(Guid setId)
+    private static List<EmissionFactor> BuildEmissionFactors(Guid setId, DateTime now)
     {
         var rows = new[]
         {
@@ -894,17 +918,17 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             EuroClass   = r.Item3,
             Value       = r.Item4,
             Unit        = "kgCO2e/km",
-            CreatedAt   = Now
+            CreatedAt   = now
         }).ToList();
     }
 
     // ── Entities ──────────────────────────────────────────────────────────────
-    private static List<BusinessEntity> BuildEntities(Guid ownerId)
+    private static List<BusinessEntity> BuildEntities(Guid ownerId, DateTime now)
     {
         var list = new List<BusinessEntity>();
-        var t = Now;
+        var t = now;
 
-        // 10 Productores
+        // 20 Productores
         var producerCities = new[]
         {
             ("Zaragoza",   "AR", "50001", "50",  "50297", "41.6488", "-0.8891"),
@@ -917,14 +941,24 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             ("Murcia",     "MC", "30001", "30",  "30030", "37.9922", "-1.1307"),
             ("Valladolid", "CL", "47001", "47",  "47186", "41.6523", "-4.7245"),
             ("Palma",      "IB", "07001", "07",  "07040", "39.5696", "2.6502"),
+            ("Alicante",   "VC", "03001", "03",  "03014", "38.3452", "-0.4810"),
+            ("Córdoba",    "AN", "14001", "14",  "14021", "37.8882", "-4.7794"),
+            ("Granada",    "AN", "18001", "18",  "18087", "37.1773", "-3.5986"),
+            ("Santander",  "CB", "39001", "39",  "39075", "43.4623", "-3.8099"),
+            ("Pamplona",   "NC", "31001", "31",  "31201", "42.8169", "-1.6432"),
+            ("Logroño",    "RI", "26001", "26",  "26089", "42.4650", "-2.4456"),
+            ("Oviedo",     "AS", "33001", "33",  "33044", "43.3614", "-5.8593"),
+            ("A Coruña",   "GA", "15001", "15",  "15030", "43.3623", "-8.4115"),
+            ("Toledo",     "CM", "45001", "45",  "45168", "39.8628", "-4.0273"),
+            ("Badajoz",    "EX", "06001", "06",  "06015", "38.8794", "-6.9706"),
         };
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 20; i++)
         {
             var (city, sc, zip, prov, mun, lat, lon) = producerCities[i];
-            list.Add(Entity(SeedGuid("prod", i + 1), $"Productor Demo {i+1:D2}", $"B1234560{i+1}", $"NIMA-P{i+1:D3}",
+            list.Add(Entity(SeedGuid("prod", i + 1), $"Productor Demo {i+1:D2}", $"B1234{i+1:D6}", $"NIMA-P{i+1:D3}",
                 "Producer", "SL", sc, zip, prov, mun,
                 $"Calle Industria {i+1}, {city}", lat, lon,
-                $"+34 976 0000{i+1:D2}", $"prod{i+1:D2}@greentransit.test", $"Contacto Productor {i+1}", t));
+                $"+34 976 0{i+1:D5}", $"prod{i+1:D2}@greentransit.test", $"Contacto Productor {i+1}", t));
         }
 
         // 3 OperatorTransfer
@@ -937,16 +971,19 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 inscriptionNumber: $"OT-REG-{i+1:D4}"));
         }
 
-        // 5 SCRAP
+        // 8 SCRAP
         var scrapData = new[]
         {
-            ("EcoEnvases SCRAP",  "Envases"),
-            ("ReciclaRAEE SCRAP", "RAEE"),
-            ("GreenPack SCRAP",   "Voluminosos"),
-            ("EnviroPlas SCRAP",  "Plásticos"),
-            ("MetalCiclo SCRAP",  "Metales"),
+            ("EcoEnvases SCRAP",   "Envases"),
+            ("ReciclaRAEE SCRAP",  "RAEE"),
+            ("GreenPack SCRAP",    "Voluminosos"),
+            ("EnviroPlas SCRAP",   "Plásticos"),
+            ("MetalCiclo SCRAP",   "Metales"),
+            ("PaperLoop SCRAP",    "Papel"),
+            ("GlassCycle SCRAP",   "Vidrio"),
+            ("BioCircle SCRAP",    "Orgánico"),
         };
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 8; i++)
         {
             var (name, _) = scrapData[i];
             list.Add(Entity(SeedGuid("scrap", i + 1), name, $"A8800{i+1:D4}", $"NIMA-SC{i+1:D3}",
@@ -955,16 +992,21 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 $"+34 91 000 00{i+1}", $"scrap{i+1}@greentransit.test", $"Dir. SCRAP {i+1}", t));
         }
 
-        // 5 PublicEntity
+        // 10 PublicEntity
         var peData = new[]
         {
-            ("Ayuntamiento de Zaragoza",  "AR", "50001", "50", "50297", "41.6488", "-0.8891"),
-            ("Ayuntamiento de Madrid",    "MD", "28001", "28", "28079", "40.4168", "-3.7038"),
-            ("Ajuntament de Barcelona",   "CT", "08001", "08", "08019", "41.3851", "2.1734"),
-            ("Ayuntamiento de Sevilla",   "AN", "41001", "41", "41091", "37.3891", "-5.9845"),
-            ("Ayuntamiento de Valencia",  "VC", "46001", "46", "46250", "39.4699", "-0.3763"),
+            ("Ayuntamiento de Zaragoza",   "AR", "50001", "50", "50297", "41.6488", "-0.8891"),
+            ("Ayuntamiento de Madrid",     "MD", "28001", "28", "28079", "40.4168", "-3.7038"),
+            ("Ajuntament de Barcelona",    "CT", "08001", "08", "08019", "41.3851", "2.1734"),
+            ("Ayuntamiento de Sevilla",    "AN", "41001", "41", "41091", "37.3891", "-5.9845"),
+            ("Ayuntamiento de Valencia",   "VC", "46001", "46", "46250", "39.4699", "-0.3763"),
+            ("Ayuntamiento de Bilbao",     "PV", "48001", "48", "48020", "43.2630", "-2.9350"),
+            ("Ayuntamiento de Málaga",     "AN", "29001", "29", "29067", "36.7213", "-4.4214"),
+            ("Ayuntamiento de Murcia",     "MC", "30001", "30", "30030", "37.9922", "-1.1307"),
+            ("Ayuntamiento de Valladolid", "CL", "47001", "47", "47186", "41.6523", "-4.7245"),
+            ("Ayuntamiento de Alicante",   "VC", "03001", "03", "03014", "38.3452", "-0.4810"),
         };
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 10; i++)
         {
             var (name, sc, zip, prov, mun, lat, lon) = peData[i];
             list.Add(Entity(SeedGuid("pe", i + 1), name, $"P0000{i+1:D4}", null,
@@ -973,8 +1015,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 $"+34 9{i+1}0 000 001", $"pe{i+1}@greentransit.test", $"Técnico Medio Ambiente {i+1}", t));
         }
 
-        // 5 Carrier
-        for (int i = 0; i < 5; i++)
+        // 8 Carrier
+        for (int i = 0; i < 8; i++)
         {
             list.Add(Entity(SeedGuid("carr", i + 1), $"Transportes Demo {i+1} SL", $"B7700{i+1:D4}", $"NIMA-CR{i+1:D3}",
                 "Carrier", "SL", "AR", "50001", "50", "50297",
@@ -983,13 +1025,13 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 inscriptionNumber: $"CR-REG-{i+1:D4}"));
         }
 
-        // 5 CAC
+        // 6 CAC
         var cacCoords = new[]
         {
             ("41.6500", "-0.8850"), ("40.4200", "-3.7100"), ("41.3900", "2.1800"),
-            ("37.3900", "-5.9900"), ("39.4750", "-0.3800"),
+            ("37.3900", "-5.9900"), ("39.4750", "-0.3800"), ("43.2700", "-2.9400"),
         };
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 6; i++)
         {
             var (lat, lon) = cacCoords[i];
             list.Add(Entity(SeedGuid("cac", i + 1), $"Centro Acopio Demo {i+1}", $"B5500{i+1:D4}", $"NIMA-CAC{i+1:D3}",
@@ -998,16 +1040,16 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 $"+34 976 333 00{i+1}", $"cac{i+1}@greentransit.test", $"Encargado CAC {i+1}", t));
         }
 
-        // 5 Plant
+        // 6 Plant
         var plantCoords = new[]
         {
             ("41.5800", "-0.9300"), ("40.3800", "-3.8000"), ("41.4500", "2.2000"),
-            ("37.4200", "-5.8500"), ("39.5200", "-0.4200"),
+            ("37.4200", "-5.8500"), ("39.5200", "-0.4200"), ("43.2800", "-2.9000"),
         };
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 6; i++)
         {
             var (lat, lon) = plantCoords[i];
-            list.Add(Entity(SeedGuid("plant", i + 1), $"Planta Tratamiento Demo {i+1}", $"B3300{i+1:D4}", $"NIMA-PL{i+1:D3}",
+            list.Add(Entity(SeedGuid("plant", i + 1), $"Planta Tratamiento Demo {i+1}", $"B3300{i+1:D4}", $"CC-PLANT-{i+1:D3}",
                 "Plant", "SA", "AR", "50001", "50", "50297",
                 $"Polígono Industrial Demo {i+1}", lat, lon,
                 $"+34 976 444 00{i+1}", $"plant{i+1}@greentransit.test", $"Director Planta {i+1}", t));
@@ -1019,9 +1061,9 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             "Calle Velázquez 10, Madrid", "40.4200", "-3.6900",
             "+34 91 555 0001", "coord@greentransit.test", "Coordinador General", t));
 
-        // 1 Other (Oficina Asignación)
+        // 1 Dispatch_office
         list.Add(Entity(SeedGuid("office", 1), "Oficina de Asignación OFFICE-01", "G2200001", null,
-            "Other", "Gestora", "MD", "28001", "28", "28079",
+            "Dispatch_office", "Gestora", "MD", "28001", "28", "28079",
             "Calle Gran Vía 1, Madrid", "40.4200", "-3.7000",
             "+34 91 666 0001", "office@greentransit.test", "Jefe Asignación", t));
 
@@ -1065,35 +1107,38 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         Dictionary<string, Guid> lerByCode, List<Guid> producerIds)
     {
         var list = new List<Residue>();
-        var t = Now;
+        var t = DateTime.UtcNow;
 
         // Waste (20)
+        // Tupla: (nombre, lerCode, flowType, productCategory, isDangerous, isRAEE)
+        // ProductCategory debe coincidir con MarketShare.Category: "Envases" | "RAEE" | "Voluminosos"
+        // FlowType debe coincidir con MarketShare.FlowType:        "Recogida" | "Reciclaje" | "Valorización"
         var wasteDef = new[]
         {
-            ("Papel y cartón mezclado",       "150101", "Recogida", false, false),
-            ("Plástico mezclado",             "150102", "Recogida", false, false),
-            ("Madera reciclable",             "150103", "Recogida", false, false),
-            ("Envases metálicos mixtos",      "150104", "Recogida", false, false),
-            ("Vidrio envases",               "150107", "Recogida", false, false),
-            ("Envase peligroso contaminado",  "150110", "Recogida", true,  false),
-            ("RAEE grande",                  "160213", "RAEE",     true,  true),
-            ("RAEE pequeño",                 "160214", "RAEE",     false, true),
-            ("Cobre chatarra",               "170401", "Reciclaje", false, false),
-            ("Hierro y acero",               "170405", "Reciclaje", false, false),
-            ("Papel oficina",                "200101", "Recogida",  false, false),
-            ("Vidrio doméstico",             "200102", "Recogida",  false, false),
-            ("Orgánico cocina",              "200108", "Recogida",  false, false),
-            ("RAEE municipal",               "200136", "RAEE",     false, true),
-            ("Residuos mixtos",              "200301", "Recogida",  false, false),
-            ("Chatarra metálica",            "170401", "Valorización", false, false),
-            ("Plástico industrial",          "150102", "Reciclaje",  false, false),
-            ("Cartón ondulado",              "150101", "Reciclaje",  false, false),
-            ("Equipo informático obsoleto",  "160214", "RAEE",     false, true),
-            ("Cable eléctrico",              "170411", "Valorización", false, false),
+            ("Papel y cartón mezclado",       "150101", "Recogida",     "Envases",     false, false),
+            ("Plástico mezclado",             "150102", "Recogida",     "Envases",     false, false),
+            ("Madera reciclable",             "150103", "Recogida",     "Voluminosos", false, false),
+            ("Envases metálicos mixtos",      "150104", "Reciclaje",    "Envases",     false, false),
+            ("Vidrio envases",               "150107", "Reciclaje",    "Envases",     false, false),
+            ("Envase peligroso contaminado",  "150110", "Valorización", "Envases",     true,  false),
+            ("RAEE grande",                  "160213", "Recogida",     "RAEE",        true,  true),
+            ("RAEE pequeño",                 "160214", "Recogida",     "RAEE",        false, true),
+            ("Cobre chatarra",               "170401", "Reciclaje",    "Envases",     false, false),
+            ("Hierro y acero",               "170405", "Valorización", "Envases",     false, false),
+            ("Papel oficina",                "200101", "Recogida",     "Envases",     false, false),
+            ("Vidrio doméstico",             "200102", "Reciclaje",    "Envases",     false, false),
+            ("Orgánico cocina",              "200108", "Recogida",     "Voluminosos", false, false),
+            ("RAEE municipal",               "200136", "Reciclaje",    "RAEE",        false, true),
+            ("Residuos mixtos",              "200301", "Valorización", "Voluminosos", false, false),
+            ("Chatarra metálica",            "170401", "Valorización", "Envases",     false, false),
+            ("Plástico industrial",          "150102", "Reciclaje",    "RAEE",        false, false),
+            ("Cartón ondulado",              "150101", "Valorización", "RAEE",        false, false),
+            ("Equipo informático obsoleto",  "160214", "Recogida",     "RAEE",        false, true),
+            ("Cable eléctrico",             "170411", "Valorización",  "Voluminosos", false, false),
         };
         for (int i = 0; i < wasteDef.Length; i++)
         {
-            var (name, lerCode, flow, danger, raee) = wasteDef[i];
+            var (name, lerCode, flow, category, danger, raee) = wasteDef[i];
             lerByCode.TryGetValue(lerCode, out var lerId);
             list.Add(new Residue
             {
@@ -1101,6 +1146,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 ResidueType     = "Waste",
                 Name            = name,
                 FlowType        = flow,
+                ProductCategory = category,
                 IdLERCode       = lerId == Guid.Empty ? null : lerId,
                 IsDangerous     = danger,
                 IsRAEE          = raee,
@@ -1179,11 +1225,11 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
 
     // ── Agreements ────────────────────────────────────────────────────────────
     private static (List<Agreement>, List<AgreementDocument>) BuildAgreements(
-        List<Guid> scraps, List<Guid> publicEntities, Guid coordinator, Guid ownerId)
+        List<Guid> scraps, List<Guid> publicEntities, Guid coordinator, Guid ownerId, DateTime now)
     {
         var agreements = new List<Agreement>();
         var docs       = new List<AgreementDocument>();
-        var t = Now;
+        var t = now;
         var wasteStreams = new[] { "Envases", "RAEE", "Voluminosos", "Plásticos", "Metales" };
         var ccaas       = new[] { "Aragón", "Madrid", "Cataluña", "Andalucía", "Comunidad Valenciana" };
 
@@ -1198,10 +1244,10 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 {
                     Id              = SeedGuid("agr", idx),
                     OwnerId         = ownerId,
-                    AgreementNumber = $"AGR-2026-{idx:D4}",
+                    AgreementNumber = $"AGR-{t.Year}-{idx:D4}",
                     Status          = status,
-                    EffectiveFrom   = new DateTime(2026, 1, 1),
-                    EffectiveTo     = status == "Active" ? null : new DateTime(2026, 12, 31),
+                    EffectiveFrom   = t.AddMonths(-6),
+                    EffectiveTo     = status == "Active" ? null : t.AddMonths(6),
                     IdScrap         = scraps[s],
                     IdPublicEntity  = publicEntities[p],
                     IdCoordinator   = coordinator,
@@ -1245,56 +1291,93 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     private static (List<ServiceOrder>, List<WasteMove>, List<WasteMoveResidue>) BuildOperations(
         List<Guid> producers, List<Guid> publicEnts, List<Guid> carriers,
         List<Guid> plants, List<Guid> cacs, List<Guid> scraps, List<Guid> opTransfers,
-        List<Guid> lerIds, List<Guid> wasteResidueIds, List<Guid> treatOpIds, Guid ownerId)
+        List<Guid> lerIds, List<Guid> wasteResidueIds, List<Guid> treatOpIds, Guid ownerId, DateTime now)
     {
         var sos     = new List<ServiceOrder>();
         var wms     = new List<WasteMove>();
         var wmrs    = new List<WasteMoveResidue>();
-        var statuses  = new[] { "Active", "Completed", "Cancelled" };
-        var priorities = new[] { "Normal", "Normal", "Normal", "Normal", "High", "High", "High", "Urgent" };
+
+        // ServiceOrder statuses según el prompt
+        var soStatuses = new[] { "Pending", "Pending", "Pending", "Pending", "Pending",
+                                  "Pending", "Pending", "Pending", "Pending", "Pending",
+                                  "Scheduled","Scheduled","Scheduled","Scheduled","Scheduled",
+                                  "Scheduled","Scheduled","Scheduled","Scheduled","Scheduled",
+                                  "Scheduled","Scheduled","Scheduled","Scheduled","Scheduled",
+                                  "Scheduled","Scheduled","Scheduled","Scheduled","Scheduled",
+                                  "InProgress","InProgress","InProgress","InProgress","InProgress",
+                                  "InProgress","InProgress","InProgress","InProgress","InProgress",
+                                  "InProgress","InProgress","InProgress","InProgress","InProgress",
+                                  "InProgress","InProgress","InProgress","InProgress","InProgress",
+                                  "Completed","Completed","Completed","Completed","Completed",
+                                  "Completed","Completed","Completed","Completed","Completed",
+                                  "Completed","Completed","Completed","Completed","Completed",
+                                  "Completed","Completed","Completed","Completed","Completed",
+                                  "Completed","Completed","Completed","Completed","Completed",
+                                  "Completed","Completed","Completed","Completed","Completed",
+                                  "Completed","Completed","Completed","Completed","Completed",
+                                  "Completed","Completed","Completed","Completed","Completed",
+                                  "Completed","Completed","Completed","Completed","Completed",
+                                  "Completed","Completed","Completed","Cancelled","Cancelled" };
+
         var serviceStatuses = new[]
         {
             "SOLICITADO","SOLICITADO","SOLICITADO","SOLICITADO","SOLICITADO","SOLICITADO","SOLICITADO","SOLICITADO","SOLICITADO","SOLICITADO",
             "PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO","PLANIFICADO",
             "RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO","RECOGIDO",
             "EN_CAC","EN_CAC","EN_CAC","EN_CAC","EN_CAC","EN_CAC","EN_CAC","EN_CAC","EN_CAC","EN_CAC",
-            "EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA",
-            "CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO",
+            "EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA",
+            "EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA","EN_PLANTA",
+            "CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO",
+            "CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO",
+            "CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO","CLASIFICADO",
         };
-        var vehicles = new[] { "Camión 12t", "Camión 26t", "Furgón" };
-        var fuels    = new[] { "Diesel", "GNC", "Eléctrico" };
-        var euros    = new[] { "Euro4", "Euro5", "Euro6" };
+        var vehicles  = new[] { "Camión 12t", "Camión 26t", "Furgón", "Camión 12t", "Furgón" };
+        var fuels     = new[] { "Diesel", "GNC", "Eléctrico", "Diesel", "Diesel" };
+        var euros     = new[] { "Euro4", "Euro5", "Euro6", "Euro6", "Euro5" };
+        var wasteStreams = new[] { "RAEE", "RAEE", "RAEE", "RAEE", "Envases", "RAEE", "Voluminosos", "RAEE" };
+        // Horas con franja punta y fuera de punta
+        var hours     = new[] { 7, 8, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 17, 18, 19, 20, 7, 8, 17, 18 };
+        var minutes   = new[] { 30, 0, 45, 15, 0, 30, 0, 0, 30, 0, 0, 30, 45, 0, 30, 0, 45, 15, 30, 0 };
+        var year      = now.Year;
 
         var allIssuers = producers.Concat(publicEnts).ToList();
 
         for (int i = 0; i < 100; i++)
         {
-            // Distribución uniforme sobre 150 días (ene-may 2026)
-            // i=0 → 1-Jan, i=50 → ~17-Mar, i=87 → ~11-May, i=99 → ~29-May
-            var issuedAt = new DateTime(2026, 1, 1).AddDays((i * 150) / 100);
+            // Primeros 10 (Pending/SOLICITADO): fechas futuras próximas 1-14 días
+            // Resto: distribuidos en los últimos ~18 meses (base -9m + hasta 297 días)
+            // → rango efectivo: ~sep año-1 a ~jun año+0, cubre siempre el mes actual
+            DateTime issuedAt;
+            if (i < 10)
+                issuedAt = now.AddDays(1 + (i * 13) % 13).Date.AddHours(hours[i % hours.Length]).AddMinutes(minutes[i % minutes.Length]);
+            else
+                issuedAt = now.AddMonths(-9).AddDays((i * 3) % 365).Date.AddHours(hours[i % hours.Length]).AddMinutes(minutes[i % minutes.Length]);
+
             var issuedBy = allIssuers[i % allIssuers.Count];
             var carrier  = carriers.Count > 0 ? carriers[i % carriers.Count] : (Guid?)null;
             var plant    = plants[i % plants.Count];
             var ler      = lerIds[i % lerIds.Count];
             var scrap    = scraps[i % scraps.Count];
+            var soStatus = i < soStatuses.Length ? soStatuses[i] : "Completed";
+            var svcStatus = i < serviceStatuses.Length ? serviceStatuses[i] : "SOLICITADO";
 
             var so = new ServiceOrder
             {
                 Id                   = SeedGuid("so", i + 1),
                 OwnerId              = ownerId,
-                ServiceOrderNumber   = $"SO-2026-{i+1:D5}",
+                ServiceOrderNumber   = $"SO-{year}-{i+1:D5}",
                 IssuedAt             = issuedAt,
                 IdIssuedBy           = issuedBy,
-                Status               = statuses[i % statuses.Length],
-                Priority             = priorities[i % priorities.Length],
-                WasteStream          = "Envases",
-                SubStream            = i % 2 == 0 ? "Plástico" : "Metal",
+                Status               = soStatus,
+                Priority             = (i % 8 < 4) ? "Normal" : (i % 8 < 7 ? "High" : "Urgent"),
+                WasteStream          = wasteStreams[i % wasteStreams.Length],
+                SubStream            = i % 3 == 0 ? "RAEE Cat1" : (i % 3 == 1 ? "RAEE Cat2" : "Plástico"),
                 IdLERCode            = ler,
                 IdPickupPoint        = issuedBy,
                 PlannedPickupStart   = issuedAt.AddDays(2),
-                PlannedPickupEnd     = issuedAt.AddDays(3),
+                PlannedPickupEnd     = issuedAt.AddDays(2).AddHours(4),
                 PlannedDeliveryStart = issuedAt.AddDays(3),
-                PlannedDeliveryEnd   = issuedAt.AddDays(4),
+                PlannedDeliveryEnd   = issuedAt.AddDays(3).AddHours(4),
                 EstimatedWeight      = 100 + (i * 47) % 4900,
                 MeasureUnit          = 1,
                 IdCarrier            = carrier,
@@ -1310,67 +1393,70 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             };
             sos.Add(so);
 
-            var svcStatus = i < serviceStatuses.Length ? serviceStatuses[i] : "SOLICITADO";
             var opTransfer = opTransfers.Count > 0 && i % 3 == 0 ? opTransfers[i % opTransfers.Count] : (Guid?)null;
+            var pickupHour  = hours[(i * 2) % hours.Length];
+            var pickupMin   = minutes[(i * 2) % minutes.Length];
+            var actualPickup = issuedAt.AddDays(2).Date.AddHours(pickupHour).AddMinutes(pickupMin);
+
             var wm = new WasteMove
             {
-                Id                 = SeedGuid("wm", i + 1),
-                OwnerId            = ownerId,
-                WasteMoveReference = $"WM-2026-{i+1:D5}",
-                Lot                = $"LOT-{i+1:D3}",
-                ServiceOrderId     = so.Id,
-                IdScrap            = scrap,
-                IdSource           = issuedBy,
-                IdDestination      = plant,
-                IdOperatorTransfer = opTransfer,
-                ServiceStatus      = svcStatus,
-                RequestDate        = issuedAt,
-                GatheredDate       = svcStatus is "RECOGIDO" or "EN_CAC" or "EN_PLANTA" or "CLASIFICADO"
-                                     ? issuedAt.AddDays(3) : null,
-                PlantEntryDate     = svcStatus is "EN_PLANTA" or "CLASIFICADO"
-                                     ? issuedAt.AddDays(4) : null,
+                Id                  = SeedGuid("wm", i + 1),
+                OwnerId             = ownerId,
+                WasteMoveReference  = $"WM-{year}-{i+1:D5}",
+                Lot                 = $"LOT-{i+1:D3}",
+                ServiceOrderId      = so.Id,
+                IdScrap             = scrap,
+                IdSource            = issuedBy,
+                IdDestination       = plant,
+                IdOperatorTransfer  = opTransfer,
+                ServiceStatus       = svcStatus,
+                RequestDate         = issuedAt,
+                GatheredDate        = svcStatus is "RECOGIDO" or "EN_CAC" or "EN_PLANTA" or "CLASIFICADO"
+                                      ? actualPickup.AddHours(2) : null,
+                PlantEntryDate      = svcStatus is "EN_PLANTA" or "CLASIFICADO"
+                                      ? issuedAt.AddDays(4).Date.AddHours(hours[(i+3) % hours.Length]) : null,
                 PlannedPickupStart  = issuedAt.AddDays(2),
-                PlannedPickupEnd    = issuedAt.AddDays(3),
+                PlannedPickupEnd    = issuedAt.AddDays(2).AddHours(4),
                 ActualPickupStart   = svcStatus != "SOLICITADO" && svcStatus != "PLANIFICADO"
-                                      ? issuedAt.AddDays(2).AddHours(1) : null,
+                                      ? actualPickup : null,
                 ActualPickupEnd     = svcStatus != "SOLICITADO" && svcStatus != "PLANIFICADO"
-                                      ? issuedAt.AddDays(3) : null,
+                                      ? actualPickup.AddHours(1).AddMinutes(30) : null,
                 ActualDeliveryStart = svcStatus is "EN_PLANTA" or "CLASIFICADO"
-                                      ? issuedAt.AddDays(3).AddHours(2) : null,
+                                      ? issuedAt.AddDays(4).Date.AddHours(hours[(i+3) % hours.Length]) : null,
                 ActualDeliveryEnd   = svcStatus is "EN_PLANTA" or "CLASIFICADO"
-                                      ? issuedAt.AddDays(4) : null,
-                DateCreateSys      = issuedAt,
-                DateModifiedSys    = issuedAt,
-                SourceSystem       = Seed,
-                Version            = 1,
-                IdUser             = SeedUser
+                                      ? issuedAt.AddDays(4).Date.AddHours(hours[(i+3) % hours.Length]).AddHours(2) : null,
+                DateCreateSys       = issuedAt,
+                DateModifiedSys     = issuedAt,
+                SourceSystem        = Seed,
+                Version             = 1,
+                IdUser              = SeedUser
             };
             wms.Add(wm);
 
-            // 1–3 WasteMoveResidues por traslado
             int lineCount = 1 + (i % 3);
             for (int l = 0; l < lineCount; l++)
             {
                 var residueId = wasteResidueIds[(i + l) % wasteResidueIds.Count];
-                var distance  = 10 + (i * 3 + l * 7) % 290;
+                var distance  = 15 + (i * 7 + l * 11) % 335;
+                var emFactor  = fuels[i % fuels.Length] == "Eléctrico" ? 0.08m : (fuels[i % fuels.Length] == "GNC" ? 0.55m : 0.90m);
                 wmrs.Add(new WasteMoveResidue
                 {
-                    Id                                  = SeedGuid($"wmr{i+1}", l + 1),
-                    IdWasteMove                         = wm.Id,
-                    IdResidue                           = residueId,
-                    Weight                              = 50 + (i + l * 50) % 2950,
-                    MeasureUnit                         = "Kg",
-                    Units                               = 1 + l,
-                    UnitPriceKg                         = 0.05m + (i % 9) * 0.05m,
-                    IdTreatmentOperationDestiny         = treatOpIds.Count > 0 ? treatOpIds[l % treatOpIds.Count] : null,
-                    IdCarrier                           = carrier,
-                    TransportInfo_VehicleRegistration   = $"{1000 + i} ABC",
-                    TransportInfo_TransportDistance     = distance,
-                    TransportInfo_TransportDuration     = (decimal)(distance / 60.0),
-                    TransportInfo_TransportCarbonEmissions = distance * 0.9m,
-                    VehicleType                         = vehicles[i % vehicles.Length],
-                    FuelType                            = fuels[i % fuels.Length],
-                    EuroClass                           = euros[i % euros.Length]
+                    Id                                    = SeedGuid($"wmr{i+1}", l + 1),
+                    IdWasteMove                           = wm.Id,
+                    IdResidue                             = residueId,
+                    Weight                                = 50 + (i * 31 + l * 113) % 3950,
+                    MeasureUnit                           = "Kg",
+                    Units                                 = 1 + l,
+                    UnitPriceKg                           = 0.05m + (i % 9) * 0.05m,
+                    IdTreatmentOperationDestiny           = treatOpIds.Count > 0 ? treatOpIds[(i + l) % treatOpIds.Count] : null,
+                    IdCarrier                             = carrier,
+                    TransportInfo_VehicleRegistration     = $"{1000 + i} ABC",
+                    TransportInfo_TransportDistance       = distance,
+                    TransportInfo_TransportDuration       = (decimal)(distance / 60.0),
+                    TransportInfo_TransportCarbonEmissions = distance * emFactor,
+                    VehicleType                           = vehicles[i % vehicles.Length],
+                    FuelType                              = fuels[i % fuels.Length],
+                    EuroClass                             = euros[i % euros.Length]
                 });
             }
         }
@@ -1380,10 +1466,10 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
 
     // ── Incidents ─────────────────────────────────────────────────────────────
     private static List<Incident> BuildIncidents(
-        List<(Guid soId, string wmRef, Guid? soGuid)> wasteMoves, Guid ownerId)
+        List<(Guid soId, string wmRef, Guid? soGuid)> wasteMoves, Guid ownerId, DateTime now)
     {
         var incidents = new List<Incident>();
-        var t = Now;
+        var t = now;
 
         var defs = new[]
         {
@@ -1436,7 +1522,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     // ── EntryCACs ─────────────────────────────────────────────────────────────
     private static (List<EntryCAC>, List<EntryCACResidue>) BuildEntryCACs(
         List<(Guid wmId, string wmRef, DateTime? entryDate)> wasteMoves,
-        List<Guid> residueIds, Guid ownerId)
+        List<Guid> residueIds, Guid ownerId, DateTime now)
     {
         var entries  = new List<EntryCAC>();
         var residues = new List<EntryCACResidue>();
@@ -1452,11 +1538,11 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 OwnerId          = ownerId,
                 IdWasteMove      = wmId,
                 WasteMoveReference = wmRef,
-                CACEntryDate     = date ?? new DateTime(2026, 1, 1).AddDays(i % 150),
+                CACEntryDate     = date ?? now.AddDays(-(150 - i % 150)),
                 TypeContainer    = containers[i % containers.Length],
                 CollectionMethod = methods[i % methods.Length],
-                DateCreateSys    = Now,
-                DateModifiedSys  = Now,
+                DateCreateSys    = now,
+                DateModifiedSys  = now,
                 IdUser           = SeedUser
             };
             entries.Add(entry);
@@ -1481,7 +1567,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     // ── EntryPlants ───────────────────────────────────────────────────────────
     private static (List<EntryPlant>, List<EntryPlantResidue>) BuildEntryPlants(
         List<(Guid wmId, string wmRef, Guid? soId, DateTime? entryDate)> wasteMoves,
-        List<Guid> residueIds, Guid ownerId)
+        List<Guid> residueIds, Guid ownerId, DateTime now)
     {
         var entries  = new List<EntryPlant>();
         var residues = new List<EntryPlantResidue>();
@@ -1500,14 +1586,14 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 WasteMoveReference = wmRef,
                 ServiceOrderId   = soId,
                 TicketScale      = $"TICKET-{i+1:D5}",
-                PlantEntryDate   = date ?? new DateTime(2026, 1, 1).AddDays(i % 150),
+                PlantEntryDate   = date ?? now.AddDays(-(150 - i % 150)),
                 GrossWeight      = gross,
                 TareWeight       = tare,
                 NetWeight        = net,
                 WeighbridgeId    = $"BASCULA-0{(i % 3) + 1}",
                 TypeContainer    = "Contenedor",
-                DateCreateSys    = Now,
-                DateModifiedSys  = Now,
+                DateCreateSys    = now,
+                DateModifiedSys  = now,
                 IdUser           = SeedUser
             };
             entries.Add(entry);
@@ -1534,7 +1620,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     private static (List<TreatmentPlant>, List<TreatmentPlantResidue>) BuildTreatmentPlants(
         List<(Guid wmId, string wmRef, Guid? soId, DateTime? entryDate)> wasteMoves,
         List<Guid> treatOpIds, List<Guid> wasteResidueIds, List<Guid> productResidueIds,
-        List<Guid> incidentIds, Guid ownerId)
+        List<Guid> incidentIds, Guid ownerId, DateTime now)
     {
         var plants   = new List<TreatmentPlant>();
         var residues = new List<TreatmentPlantResidue>();
@@ -1543,7 +1629,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         for (int i = 0; i < Math.Min(wasteMoves.Count, 100); i++)
         {
             var (wmId, wmRef, soId, date) = wasteMoves[i];
-            var treatDate = (date ?? new DateTime(2026, 1, 1).AddDays(i % 150)).AddDays(1);
+            var treatDate = (date ?? now.AddDays(-(150 - i % 150))).AddDays(1);
 
             // Vincular ~5 incidencias a plants de tipo WeightMismatch/FractionContamination
             Guid? incidentId = null;
@@ -1564,8 +1650,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 QualityMetricsJson   = $"{{\"contaminationPct\":{(i % 10) * 0.5},\"moisture\":{10 + i % 15}}}",
                 IncidentId           = incidentId,
                 SourceSystem         = Seed,
-                DateCreateSys        = Now,
-                DateModifiedSys      = Now,
+                DateCreateSys        = now,
+                DateModifiedSys      = now,
                 IdUser               = SeedUser
             };
             plants.Add(tp);
@@ -1613,12 +1699,12 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     // ── Settlements ───────────────────────────────────────────────────────────
     private static (List<Settlement>, List<SettlementLine>) BuildSettlements(
         List<(Guid agreementId, Guid? idScrap, Guid? idPublicEntity)> agreements,
-        List<Guid> lerIds, Guid ownerId)
+        List<Guid> lerIds, Guid ownerId, DateTime now)
     {
         var settlements = new List<Settlement>();
         var lines       = new List<SettlementLine>();
         var statuses    = new[] { "Approved", "Approved", "Approved", "Pending", "Rejected" };
-        var t = Now;
+        var t = now;
 
         for (int i = 0; i < Math.Min(agreements.Count, 25); i++)
         {
@@ -1631,11 +1717,11 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             {
                 Id               = SeedGuid("set", i + 1),
                 OwnerId          = ownerId,
-                SettlementNumber = $"LIQ-2026-{i+1:D4}",
+                SettlementNumber = $"LIQ-{t.Year}-{i+1:D4}",
                 Status           = statuses[i % statuses.Length],
                 AgreementId      = agrId,
-                Year             = 2026,
-                Month            = 1 + (i % 5),
+                Year             = t.Year,
+                Month            = 1 + (i % 12),
                 IdScrap          = scrapId,
                 IdPublicEntity   = peId,
                 Currency         = "EUR",
@@ -1674,7 +1760,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     }
 
     // ── MarketShares ──────────────────────────────────────────────────────────
-    private static List<MarketShare> BuildMarketShares(List<Guid> scraps, Guid ownerId)
+    private static List<MarketShare> BuildMarketShares(List<Guid> scraps, Guid ownerId, DateTime now)
     {
         var list       = new List<MarketShare>();
         var categories = new[] { "Envases", "RAEE", "Voluminosos" };
@@ -1698,13 +1784,13 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                             IdScrap             = scraps[s],
                             Category            = cat,
                             AutonomousCommunity = ccaa,
-                            Year                = 2026,
+                            Year                = now.Year,
                             Weight              = 10000m + (idx * 9973) % 490000,
                             Period              = period,
                             EffectiveFrom       = period == 1
-                                ? new DateOnly(2026, 1, 1) : new DateOnly(2026, 4, 1),
+                                ? new DateOnly(now.Year, 1, 1) : new DateOnly(now.Year, 4, 1),
                             EffectiveTo         = period == 1
-                                ? new DateOnly(2026, 3, 31) : new DateOnly(2026, 6, 30),
+                                ? new DateOnly(now.Year, 3, 31) : new DateOnly(now.Year, 6, 30),
                             FlowType            = flowTypes[idx % flowTypes.Length],
                             SourceSystem        = Seed,
                             Version             = 1
@@ -1719,7 +1805,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
 
     // ── ProductDeclarations ───────────────────────────────────────────────────
     private static (List<ProductDeclaration>, List<Product>) BuildProductDeclarations(
-        List<(Guid producerId, string centerCode)> producers, List<Guid> productResidueIds, Guid ownerId)
+        List<(Guid producerId, string centerCode)> producers, List<Guid> productResidueIds, Guid ownerId, DateTime now)
     {
         var declarations = new List<ProductDeclaration>();
         var products     = new List<Product>();
@@ -1739,17 +1825,17 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                     OwnerId     = ownerId,
                     IdProducer  = producerId,
                     Period      = 1 + (declIdx % 4),
-                    Year        = 2026,
-                    Month       = 1 + (declIdx % 5),
+                    Year        = now.Year,
+                    Month       = 1 + (declIdx % 12),
                     Currency    = "EUR",
                     State       = state,
                     Type        = types[declIdx % types.Length],
-                    Reference   = $"DECL-{centerCode}-2026-{d+1:D2}",
+                    Reference   = $"DECL-{centerCode}-{now.Year}-{d+1:D2}",
                     Amount      = 1000m + (declIdx * 3721) % 99000,
-                    DateCreate  = Now.AddDays(-90 + declIdx),
-                    DateEmit    = state != "Borrador" ? Now.AddDays(-80 + declIdx) : null,
-                    DateCreateSys   = Now,
-                    DateModifiedSys = Now,
+                    DateCreate  = now.AddDays(-90 + declIdx),
+                    DateEmit    = state != "Borrador" ? now.AddDays(-80 + declIdx) : null,
+                    DateCreateSys   = now,
+                    DateModifiedSys = now,
                     IdUser      = SeedUser
                 };
                 declarations.Add(decl);
@@ -1775,6 +1861,92 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         }
 
         return (declarations, products);
+    }
+
+    // =========================================================================
+    // FASE 10 — Objetivos regulatorios
+    // =========================================================================
+    private async Task Phase10_RegulatoryTargetsAsync(CancellationToken ct)
+    {
+        if (await _db.RegulatoryTargets.AnyAsync(x => x.OwnerId == _ownerId, ct))
+        {
+            _log.LogInformation("  Fase 10 — skip (RegulatoryTargets ya existen)");
+            return;
+        }
+
+        var targets = new[]
+        {
+            ("Grandes aparatos", 55.0, 5.0),
+            ("Pantallas",        65.0, 5.0),
+            ("Pequeños aparatos",55.0, 5.0),
+            ("Iluminación",      80.0, 5.0),
+            ("RAEE",             55.0, 5.0),
+            ("Envases",          70.0, 5.0),
+            ("Metales",          70.0, 0.0),
+        }.Select((r, i) => new RegulatoryTarget
+        {
+            Id                  = SeedGuid("rt", i + 1),
+            OwnerId             = _ownerId,
+            Category            = r.Item1,
+            Year                = _now.Year,
+            MinRecyclingPercent = r.Item2,
+            MinReusePercent     = r.Item3
+        }).ToList();
+
+        _db.RegulatoryTargets.AddRange(targets);
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("  Fase 10 completada — {N} RegulatoryTargets", targets.Count);
+    }
+
+    // =========================================================================
+    // FASE 11 — Energía de plantas
+    // =========================================================================
+    private async Task Phase11_PlantEnergiesAsync(CancellationToken ct)
+    {
+        if (await _db.PlantEnergies.AnyAsync(x => x.SourceSystem == Seed && x.OwnerId == _ownerId, ct))
+        {
+            _log.LogInformation("  Fase 11 — skip (PlantEnergies ya existen)");
+            return;
+        }
+
+        var plants = await _db.BusinessEntities
+            .Where(x => x.SourceSystem == Seed && x.EntityRole == "Plant")
+            .Select(x => new { x.Name, x.CenterCode })
+            .ToListAsync(ct);
+
+        var energies = new List<PlantEnergy>();
+        // Variación estacional: más consumo en invierno/verano
+        var monthlyFactor = new[] { 1.3m, 1.2m, 1.0m, 0.9m, 0.85m, 0.8m, 0.8m, 0.85m, 0.9m, 1.0m, 1.1m, 1.25m };
+        int idx = 0;
+        foreach (var p in plants)
+        {
+            for (int m = 0; m < 6; m++)
+            {
+                var targetMonth = _now.AddMonths(-(5 - m));
+                var baseKwh = 20000m + (idx * 5000) % 25000;
+                energies.Add(new PlantEnergy
+                {
+                    Id              = SeedGuid("pe_e", ++idx),
+                    OwnerId         = _ownerId,
+                    PlantName       = p.Name,
+                    PlantCenterCode = p.CenterCode,
+                    Year            = targetMonth.Year,
+                    Month           = targetMonth.Month,
+                    KwhTotal        = Math.Round(baseKwh * monthlyFactor[(targetMonth.Month - 1) % 12], 0),
+                    Source          = "Red eléctrica",
+                    GridMixRef      = "REE-HIDRÓGENO-2024",
+                    SourceSystem    = Seed,
+                    Version         = 1,
+                    CreatedAt       = _now,
+                    UpdatedAt       = _now,
+                    IdUser          = SeedUser
+                });
+            }
+        }
+
+        _db.PlantEnergies.AddRange(energies);
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("  Fase 11 completada — {N} PlantEnergies", energies.Count);
     }
 
     // =========================================================================
