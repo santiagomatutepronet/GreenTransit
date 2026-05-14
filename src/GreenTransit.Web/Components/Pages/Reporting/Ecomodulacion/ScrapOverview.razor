@@ -1,0 +1,349 @@
+@page "/reporting/ecomodulation/scrap-overview"
+@attribute [Authorize(Policy = PolicyConstants.CanViewEcomodulationScrapOverview)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Ecomodulation.DTOs
+@using GreenTransit.Application.Features.Ecomodulation.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject ILogger<ScrapOverview> Logger
+
+<PageTitle>Ecomodulación — Panel SCRAP — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-recycle me-2"></i>Panel de Datos de Ecomodulación — SCRAP
+        </h1>
+        <p class="text-muted mb-0">Proveedor del dato · Ecomodulación · @_filterYear</p>
+        <p class="text-muted small mt-1">
+            Este panel permite a los SCRAP supervisar la calidad de los datos de ecodiseño de los productos,
+            el estado de las fichas técnicas y el impacto económico de las reglas de eco‑modulación.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm me-2" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+        <button class="btn btn-outline-success btn-sm" @onclick="ExportAsync" disabled="@(_loading || _exporting)">
+            @if (_exporting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-file-earmark-excel me-1"></i>Exportar XLSX
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Categoría de producto</label>
+        <select class="form-select form-select-sm" @bind="_filterCategory" @bind:after="RefreshAsync">
+            <option value="">Todas</option>
+            @if (_data is not null)
+            {
+                @foreach (var cat in _data.CircularityByCategory.Select(c => c.Category).Distinct())
+                { <option value="@cat">@cat</option> }
+            }
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Cargando panel de ecomodulación…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── KPIs de cobertura ──────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Total productos</p>
+                    <p class="kpi-value">@_data.TotalProducts</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">% Ficha completa</p>
+                    <p class="kpi-value @(_data.PctWithFullSpec >= 80 ? "text-success" : _data.PctWithFullSpec >= 50 ? "text-warning" : "text-danger")">
+                        @_data.PctWithFullSpec.ToString("F1")%
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Con código LER potencial</p>
+                    <p class="kpi-value">@_data.PctWithLerCode.ToString("F1")%</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Sin ficha</p>
+                    <p class="kpi-value @(_data.ProductsWithNoSpec > 0 ? "text-danger" : "text-success")">
+                        @_data.ProductsWithNoSpec
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Índice de circularidad por categoría ─────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-bar-chart-steps me-1"></i>Índice de circularidad por categoría
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Categoría</th>
+                            <th class="text-end">Índice circularidad</th>
+                            <th class="text-end">% Reciclado</th>
+                            <th class="text-end">Reparabilidad</th>
+                            <th class="text-end">% No peligrosos</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cat in _data.CircularityByCategory)
+                        {
+                            <tr>
+                                <td>@cat.Category</td>
+                                <td class="text-end fw-semibold">@cat.CircularityIndex.ToString("F1")</td>
+                                <td class="text-end">@cat.AvgRecycledContentPct.ToString("F1")%</td>
+                                <td class="text-end">@cat.AvgReparabilityIndex.ToString("F1")</td>
+                                <td class="text-end">@cat.PctNonHazardous.ToString("F1")%</td>
+                                <td><span class="badge @TrafficLightBadge(cat.TrafficLight)">@TrafficLightLabel(cat.TrafficLight)</span></td>
+                            </tr>
+                        }
+                        @if (!_data.CircularityByCategory.Any())
+                        {
+                            <tr><td colspan="6" class="text-center text-muted py-3">Sin datos.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Cobertura por productor ───────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-people me-1"></i>Estado de validación por productor
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Productor</th>
+                            <th class="text-end">Total</th>
+                            <th class="text-end">Ficha completa</th>
+                            <th class="text-end">Ficha parcial</th>
+                            <th class="text-end">Sin ficha</th>
+                            <th class="text-end">% Cobertura</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _data.ProducerCoverage)
+                        {
+                            <tr>
+                                <td>@p.ProducerName</td>
+                                <td class="text-end">@p.TotalProducts</td>
+                                <td class="text-end text-success">@p.FullSpec</td>
+                                <td class="text-end text-warning">@p.PartialSpec</td>
+                                <td class="text-end text-danger">@p.NoSpec</td>
+                                <td class="text-end fw-semibold">@p.CoveragePct.ToString("F1")%</td>
+                                <td><span class="badge @TrafficLightBadge(p.TrafficLight)">@TrafficLightLabel(p.TrafficLight)</span></td>
+                            </tr>
+                        }
+                        @if (!_data.ProducerCoverage.Any())
+                        {
+                            <tr><td colspan="7" class="text-center text-muted py-3">Sin datos.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Composición de materiales ─────────────────────────────────────────── *@
+    @if (_data.MaterialComposition.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-pie-chart me-1"></i>Composición de materiales agregada
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Material</th>
+                                <th class="text-end">% Total declarado</th>
+                                <th class="text-end">Nº productos</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var mat in _data.MaterialComposition.Take(15))
+                            {
+                                <tr>
+                                    <td>@mat.Material</td>
+                                    <td class="text-end">@mat.TotalPercentage.ToString("F1")%</td>
+                                    <td class="text-end">@mat.ProductCount</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Impacto económico de reglas ───────────────────────────────────────── *@
+    @if (_data.RuleImpacts.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-currency-euro me-1"></i>Impacto económico de reglas de ecomodulación
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Regla</th>
+                                <th>Tipo impacto</th>
+                                <th class="text-end">Productos afectados</th>
+                                <th class="text-end">Ajuste económico (€)</th>
+                                <th class="text-end">Variación (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var rule in _data.RuleImpacts)
+                            {
+                                <tr>
+                                    <td>@rule.RuleName</td>
+                                    <td>@rule.ImpactType</td>
+                                    <td class="text-end">@rule.ProductsAffected</td>
+                                    <td class="text-end fw-semibold">@rule.TotalEconomicAdjustment.ToString("N2")</td>
+                                    <td class="text-end @(rule.VariationPct > 0 ? "text-danger" : rule.VariationPct < 0 ? "text-success" : "")">
+                                        @rule.VariationPct.ToString("F1")%
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Recomendaciones ───────────────────────────────────────────────────── *@
+    @if (_data.Recommendations.Any())
+    {
+        <div class="card mb-4 border-warning">
+            <div class="card-header fw-semibold text-warning">
+                <i class="bi bi-lightbulb me-1"></i>Recomendaciones de ecodiseño
+            </div>
+            <ul class="list-group list-group-flush">
+                @foreach (var rec in _data.Recommendations)
+                {
+                    <li class="list-group-item"><i class="bi bi-chevron-right me-1 text-muted"></i>@rec</li>
+                }
+            </ul>
+        </div>
+    }
+}
+else
+{
+    <div class="alert alert-info mt-3">No hay datos de ecomodulación disponibles para los filtros seleccionados.</div>
+}
+
+@code {
+    private bool   _loading   = true;
+    private bool   _exporting = false;
+    private int    _filterYear     = DateTime.Now.Year;
+    private string _filterCategory = "";
+
+    private EcomodulationScrapOverviewDto? _data;
+    private static readonly CultureInfo _es = new("es-ES");
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        try
+        {
+            _data = await Mediator.Send(new GetEcomodulationScrapOverviewQuery(
+                _filterYear,
+                string.IsNullOrEmpty(_filterCategory) ? null : _filterCategory));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando panel de ecomodulación SCRAP");
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task ExportAsync()
+    {
+        _exporting = true;
+        try
+        {
+            var result = await Mediator.Send(new ExportEcomodulationDataToExcelQuery(
+                _filterYear,
+                string.IsNullOrEmpty(_filterCategory) ? null : _filterCategory));
+            // La descarga se gestiona mediante JS interop en un escenario real;
+            // aquí se delega al navegador vía endpoint de descarga si se implementa.
+            _ = result; // resultado disponible para extender con JS download
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exportando datos de ecomodulación");
+        }
+        finally { _exporting = false; }
+    }
+
+    private static string TrafficLightBadge(string tl) => tl switch
+    {
+        "Green"  => "bg-success",
+        "Orange" => "bg-warning text-dark",
+        _        => "bg-danger"
+    };
+
+    private static string TrafficLightLabel(string tl) => tl switch
+    {
+        "Green"  => "Óptimo",
+        "Orange" => "Mejorable",
+        _        => "Crítico"
+    };
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

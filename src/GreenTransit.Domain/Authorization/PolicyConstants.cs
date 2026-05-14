@@ -154,6 +154,17 @@ public static class PolicyConstants
     /// <summary>Vista TR-D — Datos Operativos de Tratamiento — Oficina de Asignación: DISPATCH_OFFICE, ADMIN.</summary>
     public const string CanViewTRDispatchData = "CanViewTRDispatchData";
 
+    // ─── Ecomodulación (UC5) ─────────────────────────────────────────────────
+
+    /// <summary>Dashboard UC5-A — Panel de Datos de Ecomodulación — SCRAP: SCRAP, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewEcomodulationScrapOverview = "CanViewEcomodulationScrapOverview";
+
+    /// <summary>Dashboard UC5-B — Panel de Monitorización Regulatoria: PUBLIC_ENT, COORDINATOR, ADMIN.</summary>
+    public const string CanViewEcomodulationRegulatoryView = "CanViewEcomodulationRegulatoryView";
+
+    /// <summary>Dashboard UC5-C — Preparación DPP: SCRAP, COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewEcomodulationDppReadiness = "CanViewEcomodulationDppReadiness";
+
     // ─── Administración del sistema ──────────────────────────────────
 
     /// <summary>Operaciones exclusivas del administrador del sistema (ej. seed de datos).</summary>

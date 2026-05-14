@@ -1,0 +1,341 @@
+@page "/reporting/ecomodulation/dpp-readiness"
+@attribute [Authorize(Policy = PolicyConstants.CanViewEcomodulationDppReadiness)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Ecomodulation.DTOs
+@using GreenTransit.Application.Features.Ecomodulation.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject ILogger<DppReadiness> Logger
+
+<PageTitle>Ecomodulación — Preparación DPP — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-passport me-2"></i>Preparación para el Pasaporte Digital de Producto (DPP)
+        </h1>
+        <p class="text-muted mb-0">Ecomodulación · DPP · @_filterYear</p>
+        <p class="text-muted small mt-1">
+            Evaluación de la completitud de datos, validación de fichas técnicas y nivel de preparación para el Pasaporte Digital de Producto.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Categoría de producto</label>
+        <select class="form-select form-select-sm" @bind="_filterCategory" @bind:after="RefreshAsync">
+            <option value="">Todas</option>
+            @if (_data is not null)
+            {
+                @foreach (var c in _data.Heatmap.Select(h => h.Category).Distinct())
+                { <option value="@c">@c</option> }
+            }
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Calculando score de preparación DPP…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── Score global DPP ─────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-md-4">
+            <div class="card kpi-card h-100 @(_data.GlobalDppScore >= 80 ? "border-success" : _data.GlobalDppScore >= 50 ? "border-warning" : "border-danger")">
+                <div class="card-body text-center">
+                    <p class="kpi-label">Score DPP global</p>
+                    <p class="kpi-value display-4 fw-bold @(_data.GlobalDppScore >= 80 ? "text-success" : _data.GlobalDppScore >= 50 ? "text-warning" : "text-danger")">
+                        @_data.GlobalDppScore.ToString("F1")%
+                    </p>
+                    <p class="text-muted small">
+                        @(_data.GlobalDppScore >= 80 ? "✅ Preparado para DPP" : _data.GlobalDppScore >= 50 ? "⚠️ Preparación parcial" : "❌ Requiere mejoras urgentes")
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Total productos evaluados</p>
+                    <p class="kpi-value">@_data.Products.Count</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Productos con score &lt; 50%</p>
+                    <p class="kpi-value text-danger">@_data.Products.Count(p => p.DppScore < 50)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Mapa de calor: completitud por categoría × campo DPP ─────────────── *@
+    @if (_data.Heatmap.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-grid-3x3-gap me-1"></i>Mapa de calor de completitud DPP — Categoría × Campo
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0" style="font-size:.8rem">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Categoría</th>
+                                <th class="text-center">Nombre</th>
+                                <th class="text-center">Referencia</th>
+                                <th class="text-center">LER</th>
+                                <th class="text-center">Reparabilidad</th>
+                                <th class="text-center">Desmontaje</th>
+                                <th class="text-center">Reciclado</th>
+                                <th class="text-center">Composición</th>
+                                <th class="text-center">Peligrosos</th>
+                                <th class="text-center">LER potencial</th>
+                                <th class="text-center">Productor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _data.Heatmap)
+                            {
+                                <tr>
+                                    <td class="fw-semibold">@row.Category</td>
+                                    @HeatCell(row.PctName)
+                                    @HeatCell(row.PctReference)
+                                    @HeatCell(row.PctLerCode)
+                                    @HeatCell(row.PctReparability)
+                                    @HeatCell(row.PctDisassembly)
+                                    @HeatCell(row.PctRecycledContent)
+                                    @HeatCell(row.PctComposition)
+                                    @HeatCell(row.PctHazardousInfo)
+                                    @HeatCell(row.PctPotentialLerCodes)
+                                    @HeatCell(row.PctProducer)
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-muted small p-2 mb-0">
+                    <span class="badge bg-success me-1">Verde</span> &gt;80% &nbsp;
+                    <span class="badge bg-warning text-dark me-1">Naranja</span> 50–80% &nbsp;
+                    <span class="badge bg-danger me-1">Rojo</span> &lt;50%
+                </p>
+            </div>
+        </div>
+    }
+
+    @* ── Productos prioritarios para completar ────────────────────────────── *@
+    @if (_data.PriorityProducts.Any())
+    {
+        <div class="card mb-4 border-warning">
+            <div class="card-header fw-semibold text-warning">
+                <i class="bi bi-exclamation-triangle me-1"></i>Productos prioritarios para completar (peor score DPP)
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Referencia</th>
+                                <th>Nombre</th>
+                                <th>Productor</th>
+                                <th class="text-end">Score DPP</th>
+                                <th>Campos faltantes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in _data.PriorityProducts)
+                            {
+                                <tr>
+                                    <td class="font-monospace small">@p.ProductReference</td>
+                                    <td>@(p.ProductName ?? "—")</td>
+                                    <td>@(p.ProducerName ?? "—")</td>
+                                    <td class="text-end fw-bold text-danger">@p.DppScore.ToString("F1")%</td>
+                                    <td><small class="text-muted">@string.Join(", ", p.MissingFields)</small></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Score DPP por SCRAP ──────────────────────────────────────────────── *@
+    @if (_data.ScrapScores.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-bar-chart me-1"></i>Preparación DPP por SCRAP
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>SCRAP</th>
+                                <th class="text-end">Nº productos</th>
+                                <th class="text-end">Score DPP medio</th>
+                                <th>Preparación</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var s in _data.ScrapScores.OrderByDescending(x => x.AvgDppScore))
+                            {
+                                <tr>
+                                    <td>@s.ScrapName</td>
+                                    <td class="text-end">@s.ProductCount</td>
+                                    <td class="text-end fw-bold @(s.AvgDppScore >= 80 ? "text-success" : s.AvgDppScore >= 50 ? "text-warning" : "text-danger")">
+                                        @s.AvgDppScore.ToString("F1")%
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height:8px;min-width:80px">
+                                            <div class="progress-bar @(s.AvgDppScore >= 80 ? "bg-success" : s.AvgDppScore >= 50 ? "bg-warning" : "bg-danger")"
+                                                 style="width:@s.AvgDppScore%"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Detalle de productos (tabla completa con checkmarks) ─────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold d-flex justify-content-between">
+            <span><i class="bi bi-table me-1"></i>Detalle de preparación DPP por producto</span>
+            <span class="badge bg-secondary">@_data.Products.Count productos</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" style="font-size:.8rem">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Referencia</th>
+                            <th>Productor</th>
+                            <th class="text-center">Nombre</th>
+                            <th class="text-center">Ref.</th>
+                            <th class="text-center">LER</th>
+                            <th class="text-center">Rep.</th>
+                            <th class="text-center">Desm.</th>
+                            <th class="text-center">Recic.</th>
+                            <th class="text-center">Comp.</th>
+                            <th class="text-center">Peligr.</th>
+                            <th class="text-center">LER pot.</th>
+                            <th class="text-center">Prod.</th>
+                            <th class="text-end">Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _data.Products.OrderBy(x => x.DppScore))
+                        {
+                            <tr>
+                                <td class="font-monospace">@p.ProductReference</td>
+                                <td>@(p.ProducerName ?? "—")</td>
+                                @DppCheck(p.HasName)
+                                @DppCheck(p.HasReference)
+                                @DppCheck(p.HasLerCode)
+                                @DppCheck(p.HasReparabilityIndex)
+                                @DppCheck(p.HasDisassemblyEase)
+                                @DppCheck(p.HasRecycledContent)
+                                @DppCheck(p.HasComposition)
+                                @DppCheck(p.HasHazardousInfo)
+                                @DppCheck(p.HasPotentialLerCodes)
+                                @DppCheck(p.HasProducer)
+                                <td class="text-end fw-bold @(p.DppScore >= 80 ? "text-success" : p.DppScore >= 50 ? "text-warning" : "text-danger")">
+                                    @p.DppScore.ToString("F0")%
+                                </td>
+                            </tr>
+                        }
+                        @if (!_data.Products.Any())
+                        {
+                            <tr><td colspan="13" class="text-center text-muted py-3">Sin datos.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-info mt-3">No hay datos de preparación DPP disponibles para los filtros seleccionados.</div>
+}
+
+@code {
+    private bool   _loading        = true;
+    private int    _filterYear     = DateTime.Now.Year;
+    private string _filterCategory = "";
+
+    private EcomodulationDppReadinessDto? _data;
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        try
+        {
+            _data = await Mediator.Send(new GetEcomodulationDppReadinessQuery(
+                _filterYear,
+                ProductCategory: string.IsNullOrEmpty(_filterCategory) ? null : _filterCategory));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando preparación DPP");
+        }
+        finally { _loading = false; }
+    }
+
+    private static RenderFragment HeatCell(double pct) => builder =>
+    {
+        var css = pct >= 80 ? "bg-success text-white" : pct >= 50 ? "bg-warning text-dark" : "bg-danger text-white";
+        builder.OpenElement(0, "td");
+        builder.AddAttribute(1, "class", $"text-center {css}");
+        builder.AddContent(2, $"{pct:F0}%");
+        builder.CloseElement();
+    };
+
+    private static RenderFragment DppCheck(bool ok) => builder =>
+    {
+        builder.OpenElement(0, "td");
+        builder.AddAttribute(1, "class", "text-center");
+        builder.AddMarkupContent(2, ok
+            ? "<i class=\"bi bi-check-circle-fill text-success\"></i>"
+            : "<i class=\"bi bi-x-circle-fill text-danger\"></i>");
+        builder.CloseElement();
+    };
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

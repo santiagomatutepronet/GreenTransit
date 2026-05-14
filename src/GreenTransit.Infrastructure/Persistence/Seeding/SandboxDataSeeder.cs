@@ -274,8 +274,28 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         var residues = BuildResidues(lerIds.ToDictionary(x => x.Code, x => x.Id), prodIds);
         _db.Residues.AddRange(residues);
         await _db.SaveChangesAsync(ct);
-        _log.LogInformation("  Fase 2 completada — {N} residuos en {Ms}ms",
-            residues.Count, sw.ElapsedMilliseconds);
+
+        // Crear registros ProductSpec enlazados a los residuos con ResidueType=="ProductSpec"
+        var psResidues = residues.Where(r => r.ResidueType == "ProductSpec").ToList();
+        var productSpecs = psResidues.Select((r, i) => new ProductSpec
+        {
+            Id           = SeedGuid("ps", i + 1),
+            OwnerId      = _ownerId,
+            ProductRef   = $"PROD-SPEC-{i + 1:D4}",
+            IdResidue    = r.Id,
+            IdProducer   = r.IdProducer,
+            CategoryRef  = r.ProductCategory,
+            SourceSystem = Seed,
+            Version      = 1,
+            CreatedAt    = _now,
+            UpdatedAt    = _now,
+            IdUser       = SeedUser
+        }).ToList();
+        _db.ProductSpecs.AddRange(productSpecs);
+        await _db.SaveChangesAsync(ct);
+
+        _log.LogInformation("  Fase 2 completada — {N} residuos, {PS} ProductSpecs en {Ms}ms",
+            residues.Count, productSpecs.Count, sw.ElapsedMilliseconds);
     }
 
     // =========================================================================
@@ -1201,22 +1221,48 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             });
         }
 
-        // ProductSpec (5)
-        for (int i = 0; i < 5; i++)
+        // ProductSpec (12) — fichas técnicas con datos de ecomodulación
+        var specDefs = new[]
         {
+            // (nombre, category, lerCode, reparability, recycledPct, disassembly, containsHazardous, potentialLer)
+            ("Botella PET ecomod",        "Envases",    "150102", 7,  45m, "Easy",   false, true),
+            ("Lata aluminio ecomod",      "Envases",    "150104", 9,  85m, "Easy",   false, true),
+            ("Caja cartón ecomod",        "Envases",    "150101", 6,  70m, "Easy",   false, true),
+            ("Botella vidrio ecomod",     "Envases",    "150107", 8,  60m, "Medium", false, true),
+            ("Ordenador portátil RAEE",   "RAEE",       "160213", 5,  30m, "Medium", true,  true),
+            ("Televisor LED ecomod",      "RAEE",       "160213", 4,  25m, "Hard",   true,  true),
+            ("Frigorífico ecomod",        "RAEE",       "160213", 3,  20m, "Hard",   true,  true),
+            ("Móvil smartphone ecomod",   "RAEE",       "160214", 6,  35m, "Medium", true,  true),
+            ("Palé madera ecomod",        "Voluminosos","150103", 8,  80m, "Easy",   false, true),
+            ("Film estirable ecomod",     "Envases",    "150102", 3,  15m, "Hard",   false, false),
+            ("Tóner impresora ecomod",    "RAEE",       "160214", 4,  10m, "Hard",   true,  false),
+            ("Luminaria LED ecomod",      "RAEE",       "160214", 7,  40m, "Medium", false, true),
+        };
+        for (int i = 0; i < specDefs.Length; i++)
+        {
+            var (spName, spCat, spLer, spRepair, spRecycled, spDis, spHazard, spHasLer) = specDefs[i];
+            lerByCode.TryGetValue(spLer, out var spLerId);
+            var compJson = $"[{{\"material\":\"Plástico\",\"pct\":{100 - spRecycled}}},{{\"material\":\"Reciclado\",\"pct\":{spRecycled}}}]";
             list.Add(new Residue
             {
-                Id              = SeedGuid("rps", i + 1),
-                ResidueType     = "ProductSpec",
-                Name            = $"Ficha Técnica Demo {i+1}",
-                ProductCategory = "Envases",
-                IdProducer      = producerIds.Count > 0 ? producerIds[i % producerIds.Count] : null,
-                IsActive        = true,
-                SourceSystem    = Seed,
-                Version         = 1,
-                CreatedAt       = t,
-                UpdatedAt       = t,
-                IdUser          = SeedUser
+                Id                     = SeedGuid("rps", i + 1),
+                ResidueType            = "ProductSpec",
+                Name                   = spName,
+                ProductCategory        = spCat,
+                IdLERCode              = spLerId == Guid.Empty ? null : spLerId,
+                IdProducer             = producerIds.Count > 0 ? producerIds[i % producerIds.Count] : null,
+                ReparabilityIndex      = spRepair,
+                RecycledContentPercent = spRecycled,
+                DisassemblyEase        = spDis,
+                ContainsHazardous      = spHazard,
+                CompositionJson        = compJson,
+                PotentialLERCodesJson  = spHasLer ? $"[\"{spLer}\"]" : null,
+                IsActive               = true,
+                SourceSystem           = Seed,
+                Version                = 1,
+                CreatedAt              = t,
+                UpdatedAt              = t,
+                IdUser                 = SeedUser
             });
         }
 

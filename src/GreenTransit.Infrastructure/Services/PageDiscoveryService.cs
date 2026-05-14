@@ -110,28 +110,33 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
         if (newPages.Count > 0)
             await _db.SaveChangesAsync(ct);
 
-        // 5b. Reparar páginas que fueron registradas como "General" (excluidas) pero
-        //     que ahora tienen un módulo válido tras actualizar InferModuleName.
-        //     Las reactiva y les asigna el módulo correcto.
+        // 5b. Reparar páginas cuyo ModuleName en BD difiere del que InferModuleName devuelve ahora.
+        //     Cubre tanto páginas registradas como "General" (antiguo fallback) como páginas
+        //     que recibieron un módulo genérico ("Reporting") antes de que se añadiera un
+        //     módulo más específico (ej. "Ecomodulación").
         var discoveredByRoute = discovered.ToDictionary(
             dp => dp.Route, dp => dp, StringComparer.OrdinalIgnoreCase);
 
+        var routesWithNewModule = discoveredByRoute.Keys.ToList();
         var wrongModulePages = await _db.PageDefinitions
-            .Where(d => d.ModuleName == "General")
+            .Where(d => routesWithNewModule.Contains(d.Route))
             .ToListAsync(ct);
 
         int repaired = 0;
         foreach (var page in wrongModulePages)
         {
             if (!discoveredByRoute.TryGetValue(page.Route, out var disc)) continue;
+            if (page.ModuleName == disc.ModuleName) continue;   // ya correcto, sin tocar
+
+            _logger.LogInformation(
+                "Página reparada: {Route} → módulo '{OldModule}' → '{NewModule}'",
+                page.Route, page.ModuleName, disc.ModuleName);
 
             page.ModuleName    = disc.ModuleName;
             page.ComponentName = disc.ComponentName;
             page.IsActive      = true;
             page.UpdatedAt     = DateTime.UtcNow;
             repaired++;
-            _logger.LogInformation(
-                "Página reparada: {Route} → módulo '{Module}'", page.Route, disc.ModuleName);
         }
 
         if (repaired > 0)
@@ -151,7 +156,8 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
     {
         if (ns?.Contains("Security") == true) return "Seguridad";
         if (ns?.Contains("TratamientoReciclaje") == true) return "Tratamiento y Reciclaje";
-        if (ns?.Contains("Reporting") == true) return "Reporting";
+        if (ns?.Contains("Ecomodulacion") == true)     return "Ecomodulación";
+        if (ns?.Contains("Reporting") == true)          return "Reporting";
         if (ns?.Contains("Logistics") == true) return "Dashboards Logísticos";
         if (ns?.Contains("Mobility") == true)  return "Movilidad Urbana";
         if (ns?.Contains("Sustainability") == true) return "Sostenibilidad";
@@ -228,7 +234,10 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["TRScrapAnalysis"]           = "Análisis de Calidad y Revalorización — SCRAP",
             ["TRMunicipalMonitoring"]     = "Monitorización de Reciclaje — Ayuntamiento",
             ["TRCoordinatorValidation"]   = "Validación y Datos Multi-SCRAP — Coordinador",
-            ["TRDispatchData"]            = "Datos Operativos de Tratamiento — Oficina de Asignación"
+            ["TRDispatchData"]            = "Datos Operativos de Tratamiento — Oficina de Asignación",
+            ["ScrapOverview"]              = "Panel de Datos de Ecomodulación — SCRAP",
+            ["RegulatoryView"]             = "Monitorización Regulatoria — Ecomodulación",
+            ["DppReadiness"]              = "Preparación DPP — Ecomodulación"
         };
 
         if (map.TryGetValue(componentName, out var name)) return name;

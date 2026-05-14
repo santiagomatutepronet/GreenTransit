@@ -4,7 +4,7 @@
 >
 > Basado en el modelo de datos técnico **v4.1** (SQL Server Azure). Cada funcionalidad detalla **entidades implicadas**, **campos clave** y **transiciones de estado** del traslado.
 >
-> **Documento unificado** que integra: Mapa de Funcionalidades, Mapa de Autenticación y Autorización, Modelo de Datos, Patrón de Autorización en Páginas, Dashboard UC2 (Optimización RAEE), Dashboard UC3 (Movilidad Urbana) y Dashboard Tratamiento y Reciclaje.
+> **Documento unificado** que integra: Mapa de Funcionalidades, Mapa de Autenticación y Autorización, Modelo de Datos, Patrón de Autorización en Páginas, Dashboard UC2 (Optimización RAEE), Dashboard UC3 (Movilidad Urbana) y Dashboard UC5 (Ecomodulación).
 
 ---
 
@@ -627,10 +627,9 @@ CanViewProductDeclarations      ADMIN, PRODUCER, SCRAP, COORDINATOR
 CanManageProductDeclarations    PRODUCER, ADMIN
 CanValidateProductDeclarations  ADMIN
 CanManageDeclarationDicts       ADMIN
-CanViewTRScrapAnalysis          SCRAP, ADMIN                           ← TR-A Tratamiento y Reciclaje
-CanViewTRMunicipalMonitoring    PUBLIC_ENT, ADMIN                      ← TR-B Tratamiento y Reciclaje
-CanViewTRCoordinatorValidation  COORDINATOR, ADMIN                     ← TR-C Tratamiento y Reciclaje
-CanViewTRDispatchData           DISPATCH_OFFICE, ADMIN                 ← TR-D Tratamiento y Reciclaje
+CanViewEcomodulationScrapOverview     SCRAP, DISPATCH_OFFICE, ADMIN      ← UC5-A
+CanViewEcomodulationRegulatoryView    PUBLIC_ENT, COORDINATOR, ADMIN     ← UC5-B
+CanViewEcomodulationDppReadiness      SCRAP, COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN  ← UC5-C
 AdminOnly                       ADMIN
 ```
 
@@ -1332,142 +1331,109 @@ Una recogida se considera **en hora punta** si `hora_decimal ∈ [Start1, End1) 
 
 ---
 
-### 5.7. Módulo de Tratamiento y Reciclaje
+### 5.7. Módulo de Ecomodulación — Pasaporte Digital de Producto (UC5)
 
-> Agrupa las vistas orientadas a analizar los procesos de tratamiento y reciclaje de residuos de embalajes industriales y comerciales: calidad de materiales recuperados, tasas de revalorización, comparativa Multi-SCRAP, validación de datos compartidos y modelo de recogidas Multi-SCRAP. Se alinea con los tratados europeos de economía circular.
+> Agrupa las vistas UC5 orientadas a facilitar el control de datos de ecodiseño por parte de los SCRAPs (proveedores del dato) y su consumo por parte de autoridades reguladoras, organismos europeos, certificadores y demás actores del ecosistema. Promueve la convergencia con el Pasaporte Digital de Producto (DPP) europeo. Dashboards accesibles desde **Reporting → Ecomodulación** del menú lateral.
 
-#### 5.7.1. TR-A — Análisis de Calidad y Revalorización (SCRAP)
+#### 5.7.1. UC5-A — Panel de Datos de Ecomodulación — SCRAP (Proveedor del dato)
 
-- **Ruta**: `/reporting/tratamiento-reciclaje/scrap-analysis`
-- **Perfil objetivo**: `SCRAP`, `ADMIN`.
-- **Policy**: `CanViewTRScrapAnalysis`.
-- **Lógica**: KPIs de tratamiento calculados a partir de `TreatmentPlants` / `TreatmentPlantResidues` del periodo, cruzados con `WasteMoves` para vincular al SCRAP. Evalúa la calidad de los materiales recuperados y su aptitud para revalorización.
+- **Ruta**: `/reporting/ecomodulation/scrap-overview`
+- **Perfil objetivo**: `SCRAP`, `DISPATCH_OFFICE`, `ADMIN`.
+- **Policy**: `CanViewEcomodulationScrapOverview`.
+- **Lógica**: los SCRAPs visualizan y validan la calidad de los datos de ecodiseño de los productos que gestionan, controlan el estado de las fichas técnicas (`ProductSpecs`) y monitorizan el impacto económico de las reglas de eco-modulación sobre sus liquidaciones.
 
 **Archivos a implementar**:
-- `Application/Features/Reporting/TratamientoReciclaje/Queries/GetTRScrapAnalysisQuery.cs` — handler principal con filtros: `Year`, `Month?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`, `IdLERCode?`, `TreatmentOperationCode?`.
-- `Application/Features/Reporting/TratamientoReciclaje/DTOs/TRScrapAnalysisDto.cs` — DTOs: `TRScrapAnalysisDto`, `TreatmentBalanceDto`, `RecyclingRateDto`, `TRScrapComparisonDto`.
-- `Application/Features/Reporting/TratamientoReciclaje/Services/RecyclingQualityEngine.cs` — motor de alertas de calidad de reciclaje.
-- `Web/Components/Pages/Reporting/TratamientoReciclaje/ScrapAnalysis.razor` — página `/reporting/tratamiento-reciclaje/scrap-analysis`.
-
-**Cálculo de tasa de reciclaje**:
-
-```
-Tasa de reciclaje (%) = (SUM(WeightReused) + SUM(WeightValued)) / SUM(WeightTotal) × 100
-```
-
-**Cálculo de % de impropios**:
-
-```
-% Impropios = SUM(TreatmentPlants.ImproperWeight) / SUM(TreatmentPlantResidues.WeightTotal) × 100
-```
+- `Application/Features/Ecomodulation/Queries/GetEcomodulationScrapOverviewQuery.cs` — handler principal con filtros: `Year`, `ProductCategory?`, `IdProducer?`, `EcoModulationRuleSetId?`.
+- `Application/Features/Ecomodulation/DTOs/EcomodulationScrapOverviewDto.cs` — DTOs: `EcomodulationScrapOverviewDto`, `EcodesignCoverageDto`, `CircularityByCategoryDto`, `RuleImpactDto`, `ProducerCoverageDto`, `MaterialCompositionDto`, `EcomodulationExportRowDto`.
+- `Application/Features/Ecomodulation/Queries/ExportEcomodulationDataToExcelQuery.cs` — genera XLSX en memoria (ClosedXML) con los datos del `ExportDataset`.
+- `Application/Features/Ecomodulation/Services/EcomodulationRecommendationEngine.cs` — motor de recomendaciones de ecodiseño.
+- `Web/Components/Pages/Reporting/Ecomodulación/ScrapOverview.razor` — página `/reporting/ecomodulation/scrap-overview`.
 
 **Widgets principales**:
 
 | Widget | Fuente de datos | Descripción |
 |---|---|---|
-| Balance de tratamiento por planta | `TreatmentPlants` + `TreatmentPlantResidues` + `Entities` | Bar chart apilado: kg reutilizados / valorizados / rechazados por planta |
-| Tasa de revalorización por residuo | `TreatmentPlantResidues` + `Residues` + `LERCodes` | Donut chart + ranking: aptitud para reincorporación en cadena de valor |
-| Evolución mensual de calidad | `TreatmentPlantResidues` agrupado por mes | Line chart: tasa reciclaje, % impropios, kg valorizados (12 meses) |
-| Comparativa Multi-SCRAP | `TreatmentPlants` + `WasteMoves` agrupado por SCRAP | Tabla ranking: tasa reciclaje, % impropios, nº incidencias |
-| Mapa de destino de materiales | `TreatmentPlantResidues` + `TreatmentOperations` | Sankey/treemap: entrada → operación R/D → destino |
-| Incidencias de tratamiento | `Incidents` vinculadas a tratamiento | Tabla con semáforo por severidad |
+| Cobertura fichas ecodiseño | `Residues` (ProductSpec) + `ProductSpecs` | % fichas completas vs parciales vs sin ficha (donut) |
+| Índice circularidad por categoría | `Residues` (ProductSpec) campos ecodiseño | Bar chart horizontal con semáforo (verde >70, naranja 40–70, rojo <40) |
+| Impacto económico eco-modulación | `EcoModulationRuleSets` + `EcoModulationRules` + `SettlementLines` | Tabla con ajuste €/regla + sparkline de evolución |
+| Estado fichas por productor | `ProductSpecs` + `Residues` + `Entities` (Producer) | Tabla semáforo por % cobertura |
+| Composición materiales | `Residues.CompositionJson` (ProductSpec) | Treemap de materiales predominantes |
+| Dataset exportable (Data Space) | `ProductSpecs` + `Residues` + `EcoModulationRules` | Tabla plana exportable a XLSX para publicación EDC |
 
-**Filtros disponibles**: `Year` (obligatorio), `Month?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`, `IdLERCode?`, `TreatmentOperationCode?`.
+**Filtros disponibles**: `Year` (obligatorio), `ProductCategory?`, `IdProducer?` (solo productores adheridos vía `Agreements`), `EcoModulationRuleSetId?`.
+
+**Exportación**: botón "Exportar XLSX" → `ExportEcomodulationDataToExcelQuery` genera el dataset como hoja Excel.
 
 ---
 
-#### 5.7.2. TR-B — Monitorización de Reciclaje (Ayuntamiento)
+#### 5.7.2. UC5-B — Panel de Monitorización Regulatoria — Autoridad / Certificador
 
-- **Ruta**: `/reporting/tratamiento-reciclaje/municipal-monitoring`
-- **Perfil objetivo**: `PUBLIC_ENT`, `ADMIN`.
-- **Policy**: `CanViewTRMunicipalMonitoring`.
-- **Lógica**: los ayuntamientos monitorizan las tasas de reciclaje y tratamiento de los residuos de embalajes industriales y comerciales generados en su municipio.
+- **Ruta**: `/reporting/ecomodulation/regulatory-view`
+- **Perfil objetivo**: `PUBLIC_ENT`, `COORDINATOR`, `ADMIN`.
+- **Policy**: `CanViewEcomodulationRegulatoryView`.
+- **Lógica**: las autoridades reguladoras, entidades públicas, coordinadores y certificadores consumen los datos del ecosistema para verificar el cumplimiento de criterios de ecodiseño, validar la calidad de los datos compartidos y evaluar la preparación del sector para la convergencia con el DPP europeo.
 
 **Archivos a implementar**:
-- `Application/Features/Reporting/TratamientoReciclaje/Queries/GetTRMunicipalMonitoringQuery.cs` — handler con filtros: `Year`, `Month?`, `IdScrap?`, `IdLERCode?`.
-- `Application/Features/Reporting/TratamientoReciclaje/DTOs/TRMunicipalMonitoringDto.cs`.
-- `Web/Components/Pages/Reporting/TratamientoReciclaje/TRMunicipalMonitoring.razor` — página `/reporting/tratamiento-reciclaje/municipal-monitoring`.
+- `Application/Features/Ecomodulation/Queries/GetEcomodulationRegulatoryViewQuery.cs` — handler principal con filtros: `Year`, `IdScrap?`, `ProductCategory?`, `ProvinceCode?`, `AutonomousCommunity?`.
+- `Application/Features/Ecomodulation/DTOs/EcomodulationRegulatoryViewDto.cs` — DTOs: `EcomodulationRegulatoryViewDto`, `ScrapMaturityRankingDto`, `CategoryComparisonDto`, `EcodesignTrendDto`, `ComplianceAlertDto`.
+- `Web/Components/Pages/Reporting/Ecomodulación/RegulatoryView.razor` — página `/reporting/ecomodulation/regulatory-view`.
 
 **Widgets principales**:
 
 | Widget | Fuente de datos | Descripción |
 |---|---|---|
-| Resumen ejecutivo de tratamiento | `TreatmentPlantResidues` filtrado por municipio | Cards KPI: kg tratados, tasa reciclaje, % impropios, kg revalorizados, variación vs anterior |
-| Histórico de tasas de reciclaje | `TreatmentPlantResidues` agrupado por mes | Line chart dual axis: kg tratados y tasa reciclaje (12 meses) |
-| Detalle cumplimiento por SCRAP | `TreatmentPlants` + `WasteMoves` + `ServiceOrders` | Tabla por SCRAP: tasa reciclaje, % impropios, operaciones R/D predominantes |
-| Distribución por operación R/D | `TreatmentPlants` + `TreatmentOperations` | Donut: operaciones R (valorización) vs D (eliminación) |
-| Alertas de calidad | Generadas por `RecyclingQualityEngine` | Inbox: tasa < umbral, impropios > umbral, incidencias abiertas |
+| Resumen ejecutivo ecomodulación | `Entities` (SCRAP) + `ProductSpecs` + `Residues` | Cards de KPI: nº SCRAPs con datos, nº fichas, índice circularidad medio, % productos con potencial de mejora |
+| Ranking SCRAPs por madurez | `Entities` + `ProductSpecs` + `Residues` + `EcoModulationRules` | Tabla ranking + sparklines con índice de madurez (0–100) |
+| Comparativa ecodiseño por categoría | `Residues` (ProductSpec) agrupado por `ProductCategory` | Radar chart: reparabilidad, % reciclado, desmontaje, no peligrosos, cobertura LER |
+| Evolución temporal indicadores | Agregación trimestral/anual de métricas | Line chart multi-serie: circularidad, cobertura fichas, % reciclado |
+| Alertas de cumplimiento | Generadas por backend al recalcular | Lista tipo inbox con umbrales configurables |
 
-**Filtros disponibles**: `Year` (obligatorio), `Month?`, `IdScrap?`, `IdLERCode?`.
+**Filtros disponibles**: `Year`, `IdScrap?` (todos para reguladores, los de sus acuerdos para coordinadores), `ProductCategory?`, `ProvinceCode?` / `AutonomousCommunity?`.
 
 ---
 
-#### 5.7.3. TR-C — Validación y Datos Multi-SCRAP (Coordinador)
+#### 5.7.3. UC5-C — Panel de Preparación para el Pasaporte Digital de Producto (DPP)
 
-- **Ruta**: `/reporting/tratamiento-reciclaje/coordinator-validation`
-- **Perfil objetivo**: `COORDINATOR`, `ADMIN`.
-- **Policy**: `CanViewTRCoordinatorValidation`.
-- **Lógica**: los coordinadores (entidades certificadoras) validan los datos compartidos entre SCRAPs, entidades públicas y plantas de tratamiento, supervisando transversalmente el modelo de recogidas Multi-SCRAP.
+- **Ruta**: `/reporting/ecomodulation/dpp-readiness`
+- **Perfil objetivo**: `SCRAP`, `COORDINATOR`, `PUBLIC_ENT`, `DISPATCH_OFFICE`, `ADMIN`.
+- **Policy**: `CanViewEcomodulationDppReadiness`.
+- **Lógica**: evalúa el grado de preparación de los datos del ecosistema para cumplir con los requisitos del Pasaporte Digital de Producto europeo. Identifica campos faltantes, valida la completitud de las fichas técnicas y genera un score de preparación DPP por producto y por categoría.
 
 **Archivos a implementar**:
-- `Application/Features/Reporting/TratamientoReciclaje/Queries/GetTRCoordinatorValidationQuery.cs` — handler con filtros: `Year`, `Month?`, `Quarter?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`, `IdLERCode?`, `TreatmentOperationCode?`.
-- `Application/Features/Reporting/TratamientoReciclaje/Queries/ExportTRDataToExcelQuery.cs` — genera XLSX con patrón ClosedXML.
-- `Application/Features/Reporting/TratamientoReciclaje/DTOs/TRCoordinatorValidationDto.cs`.
-- `Web/Components/Pages/Reporting/TratamientoReciclaje/CoordinatorValidation.razor` — página `/reporting/tratamiento-reciclaje/coordinator-validation`.
+- `Application/Features/Ecomodulation/Queries/GetEcomodulationDppReadinessQuery.cs` — handler principal con filtros: `Year`, `IdScrap?`, `ProductCategory?`, `IdProducer?`.
+- `Application/Features/Ecomodulation/DTOs/EcomodulationDppReadinessDto.cs` — DTOs: `EcomodulationDppReadinessDto`, `DppScoreGlobalDto`, `DppProductDetailDto`, `DppHeatmapCellDto`, `DppPriorityProductDto`, `DppByScrapDto`, `DppTrendDto`.
+- `Application/Features/Ecomodulation/Queries/GetCircularityIndexQuery.cs` — widget compartido: índice de circularidad.
+- `Application/Features/Ecomodulation/Queries/GetEcomodulationRuleImpactQuery.cs` — widget compartido: impacto reglas eco-modulación.
+- `Web/Components/Pages/Reporting/Ecomodulación/DppReadiness.razor` — página `/reporting/ecomodulation/dpp-readiness`.
+
+**Campos DPP evaluados** (mapeados a `Residues` ProductSpec):
+- `Name` → Nombre del producto
+- `Reference` → Identificador único
+- `IdLERCode` → Clasificación de residuo al fin de vida
+- `ReparabilityIndex` → Índice de reparabilidad
+- `DisassemblyEase` → Facilidad de desmontaje
+- `RecycledContentPercent` → Contenido reciclado
+- `CompositionJson` → Composición de materiales
+- `ContainsHazardous` + `DangerousCode` → Sustancias peligrosas
+- `PotentialLERCodesJson` → Códigos LER potenciales
+- `IdProducer` → Productor identificado
+
+**Score DPP** = (campos informados / campos requeridos) × 100, promediado sobre todos los productos.
 
 **Widgets principales**:
 
 | Widget | Fuente de datos | Descripción |
 |---|---|---|
-| Resumen transversal Multi-SCRAP | `WasteMoves` + `TreatmentPlants` + `Agreements` | Cards por SCRAP: recogidas, kg, tasa reciclaje, impropios, incidencias |
-| Comparativa rendimiento SCRAPs | Misma fuente, agregada | Radar/bar chart: fortalezas/debilidades relativas |
-| Mapa de flujos origen → destino | `ServiceOrders` → `WasteMoves` → `TreatmentPlants` | Sankey: municipio → planta → destino R/D |
-| Dataset exportable validación | Todas las tablas operativas | Tabla + exportación XLSX: datos limpios para certificación |
-| Evolución mensual por SCRAP | `TreatmentPlantResidues` agrupado por mes y SCRAP | Line chart: tasa reciclaje por SCRAP + línea objetivo normativo |
+| Score global DPP | `ProductSpecs` + `Residues` (ProductSpec) | Gauge grande + trend: % de campos DPP informados |
+| Detalle por producto | `ProductSpecs` + `Residues` | Tabla con checkmarks (✓/✗) por campo DPP + score individual |
+| Heatmap completitud | `Residues` agrupado por categoría × campo DPP | % de productos con campo informado (verde >80%, naranja 50–80%, rojo <50%) |
+| Productos prioritarios | `ProductSpecs` ordenadas por score ascendente | Top-N con peor score, campos faltantes listados |
+| Comparativa DPP por SCRAP | `ProductSpecs` agrupadas por SCRAP (vía Agreements) | Bar chart horizontal: score DPP medio por SCRAP |
+| Evolución score DPP | Agregación trimestral/anual | Line chart: progreso hacia convergencia DPP |
 
-**Filtros disponibles**: `Year` (obligatorio), `Month?`, `Quarter?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`, `IdLERCode?`, `TreatmentOperationCode?`.
-
-**Exportación**: botón "Exportar XLSX" → `ExportTRDataToExcelQuery` genera el dataset como hoja Excel (patrón ClosedXML).
-
----
-
-#### 5.7.4. TR-D — Datos Operativos de Tratamiento (Oficina de Asignación)
-
-- **Ruta**: `/reporting/tratamiento-reciclaje/dispatch-data`
-- **Perfil objetivo**: `DISPATCH_OFFICE`, `ADMIN`.
-- **Policy**: `CanViewTRDispatchData`.
-- **Lógica**: la Oficina de Asignación provee los datos operativos necesarios para evaluar los procesos de tratamiento y reciclaje Multi-SCRAP y alimentar el prototipo de modelo de recogidas validable. Ve **todos** los datos del tenant sin restricción por entidad vinculada.
-
-**Archivos a implementar**:
-- `Application/Features/Reporting/TratamientoReciclaje/Queries/GetTRDispatchDataQuery.cs` — handler con filtros: `Year`, `Month?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`, `IdLERCode?`.
-- `Application/Features/Reporting/TratamientoReciclaje/DTOs/TRDispatchDataDto.cs`, `TRExportRowDto.cs`.
-- `Web/Components/Pages/Reporting/TratamientoReciclaje/TRDispatchData.razor` — página `/reporting/tratamiento-reciclaje/dispatch-data`.
-
-**Widgets principales**:
-
-| Widget | Fuente de datos | Descripción |
-|---|---|---|
-| Dataset exportable análisis externo | Todas las tablas operativas + `TreatmentOperations` + `LERCodes` | Tabla + exportación XLSX: datos completos de tratamiento |
-| Resumen operativo por SCRAP | `TreatmentPlants` + `WasteMoves` agrupado | Cards: recogidas, kg, tasa reciclaje, impropios, incidencias |
-| Balance tratamiento agregado | `TreatmentPlantResidues` del periodo | Bar chart: reutilizado / valorizado / rechazado + comparativa anterior |
-| Evolución mensual métricas reciclaje | Agregación mensual | Line chart: tasa reciclaje, % impropios, kg valorizados (12 meses) |
-| Distribución operaciones tratamiento | `TreatmentPlants` + `TreatmentOperations` | Treemap: tamaño = kg, color = tipo R (verde) / D (rojo) |
-
-**Filtros disponibles**: `Year` (obligatorio), `Month?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`, `IdLERCode?`.
-
-**Exportación**: botón "Exportar XLSX" → reutiliza `ExportTRDataToExcelQuery`.
-
-**Umbrales de calidad** (configurables en `appsettings.json` → sección `RecyclingSettings`):
-
-| Parámetro | Default | Descripción |
-|---|---|---|
-| `MinRecyclingRateThreshold` | 50 | Tasa mínima de reciclaje (%) para alerta |
-| `MaxImproperRateThreshold` | 15 | Tasa máxima de impropios (%) para alerta |
-| `RecyclingTargetRate` | 65 | Objetivo normativo de reciclaje (%) — línea de referencia en gráficos |
+**Filtros disponibles**: `Year`, `IdScrap?`, `ProductCategory?`, `IdProducer?`.
 
 ---
-
-## 6. 👥 Gestión de Usuarios, Perfiles y Seguridad
 
 > **Estado**: ✅ Implementado — Application + Web layers completos.
 
@@ -2499,354 +2465,278 @@ Web/Components/Pages/Mobility/
 
 ---
 
-## ♻️ Módulo de Tratamiento y Reciclaje
+## ♻️ Módulo de Ecomodulación — Pasaporte Digital de Producto (UC5)
 
-## 🎯 Objetivo — Tratamiento y Reciclaje
+## 🎯 Objetivo — Caso de Uso 5 (UC5)
 
-Crear un **nuevo módulo de dashboards "Tratamiento y Reciclaje"** dentro de la carpeta `Reporting` que evalúe los procesos de **tratamiento y reciclaje de residuos de embalajes industriales y comerciales**, con potencial extensión a RAEE y Residuos de Envases Domésticos. El módulo se alinea con los tratados europeos de economía circular y busca la incorporación de residuos en los modelos productivos.
+Crear un **nuevo módulo de dashboard titulado "Ecomodulación"** que sincronice la documentación y el seguimiento de los residuos a partir de los datos compartidos entre los participantes del ecosistema. La alineación de GreenTransit con estándares europeos para la compartición del dato propicia el desarrollo de herramientas de trazabilidad de desechos capaces de facilitar el ecodiseño de los productos. El caso de uso está orientado a:
 
-Los proveedores de datos principales son los **SCRAPs** y la **Oficina de Asignación**. Como consumidores y validadores participan las **Entidades Públicas (Ayuntamientos)** y los **Coordinadores (entidades certificadoras)**. El objetivo principal es definir un **prototipo de modelo de recogidas Multi-SCRAP** para embalajes industriales y comerciales, validable mediante análisis avanzado de calidad de materiales recuperados y aptitud para revalorización.
+1. **Los SCRAPs (Proveedores del dato)** controlen la calidad de los datos de ecodiseño publicados en el Espacio de Datos, visualicen el impacto económico de las reglas de eco-modulación y validen la completitud de las fichas técnicas de sus productores.
+2. **Las Autoridades Reguladoras, Certificadores y Coordinadores** consuman los datos del ecosistema para verificar el cumplimiento de criterios de ecodiseño, evaluar la madurez del sector y validar la calidad de los datos compartidos.
+3. **Todos los actores relevantes del ecosistema** evalúen el grado de preparación para la convergencia con el **Pasaporte Digital de Producto (DPP)** europeo, identificando campos faltantes y priorizando productos que necesitan datos.
 
-1. **Los SCRAPs** analicen la calidad de los materiales recuperados tras el tratamiento en planta, determinen la aptitud para revalorización y obtengan insights para optimizar cada etapa del reciclaje.
-2. **Las Entidades Públicas (Ayuntamientos)** monitoricen los resultados de tratamiento y las tasas de reciclaje de los residuos generados en su municipio.
-3. **Los Coordinadores** validen los datos compartidos entre actores y supervisen transversalmente el modelo de recogidas Multi-SCRAP.
-4. **La Oficina de Asignación** provea los datos operativos necesarios para evaluar los procesos de tratamiento y reciclaje, y alimente el prototipo de modelo validable.
+Este caso de uso se alinea con iniciativas europeas como el DPP y con la arquitectura de Data Spaces (IDSA/Gaia-X) ya preparada en GreenTransit mediante conectores EDC.
 
 ---
 
-## 📊 Dashboards a crear (son TRES vistas diferenciadas + una vista compartida)
+## 📊 Dashboards a crear (son TRES vistas diferenciadas)
 
-### Dashboard TR-A — **Panel de Análisis de Calidad y Revalorización — SCRAP** (`/reporting/tratamiento-reciclaje/scrap-analysis`)
+> Todos los dashboards están bajo la carpeta **Reporting → Ecomodulación** del menú lateral.
 
-**Destinado a**: perfiles `SCRAP` y `ADMIN`.
+### Dashboard UC5-A — **Panel de Datos de Ecomodulación — SCRAP (Proveedor del dato)** (`/reporting/ecomodulation/scrap-overview`)
 
-**Policy de autorización**: `CanViewTRScrapAnalysis` (nueva, a registrar en `PolicyConstants.cs`).
+**Destinado a**: perfiles `SCRAP`, `DISPATCH_OFFICE` y `ADMIN`.
 
-**Propósito**: vista estratégica para que los SCRAPs analicen la calidad de los materiales recuperados, evalúen la aptitud para revalorización y optimicen las etapas del reciclaje dentro del ámbito de embalajes industriales y comerciales.
+**Policy de autorización**: `CanViewEcomodulationScrapOverview` (nueva, a registrar en `PolicyConstants.cs`).
+
+**Propósito**: los SCRAPs, como proveedores principales de datos en el Espacio de Datos compartido, visualizan y validan la calidad de los datos de ecodiseño de los productos que gestionan, controlan el estado de las fichas técnicas (`ProductSpecs`) y monitorizan el impacto económico de las reglas de eco-modulación sobre sus liquidaciones.
 
 #### Widgets / KPIs requeridos:
 
-1. **Balance de tratamiento por planta** (bar chart apilado + tabla)
-   - Fuente: `TreatmentPlants` JOIN `TreatmentPlantResidues` JOIN `Entities` (planta) JOIN `WasteMoves` (para vincular con el SCRAP).
-   - Métricas por planta:
-     - **Kg reutilizados**: `SUM(TreatmentPlantResidues.WeightReused)`.
-     - **Kg valorizados**: `SUM(TreatmentPlantResidues.WeightValued)`.
-     - **Kg rechazados/eliminados**: `SUM(TreatmentPlantResidues.WeightRemove)`.
-     - **Tasa de reciclaje**: `(WeightReused + WeightValued) / WeightTotal * 100`.
-   - Bar chart apilado mostrando la proporción reutilizado/valorizado/rechazado por planta.
-   - Drill-down por planta al detalle de residuos tratados.
+1. **Cobertura de fichas de ecodiseño** (cards de KPI + donut chart)
+   - Fuente: `Residues` WHERE `ResidueType = 'ProductSpec'` cruzado con `ProductSpecs`.
+   - KPIs:
+     - **Total de productos gestionados** = `COUNT(Residues)` WHERE `ResidueType IN ('Product', 'ProductSpec')` y vinculados a traslados del SCRAP.
+     - **% con ficha de ecodiseño completa** = productos con `ReparabilityIndex IS NOT NULL AND RecycledContentPercent IS NOT NULL AND CompositionJson IS NOT NULL` / total.
+     - **% con código LER potencial al fin de vida** = productos con `PotentialLERCodesJson IS NOT NULL` / total.
+   - Donut: "Con ficha completa" vs "Ficha parcial" vs "Sin ficha".
 
-2. **Tasa de revalorización por tipo de residuo** (donut chart + tabla ranking)
-   - Fuente: `TreatmentPlantResidues` JOIN `Residues` JOIN `LERCodes`.
-   - Agrupado por `LERCodes.Code` (código LER) y `Residues.Name`.
-   - Métricas: tasa de revalorización = `(WeightReused + WeightValued) / WeightTotal * 100`.
-   - Semáforo: verde > 70%, naranja 40–70%, rojo < 40%.
-   - Objetivo: identificar qué tipos de residuo de embalaje tienen mayor/menor aptitud para reincorporarse en la cadena de valor.
+2. **Índice de circularidad agregado por categoría** (bar chart horizontal)
+   - Fuente: `Residues` (ProductSpec) → campos `RecycledContentPercent`, `ReparabilityIndex`, `DisassemblyEase`, `ContainsHazardous`.
+   - **Índice de circularidad** = ponderación configurable (por defecto: 30% RecycledContentPercent + 25% ReparabilityIndex normalizado + 20% DisassemblyEase normalizado + 15% !ContainsHazardous + 10% tiene PotentialLERCodesJson).
+   - Agrupado por `ProductCategory`.
+   - Semáforo: verde > 70, naranja 40–70, rojo < 40.
 
-3. **Evolución mensual de calidad de materiales recuperados** (line chart multi-serie)
-   - Fuente: `TreatmentPlantResidues` agrupado por mes (vía `TreatmentPlants.CreatedAt` o `EntryPlants.PlantEntryDate`).
-   - Series: tasa de reciclaje, % impropios (`TreatmentPlants.ImproperWeight / SUM(WeightTotal) * 100`), kg valorizados.
-   - Tendencia de los últimos 12 meses.
-   - Objetivo: medir mejora/deterioro en la calidad del material recuperado a lo largo del tiempo.
+3. **Impacto económico de las reglas de eco-modulación** (tabla + sparklines)
+   - Fuente: `EcoModulationRuleSets` JOIN `EcoModulationRules` cruzado con `SettlementLines` del periodo.
+   - Columnas por regla aplicada: nombre de la regla, nº de productos afectados, ajuste económico total (€), tipo de impacto (Percent/Fixed/PerUnit), variación vs periodo anterior.
+   - Sparkline de evolución mensual del ajuste.
 
-4. **Comparativa Multi-SCRAP** (tabla ranking + sparklines)
-   - Fuente: `TreatmentPlants` JOIN `WasteMoves` JOIN `WasteMoveResidues`, agrupado por `WasteMoves.IdScrap` / `IdScrap2`.
-   - Métricas por SCRAP:
-     - Nº total de traslados tratados en el periodo.
-     - Kg totales tratados.
-     - Tasa de reciclaje.
-     - % de impropios.
-     - Nº de incidencias de tratamiento (`Incidents` WHERE `Type` relacionado con tratamiento).
-   - Ordenado por tasa de reciclaje descendente.
-   - Objetivo: alimentar el prototipo de modelo de recogidas Multi-SCRAP con datos comparativos.
+4. **Estado de validación de fichas técnicas por productor** (tabla con semáforo)
+   - Fuente: `ProductSpecs` JOIN `Residues` JOIN `Entities` (Producer).
+   - Columnas: Productor, nº productos declarados, nº con ficha completa, nº con ficha parcial, nº sin ficha, % cobertura.
+   - Semáforo por fila según % cobertura (verde > 80%, naranja 50–80%, rojo < 50%).
+   - Drill-down al detalle del productor.
 
-5. **Mapa de destino de materiales recuperados** (diagrama Sankey o treemap)
-   - Fuente: `TreatmentPlantResidues` JOIN `TreatmentOperations` (operación R/D aplicada).
-   - Visualización del flujo: material de entrada → operación de tratamiento (R1–R13 / D1–D15) → destino (reutilización, valorización energética, eliminación).
-   - Agrupado por `TreatmentOperations.Code` y `TreatmentOperations.Description`.
-   - Objetivo: trazar el destino final de los materiales y verificar alineación con objetivos de economía circular.
+5. **Composición de materiales agregada** (treemap o stacked bar chart)
+   - Fuente: `Residues.CompositionJson` (ProductSpec) — parsear el JSON para extraer materiales y porcentajes.
+   - Visualización: distribución de materiales predominantes en el portafolio del SCRAP.
+   - Objetivo: identificar oportunidades de mejora en reciclabilidad.
 
-6. **Incidencias de tratamiento** (tabla con semáforo)
-   - Fuente: `Incidents` WHERE `ClosedAt IS NULL` AND vinculadas a `TreatmentPlants` o `WasteMoves` del SCRAP.
-   - Columnas: referencia del traslado, tipo de incidencia, severidad, fecha apertura, días abierta, planta afectada.
+6. **Panel de datos exportables para análisis externo / Data Space** (tabla con exportación XLSX)
+   - Fuente: `ProductSpecs` + `Residues` (ProductSpec) + `Entities` (Producer) + `EcoModulationRules`.
+   - Dataset plano con campos: referencia producto, productor, categoría, código LER, índice reparabilidad, % contenido reciclado, facilidad desmontaje, contiene peligrosos (sí/no), composición, regla eco-modulación aplicable, ajuste económico.
+   - Exportable a XLSX (patrón ClosedXML existente).
+   - Objetivo: proveer datos limpios y estructurados para publicación en el Data Space (EDC) o análisis externo.
 
 #### Filtros globales:
-- `Year`, `Month`/`Quarter`.
-- `IdScrap` (solo ADMIN puede ver todos; SCRAP ve solo los suyos, filtrado por `WasteMoves.IdScrap = LinkedEntityId` OR `WasteMoves.IdScrap2 = LinkedEntityId`).
-- `AutonomousCommunity` / `ProvinceCode` / `MunicipalityCode`.
-- `IdLERCode` (para aislar tipos de embalaje específicos).
-- `TreatmentOperationCode` (filtro por operación R/D aplicada).
+- `Year`.
+- `ProductCategory`.
+- `IdProducer` (filtrar por productor específico vinculado al SCRAP vía `Agreements`).
+- `EcoModulationRuleSetId` (versión de reglas a aplicar).
 
 ---
 
-### Dashboard TR-B — **Panel de Monitorización de Reciclaje — Ayuntamiento** (`/reporting/tratamiento-reciclaje/municipal-monitoring`)
+### Dashboard UC5-B — **Panel de Monitorización Regulatoria — Autoridad / Certificador** (`/reporting/ecomodulation/regulatory-view`)
 
-**Destinado a**: perfiles `PUBLIC_ENT` y `ADMIN`.
+**Destinado a**: perfiles `PUBLIC_ENT`, `COORDINATOR` y `ADMIN`.
 
-**Policy de autorización**: `CanViewTRMunicipalMonitoring` (nueva).
+**Policy de autorización**: `CanViewEcomodulationRegulatoryView` (nueva).
 
-**Propósito**: los ayuntamientos monitorizan las tasas de reciclaje y tratamiento de los residuos de embalajes industriales y comerciales generados en su municipio, verificando el cumplimiento de objetivos de economía circular.
+**Propósito**: las autoridades reguladoras, entidades públicas, coordinadores y certificadores consumen los datos del ecosistema para verificar el cumplimiento de criterios de ecodiseño, validar la calidad de los datos compartidos y evaluar la preparación del sector para la convergencia con el DPP europeo.
 
 #### Widgets / KPIs requeridos:
 
-1. **Resumen ejecutivo de tratamiento** (cards de KPI)
-   - **Kg totales tratados del periodo** en el municipio: `SUM(TreatmentPlantResidues.WeightTotal)` filtrado por `ServiceOrders.IdPickupPoint` → `Entities.MunicipalityCode` = municipio del ayuntamiento, o `ServiceOrders.IdIssuedBy = LinkedEntityId`.
-   - **Tasa de reciclaje municipal**: `(SUM(WeightReused) + SUM(WeightValued)) / SUM(WeightTotal) * 100`.
-   - **% de impropios**: `SUM(ImproperWeight) / SUM(WeightTotal) * 100`.
-   - **Kg revalorizados** (aptos para reincorporación en cadena de valor): `SUM(WeightReused) + SUM(WeightValued)`.
+1. **Resumen ejecutivo de ecomodulación** (cards de KPI)
+   - **Total de SCRAPs con datos publicados**: `COUNT(DISTINCT WasteMoves.IdScrap)` WHERE tienen `ProductSpecs` asociadas.
+   - **Nº total de fichas de ecodiseño**: `COUNT(ProductSpecs)`.
+   - **Índice de circularidad medio del ecosistema**: media ponderada del índice por categoría.
+   - **% de productos con potencial de mejora**: productos con `ReparabilityIndex < 5` o `RecycledContentPercent < 30%`.
    - **Variación % vs periodo anterior** en cada KPI.
 
-2. **Histórico de tasas de reciclaje** (line chart dual axis)
-   - Eje izquierdo: kg tratados por mes.
-   - Eje derecho: tasa de reciclaje (%).
-   - Líneas separadas por SCRAP (si hay más de uno operando en el municipio).
-   - Tendencia de los últimos 12 meses.
+2. **Ranking de SCRAPs por madurez de datos de ecodiseño** (tabla ranking + sparklines)
+   - Fuente: `Entities` (SCRAP) cruzado con `ProductSpecs` y `Residues`.
+   - Métricas por SCRAP: Nº de productos, % cobertura fichas, índice circularidad medio, nº reglas eco-modulación activas.
+   - **Índice de madurez** = ponderación configurable (0–100).
+   - Ordenado por índice descendente. Semáforo: verde > 70, naranja 40–70, rojo < 40.
 
-3. **Detalle de cumplimiento por SCRAP** (tabla)
-   - Fuente: `TreatmentPlants` JOIN `WasteMoves` JOIN `ServiceOrders` WHERE `ServiceOrders.IdIssuedBy = LinkedEntityId` o `IdPickupPoint` en su municipio.
-   - Columnas por SCRAP: nº traslados tratados, kg totales, tasa de reciclaje, % impropios, nº incidencias, operaciones R/D predominantes.
-   - Semáforo por fila según tasa de reciclaje.
+3. **Análisis comparativo de ecodiseño por categoría de producto** (radar chart o grouped bar chart)
+   - Fuente: `Residues` (ProductSpec) agrupado por `ProductCategory`.
+   - Ejes: Reparabilidad media, % reciclado medio, facilidad desmontaje (% Easy), % sin sustancias peligrosas, cobertura LER potencial.
 
-4. **Distribución por operación de tratamiento** (donut chart)
-   - Fuente: `TreatmentPlants` JOIN `TreatmentOperations`.
-   - Categorías: operaciones R (valorización) vs operaciones D (eliminación).
-   - Subcategorías: desglose por código R/D específico (`R1`, `R2`, ..., `D1`, `D2`, ...).
-   - Objetivo: verificar que las operaciones de tratamiento se alinean con objetivos de economía circular (predominancia de operaciones R sobre D).
+4. **Evolución temporal de indicadores de ecodiseño** (line chart multi-serie)
+   - Series: índice de circularidad medio, % cobertura fichas, % contenido reciclado medio.
+   - Fuente: agregación trimestral/anual de las métricas.
 
-5. **Alertas de calidad** (lista tipo inbox)
+5. **Alertas de cumplimiento** (lista tipo inbox)
    - Alertas generadas cuando:
-     - La tasa de reciclaje del municipio cae por debajo de un umbral configurable (por defecto 50%).
-     - El % de impropios supera un umbral configurable (por defecto 15%).
-     - Hay incidencias de tratamiento abiertas en plantas que procesan residuos del municipio.
-   - Fuente: generadas por el backend al calcular KPIs periódicos.
+     - Un SCRAP tiene < 50% de cobertura de fichas de ecodiseño.
+     - El índice de circularidad de una categoría cae por debajo del umbral configurable.
+     - Se detectan productos con `ContainsHazardous = 1` y sin `DangerousCode` informado.
 
 #### Filtros:
-- `Year`, `Month`.
-- `IdScrap` (los SCRAPs que operan en su municipio — derivado de `WasteMoves` históricas o `Agreements`).
-- `IdLERCode` (para aislar tipos de embalaje).
+- `Year`.
+- `IdScrap` (todos para reguladores; los de sus acuerdos para coordinadores vía `Agreements.IdCoordinator`).
+- `ProductCategory`.
+- `ProvinceCode` / `AutonomousCommunity`.
 
 ---
 
-### Dashboard TR-C — **Panel de Validación y Datos Multi-SCRAP — Coordinador** (`/reporting/tratamiento-reciclaje/coordinator-validation`)
+### Dashboard UC5-C — **Panel de Preparación para el Pasaporte Digital de Producto (DPP)** (`/reporting/ecomodulation/dpp-readiness`)
 
-**Destinado a**: perfiles `COORDINATOR` y `ADMIN`.
+**Destinado a**: perfiles `SCRAP`, `COORDINATOR`, `PUBLIC_ENT`, `DISPATCH_OFFICE` y `ADMIN`.
 
-**Policy de autorización**: `CanViewTRCoordinatorValidation` (nueva).
+**Policy de autorización**: `CanViewEcomodulationDppReadiness` (nueva).
 
-**Propósito**: los coordinadores (entidades certificadoras) validan los datos compartidos entre SCRAPs, entidades públicas y plantas de tratamiento, supervisando transversalmente el modelo de recogidas Multi-SCRAP para embalajes industriales y comerciales.
-
-#### Widgets / KPIs requeridos:
-
-1. **Resumen transversal Multi-SCRAP** (cards agrupadas por SCRAP)
-   - Fuente: `WasteMoves` JOIN `TreatmentPlants` JOIN `TreatmentPlantResidues`, filtrado por `Agreements.IdCoordinator = LinkedEntityId`.
-   - Para cada SCRAP vinculado a los acuerdos del coordinador:
-     - Nº de recogidas del periodo.
-     - Kg totales tratados.
-     - Tasa de reciclaje.
-     - % impropios.
-     - Nº incidencias abiertas.
-   - Con drill-down al detalle por SCRAP.
-
-2. **Comparativa de rendimiento entre SCRAPs** (radar chart / bar chart comparativo)
-   - Fuente: misma que widget 1, agregada por SCRAP.
-   - Ejes del radar: tasa de reciclaje, % impropios (invertido), volumen tratado, nº incidencias (invertido), % operaciones R vs D.
-   - Objetivo: visualizar fortalezas/debilidades relativas de cada SCRAP participante.
-
-3. **Mapa de flujos de residuos origen → planta → destino** (diagrama Sankey)
-   - Fuente: `ServiceOrders` (origen/municipio) → `WasteMoves` → `EntryPlants` → `TreatmentPlants` → `TreatmentPlantResidues` (destino por operación R/D).
-   - Visualización del ciclo completo: municipio de origen → planta de tratamiento → destino del material (reutilización / valorización / eliminación).
-   - Filtrable por SCRAP y por código LER.
-
-4. **Panel de datos exportables para validación externa** (tabla con exportación XLSX)
-   - Fuente: `TreatmentPlants` + `TreatmentPlantResidues` + `WasteMoves` + `ServiceOrders` + `Entities` + `TreatmentOperations`.
-   - Dataset plano con campos: fecha tratamiento, municipio origen, provincia, SCRAP, planta, código LER, descripción residuo, operación R/D aplicada, peso total, peso reutilizado, peso valorizado, peso rechazado, tasa reciclaje, impropios.
-   - Exportable a XLSX (patrón ClosedXML existente).
-   - Objetivo: proveer datos limpios para validación por parte de coordinadores y entidades certificadoras.
-
-5. **Evolución mensual por SCRAP** (line chart multi-serie)
-   - Series: tasa de reciclaje por SCRAP (una línea por cada SCRAP vinculado al coordinador).
-   - Últimos 12 meses.
-   - Incluir línea de referencia con el objetivo de reciclaje normativo (configurable en `appsettings.json`).
-
-#### Filtros globales:
-- `Year`, `Month`/`Quarter`.
-- `IdScrap` (el coordinador ve transversalmente los SCRAPs vinculados a sus acuerdos — filtrar por `Agreements` donde participa como `IdCoordinator`).
-- `AutonomousCommunity` / `ProvinceCode` / `MunicipalityCode`.
-- `IdLERCode`.
-- `TreatmentOperationCode`.
-
----
-
-### Vista compartida TR-D — **Datos Operativos de Tratamiento y Reciclaje — Oficina de Asignación** (`/reporting/tratamiento-reciclaje/dispatch-data`)
-
-**Destinado a**: perfiles `DISPATCH_OFFICE` y `ADMIN`.
-
-**Policy de autorización**: `CanViewTRDispatchData` (nueva).
-
-**Propósito**: la Oficina de Asignación provee los datos operativos necesarios para evaluar los procesos de tratamiento y reciclaje Multi-SCRAP y alimentar el prototipo de modelo de recogidas validable.
+**Propósito**: evalúa el grado de preparación de los datos del ecosistema para cumplir con los requisitos del Pasaporte Digital de Producto europeo. Identifica campos faltantes, valida la completitud de las fichas técnicas y genera un score de preparación DPP por producto y por categoría.
 
 #### Widgets / KPIs requeridos:
 
-1. **Panel de datos exportables para análisis externo** (tabla con exportación XLSX)
-   - Fuente: `TreatmentPlants` + `TreatmentPlantResidues` + `WasteMoves` + `WasteMoveResidues` + `ServiceOrders` + `Entities` + `TreatmentOperations` + `LERCodes`.
-   - Dataset plano con campos: fecha tratamiento, fecha recogida, municipio origen, provincia, SCRAP, planta, transportista, código LER, descripción residuo, tipo vehículo, distancia, duración, emisiones CO₂, operación R/D, peso total, peso reutilizado, peso valorizado, peso rechazado, impropios, tasa reciclaje.
-   - Exportable a XLSX (patrón ClosedXML existente).
-   - Objetivo: proveer datos limpios para el prototipo de modelo de recogidas Multi-SCRAP.
+1. **Score global de preparación DPP** (gauge grande + trend)
+   - **Score DPP** = % de campos requeridos por el DPP que están informados en las fichas de ecodiseño del ecosistema.
+   - Campos DPP evaluados (mapeados a `Residues` ProductSpec): `Name`, `Reference`, `IdLERCode`, `ReparabilityIndex`, `DisassemblyEase`, `RecycledContentPercent`, `CompositionJson`, `ContainsHazardous` + `DangerousCode`, `PotentialLERCodesJson`, `IdProducer`.
+   - Score = (campos informados / campos requeridos) × 100, promediado sobre todos los productos.
 
-2. **Resumen operativo por SCRAP** (cards agrupadas)
-   - Para cada SCRAP bajo la coordinación de la oficina:
-     - Nº de recogidas del periodo.
-     - Kg totales tratados.
-     - Tasa de reciclaje.
-     - % impropios.
-     - Nº incidencias abiertas.
-   - Con drill-down al detalle.
+2. **Detalle de preparación DPP por producto** (tabla con checkmarks)
+   - Fuente: `ProductSpecs` JOIN `Residues` (ProductSpec).
+   - Columnas: Referencia, Nombre, Productor, y una columna por cada campo DPP con ✓ (informado) o ✗ (faltante).
+   - Score individual por producto. Filtrable y ordenable por score ascendente.
 
-3. **Balance de tratamiento agregado** (bar chart + tabla)
-   - Fuente: `TreatmentPlantResidues` del periodo, todos los SCRAPs del tenant.
-   - Métricas: kg reutilizados, kg valorizados, kg rechazados, tasa global de reciclaje.
-   - Comparativa con periodo anterior.
+3. **Mapa de calor de completitud por categoría × campo DPP** (heatmap)
+   - Ejes: categorías de producto (filas) × campos DPP (columnas).
+   - Valores: % de productos con campo informado. Color: verde > 80%, naranja 50–80%, rojo < 50%.
 
-4. **Evolución mensual de métricas de reciclaje** (line chart multi-serie)
-   - Series: tasa de reciclaje global, % impropios, kg valorizados por periodo `YYYY-MM`.
-   - Fuente: agregación mensual de las métricas ya calculadas.
-   - Últimos 12 meses.
-   - Objetivo: ver tendencia para informar el modelo de recogidas Multi-SCRAP.
+4. **Productos prioritarios para completar** (tabla top-N)
+   - Los N productos con peor score DPP, ordenados ascendentemente.
+   - Incluye: referencia, productor, campos faltantes (listados), score actual.
 
-5. **Distribución de operaciones de tratamiento** (treemap)
-   - Fuente: `TreatmentPlants` JOIN `TreatmentOperations`.
-   - Treemap por operación R/D: tamaño = kg tratados, color = tipo (R = verde, D = rojo).
-   - Objetivo: visión rápida de qué operaciones de tratamiento predominan.
+5. **Comparativa de preparación DPP por SCRAP** (bar chart horizontal)
+   - Fuente: `ProductSpecs` agrupadas por SCRAP (vía `Entities.IdProducer` → `Agreements.IdScrap`).
+   - Barra: score DPP medio por SCRAP.
+
+6. **Histórico de evolución del score DPP** (line chart)
+   - Serie: score DPP global por trimestre/año.
 
 #### Filtros:
-- `Year`, `Month`.
+- `Year`.
 - `IdScrap`.
-- `ProvinceCode` / `MunicipalityCode`.
-- `IdLERCode`.
+- `ProductCategory`.
+- `IdProducer`.
 
 ---
 
-## 🗄️ Modelo de datos — Tablas y campos clave (Tratamiento y Reciclaje)
+## 🗄️ Modelo de datos — Tablas y campos clave
 
-> **No se crean tablas nuevas**. Todo el módulo de Tratamiento y Reciclaje se alimenta de las tablas existentes del modelo v4.1. Las nuevas métricas (tasa de reciclaje, % impropios, aptitud para revalorización) se calculan en las Queries CQRS.
+> **No se crean tablas nuevas**. Todo el UC5 se alimenta de las tablas existentes del modelo v4.1. Los nuevos índices (circularidad, score DPP, madurez) se calculan en las Queries CQRS.
 
-| Tabla | Campos principales para este módulo |
-|-------|-------------------------------------|
-| `Entities` | `Id`, `Name`, `EntityRole`, `ProvinceCode`, `MunicipalityCode`, `IsActive` |
-| `ServiceOrders` | `Id`, `Status`, `IdPickupPoint`, `IdIssuedBy`, `WasteStream`, `IdLERCode`, `OwnerId` |
-| `WasteMoves` | `Id`, `IdSource`, `IdDestination`, `IdScrap`, `IdScrap2`, `ServiceOrderId`, `ServiceStatus`, `OwnerId` |
-| `WasteMoveResidues` | `IdWasteMove`, `IdResidue`, `Weight`, `VehicleType`, `TransportInfo_TransportDistance`, `TransportInfo_TransportDuration`, `TransportInfo_TransportCarbonEmissions` |
-| `EntryPlants` | `Id`, `IdWasteMove`, `PlantEntryDate`, `GrossWeight`, `TareWeight`, `NetWeight`, `ServiceOrderId`, `OwnerId` |
-| `EntryPlantResidues` | `IdEntryPlant`, `IdResidue`, `Weight`, `MeasureUnit` |
-| `TreatmentPlants` | `Id`, `IdTreatmentOperation`, `ImproperWeight`, `ServiceOrderId`, `IncidentId`, `OwnerId` |
-| `TreatmentPlantResidues` | `IdTreatmentPlant`, `IdResidue`, `WeightTotal`, `WeightReused`, `WeightValued`, `WeightRemove` |
-| `TreatmentOperations` | `Id`, `Code`, `Description`, `IsActive` (catálogo R1–R13 / D1–D15) |
-| `Residues` | `Id`, `Name`, `Reference`, `ResidueType`, `IdLERCode`, `IdProducer` |
-| `LERCodes` | `Id`, `Code`, `Description`, `IsDangerous` |
-| `Incidents` | `Id`, `Type`, `Severity`, `OpenedAt`, `ClosedAt`, `WasteMoveReference`, `ServiceOrderId` |
+| Tabla | Campos principales para este UC5 |
+|-------|----------------------------------|
+| `Residues` | `Id`, `ResidueType` (filtrar por `Product` y `ProductSpec`), `Name`, `Reference`, `IdLERCode`, `ReparabilityIndex`, `DisassemblyEase`, `ContainsHazardous`, `RecycledContentPercent`, `CompositionJson`, `PotentialLERCodesJson`, `MaterialsJson`, `IdProducer`, `ProductCategory`, `IsActive` |
+| `ProductSpecs` | `Id`, `ProductRef`, `IdResidue` (FK → Residues ProductSpec), `ProductUse`, `ProductCategory`, `IdProducer`, `Version`, `Hash` |
+| `ProductDeclaration` | `Id`, `IdProducer`, `Period`, `Year`, `State`, `OwnerId` |
+| `Products` | `Id`, `IdProductDeclaration`, `IdResidue` (FK → Residues Product), `Reference`, `Quantity`, `MeasureUnit` |
+| `EcoModulationRuleSets` | `Id`, `RuleSetName`, `Version`, `ValidFrom`, `ValidTo`, `Status` |
+| `EcoModulationRules` | `Id`, `RuleSetId`, `CriteriaJson`, `ImpactType` (Percent/Fixed/PerUnit), `ImpactValue` |
+| `Entities` | `Id`, `Name`, `EntityRole`, `ProvinceCode`, `MunicipalityCode` |
 | `Agreements` | `Id`, `IdScrap`, `IdCoordinator`, `IdPublicEntity` |
+| `Settlements` | `Id`, `IdScrap`, `AgreementId`, `Year`, `Month`, `Status` |
+| `SettlementLines` | `Id`, `SettlementId`, `IdLERCode`, `Weight`, `Amount` |
+| `LERCodes` | `Id`, `Code`, `Description`, `IsDangerous`, `IsRAEE` |
 
 ---
 
-## 🔒 Reglas de autorización y filtrado de datos (Tratamiento y Reciclaje)
+## 🔒 Reglas de autorización y filtrado de datos
 
-> **CRÍTICO**: El acceso a cada dashboard se gestiona **dinámicamente desde la interfaz de administración** (`/security/page-permissions`) mediante las tablas `PageDefinitions` y `PagePermissions`, NO hardcodeado en código. Las policies (`CanViewTRScrapAnalysis`, `CanViewTRMunicipalMonitoring`, `CanViewTRCoordinatorValidation`, `CanViewTRDispatchData`) actúan como mínimo de seguridad estático.
+> ⚠️ **CRÍTICO**: El acceso a estos dashboards **NO se hardcodea en código**. Se gestiona dinámicamente mediante el sistema `PageDefinitions`/`PagePermissions` existente, configurable desde la interfaz de administración `/security/page-permissions`. Las policies en código actúan como **mínimo de seguridad estático** (suelo).
 
 | Perfil | Dashboard(s) accesible(s) | Filtrado de datos |
 |--------|---------------------------|-------------------|
-| `SCRAP` | TR-A | Solo ve datos de tratamiento donde `WasteMoves.IdScrap = LinkedEntityId` OR `WasteMoves.IdScrap2 = LinkedEntityId`. |
-| `PUBLIC_ENT` | TR-B | Solo ve datos cuyo punto de recogida (`IdPickupPoint` → `Entities.MunicipalityCode`) pertenece a su municipio, o cuya SO fue emitida por su entidad (`ServiceOrders.IdIssuedBy = LinkedEntityId`). |
-| `COORDINATOR` | TR-C | Ve transversalmente los SCRAPs vinculados a sus acuerdos (`Agreements.IdCoordinator = LinkedEntityId`). |
-| `DISPATCH_OFFICE` | TR-D | Ve **todos** los datos del tenant (`OwnerId`). Sin restricción por entidad vinculada. |
-| `ADMIN` | TR-A, TR-B, TR-C, TR-D | Sin restricciones dentro del tenant. Puede filtrar por cualquier SCRAP, coordinador, ayuntamiento o planta. |
+| `SCRAP` | UC5-A, UC5-C | Solo ve datos de productos vinculados a sus acuerdos (`Agreements.IdScrap = LinkedEntityId`). Los productores cuyas fichas visualiza son los adheridos a sus acuerdos. |
+| `PUBLIC_ENT` | UC5-B, UC5-C | Solo ve datos de SCRAPs que operan en su ámbito territorial (`Agreements.IdPublicEntity = LinkedEntityId` o `Entities.MunicipalityCode` de productores en su municipio). |
+| `COORDINATOR` | UC5-B, UC5-C | Ve transversalmente los SCRAPs vinculados a sus acuerdos (`Agreements.IdCoordinator = LinkedEntityId`). |
+| `DISPATCH_OFFICE` | UC5-A, UC5-C | Ve todos los datos del tenant (`OwnerId`). Acceso equivalente a ADMIN en cuanto a filtrado de datos. |
+| `ADMIN` | UC5-A, UC5-B, UC5-C | Sin restricciones dentro del tenant. Puede filtrar por cualquier SCRAP, productor o categoría. |
 
-**Patrón de filtrado de datos**: usar `ICurrentUserService.LinkedEntityId` + `ICurrentUserService.IsInAnyProfile(...)` (ya implementado).
+**Patrón de filtrado de datos**: usar `ICurrentUserService.LinkedEntityId` + `ICurrentUserService.IsInAnyProfile(...)` (ya implementado). Aplicar `IDataScopeService.ApplyScope()` en todos los Query handlers.
 
-**Control de acceso a pantallas**: los permisos se gestionan dinámicamente desde `/security/page-permissions` mediante el sistema `PageDefinitions`/`PagePermissions`. La tabla anterior documenta la configuración recomendada por defecto. Las policies en código actúan como mínimo de seguridad; el control fino se delega al sistema dinámico de BD.
+**Excepción para ADMIN y DISPATCH_OFFICE**: estos perfiles **deben ver todos los datos** del tenant sin restricción adicional de `LinkedEntityId`. El `ApplyScope` solo aplica `OwnerId` para ellos.
+
+**Control de acceso a pantallas**: los permisos se gestionan dinámicamente desde `/security/page-permissions` mediante el sistema `PageDefinitions`/`PagePermissions`. La tabla anterior documenta la **configuración recomendada por defecto** que el administrador debe aplicar tras el despliegue. Las policies en código actúan como mínimo de seguridad; el control fino se delega al sistema dinámico de BD.
 
 ---
 
-## 🏗️ Arquitectura de implementación (Tratamiento y Reciclaje)
+## 🏗️ Arquitectura de implementación
 
 ### Capa Application (CQRS)
 
 ```
-Application/Features/Reporting/TratamientoReciclaje/
+Application/Features/Ecomodulation/
 ├── Queries/
-│   ├── GetTRScrapAnalysisQuery.cs              → TR-A (SCRAP)
-│   ├── GetTRMunicipalMonitoringQuery.cs         → TR-B (PUBLIC_ENT)
-│   ├── GetTRCoordinatorValidationQuery.cs       → TR-C (COORDINATOR)
-│   ├── GetTRDispatchDataQuery.cs                → TR-D (DISPATCH_OFFICE)
-│   ├── GetTreatmentBalanceQuery.cs              → Widget compartido: balance tratamiento
-│   ├── GetRecyclingRateQuery.cs                 → Widget compartido: tasa de reciclaje
-│   ├── GetTreatmentOperationsDistributionQuery.cs → Widget compartido: distribución R/D
-│   └── ExportTRDataToExcelQuery.cs              → Exportación XLSX (patrón ClosedXML)
+│   ├── GetEcomodulationScrapOverviewQuery.cs       → UC5-A (SCRAP — proveedor del dato)
+│   ├── GetEcomodulationRegulatoryViewQuery.cs       → UC5-B (Regulador / Certificador)
+│   ├── GetEcomodulationDppReadinessQuery.cs          → UC5-C (DPP — vista Pasaporte Digital)
+│   ├── GetEcomodulationRuleImpactQuery.cs            → Widget compartido: impacto reglas eco-modulación
+│   ├── GetCircularityIndexQuery.cs                   → Widget compartido: índice de circularidad
+│   └── ExportEcomodulationDataToExcelQuery.cs        → Exportación XLSX (patrón ClosedXML existente)
 ├── DTOs/
-│   ├── TRScrapAnalysisDto.cs
-│   ├── TRMunicipalMonitoringDto.cs
-│   ├── TRCoordinatorValidationDto.cs
-│   ├── TRDispatchDataDto.cs
-│   ├── TreatmentBalanceDto.cs
-│   ├── RecyclingRateDto.cs
-│   ├── TreatmentOperationsDistributionDto.cs
-│   ├── TRExportRowDto.cs
-│   └── TRScrapComparisonDto.cs
+│   ├── EcomodulationScrapOverviewDto.cs
+│   ├── EcomodulationRegulatoryViewDto.cs
+│   ├── EcomodulationDppReadinessDto.cs
+│   ├── EcomodulationRuleImpactDto.cs
+│   ├── CircularityIndexDto.cs
+│   └── EcomodulationExportRowDto.cs
 └── Services/
-    └── RecyclingQualityEngine.cs                → Motor de alertas de calidad de reciclaje
+    └── EcomodulationRecommendationEngine.cs          → Motor de recomendaciones de ecodiseño
 ```
 
 ### Capa Web (Blazor)
 
 ```
-Web/Components/Pages/Reporting/TratamientoReciclaje/
-├── ScrapAnalysis.razor                → /reporting/tratamiento-reciclaje/scrap-analysis
-├── TRMunicipalMonitoring.razor        → /reporting/tratamiento-reciclaje/municipal-monitoring
-├── CoordinatorValidation.razor        → /reporting/tratamiento-reciclaje/coordinator-validation
-└── TRDispatchData.razor               → /reporting/tratamiento-reciclaje/dispatch-data
+Web/Components/Pages/Reporting/Ecomodulación/
+├── ScrapOverview.razor            → /reporting/ecomodulation/scrap-overview
+├── RegulatoryView.razor           → /reporting/ecomodulation/regulatory-view
+└── DppReadiness.razor             → /reporting/ecomodulation/dpp-readiness
 ```
 
-### Componentes reutilizables (complementan los ya existentes)
+### Componentes reutilizables
 
-- `TreatmentBalanceChart.razor` — bar chart apilado (reutilizado/valorizado/rechazado).
-- `RecyclingRateCard.razor` — card de tasa de reciclaje con comparativa temporal.
-- `TreatmentSankeyDiagram.razor` — diagrama Sankey de flujos entrada → operación R/D → destino.
-- `RecyclingQualityAlerts.razor` — panel de alertas de calidad.
-- `ScrapComparisonTable.razor` — tabla ranking comparativa Multi-SCRAP con sparklines.
+```
+Web/Components/Pages/Reporting/Ecomodulación/Components/
+├── CircularityGauge.razor         → gauge de índice de circularidad por producto/categoría
+├── EcomodulationRuleCard.razor    → card de regla de eco-modulación con impacto económico
+├── DppComplianceTable.razor       → tabla de preparación DPP por producto
+├── MaterialCompositionChart.razor → gráfico de composición de materiales (ApexCharts)
+└── EcodesignScorecard.razor       → scorecard de ecodiseño (reparabilidad, desmontaje, reciclado)
+```
 
 > **Reutilizar** de los dashboards existentes: `EmissionsCard.razor`, `IncidentsBadge.razor`.
 
 ---
 
-## 📋 Criterios de aceptación (Tratamiento y Reciclaje)
+## 📋 Criterios de aceptación
 
-1. Cada dashboard respeta el filtrado multi-tenant (`OwnerId`) y por perfil (`LinkedEntityId`).
-2. **ADMIN** y **DISPATCH_OFFICE** ven todos los datos del tenant sin filtro por entidad vinculada.
-3. El acceso a pantallas se gestiona **dinámicamente** desde `/security/page-permissions`, NO hardcodeado.
-4. Las pantallas nuevas se auto-descubren al arrancar (`IPageDiscoveryService`) y aparecen en `/security/page-permissions` destacadas en amarillo hasta que el admin las configure.
-5. Los filtros globales persisten en la URL (query string) para permitir compartir enlaces.
-6. Los gráficos usan **ApexCharts** (consistente con el módulo de KPIs existente).
-7. Las consultas SQL usan índices existentes y no generan table scans sobre tablas operativas.
-8. Exportación a XLSX disponible en TR-C y TR-D (patrón ya implementado con ClosedXML).
-9. Responsive mobile-first.
-10. Modo oscuro/claro (consistente con `MainLayout.razor`).
-11. La **tasa de reciclaje** se calcula como: `(SUM(WeightReused) + SUM(WeightValued)) / SUM(WeightTotal) * 100`.
-12. Los umbrales de alertas de calidad son configurables (no hardcodeados): se almacenan en `appsettings.json` → sección `RecyclingSettings`.
-13. Las alertas de calidad se generan en el backend (`RecyclingQualityEngine.cs`), no en el cliente.
-14. Los archivos Blazor, Queries y DTOs están dentro de la carpeta `Reporting/TratamientoReciclaje/`.
+1. Cada dashboard respeta el filtrado multi-tenant (`OwnerId`) y por perfil (`LinkedEntityId`), con la excepción explícita de `ADMIN` y `DISPATCH_OFFICE` que ven todos los datos del tenant.
+2. Los filtros globales persisten en la URL (query string) para permitir compartir enlaces.
+3. Los gráficos usan **ApexCharts** (consistente con el módulo de KPIs existente).
+4. Las consultas SQL usan índices existentes y no generan table scans sobre tablas operativas.
+5. Exportación a XLSX disponible en UC5-A (patrón ya implementado con ClosedXML en `ExportKpisToExcelQuery.cs`).
+6. Responsive mobile-first (operadores de campo).
+7. Modo oscuro/claro (consistente con `MainLayout.razor`).
+8. El **índice de circularidad** usa pesos configurables (en `appsettings.json`, no hardcodeados): 30% RecycledContentPercent + 25% ReparabilityIndex + 20% DisassemblyEase + 15% !ContainsHazardous + 10% PotentialLERCodesJson.
+9. El **score DPP** se calcula en el backend (Query handler), no en el cliente.
+10. Las recomendaciones de ecodiseño se generan en el backend (`EcomodulationRecommendationEngine.cs`), no en el cliente.
+11. Los campos JSON (`CompositionJson`, `PotentialLERCodesJson`, `MaterialsJson`, `CriteriaJson`) se parsean en la capa Application, no en SQL.
 
 ---
 
-## 🔗 Integración con módulos existentes (Tratamiento y Reciclaje)
+## 🔗 Integración con módulos existentes
 
-- **Dashboard UC2 (Optimización Logística RAEE)**: los datos de transporte (`WasteMoveResidues.TransportInfo_*`) se comparten. Enlace cruzado desde TR-A al Dashboard 1 para ver eficiencia de rutas.
-- **Dashboard UC3 (Movilidad Urbana)**: los indicadores de conflicto de movilidad pueden complementar el análisis de tratamiento. Enlace cruzado desde TR-D al UC3-C para datos de impacto en movilidad.
-- **Trazabilidad (§5.1)**: desde cualquier traslado en los dashboards TR, enlace directo a `/traceability?term={WasteMoveReference}`.
-- **KPIs regulatorios (§5.2)**: los KPIs de tasa de reciclaje ya existen parcialmente en `/kpis`; aquí se desglosan por planta/SCRAP/municipio.
-- **Incidencias (§4.3)**: los widgets de incidencias enlazan a `/incidents/{id}`.
-- **Operaciones de tratamiento (§2.4)**: reutilización del catálogo `TreatmentOperations` como referencia normativa.
-
-
----
+- **KPIs regulatorios (§5.2)**: el KPI de "tasa de reciclaje" y "preparación para reutilización" ya existe en `/kpis`; aquí se desglosa por producto y se cruza con datos de ecodiseño.
+- **Declaraciones de producto (§10)**: las fichas de ecodiseño se nutren de las declaraciones de producto (`ProductDeclaration` + `Products`). Enlace cruzado desde UC5-A a `/product-declarations`.
+- **Liquidaciones (§2.2)**: el impacto económico de las reglas de eco-modulación se calcula sobre `SettlementLines`. Enlace desde el widget de impacto económico a `/settlements/{id}`.
+- **Trazabilidad (§5.1)**: desde cualquier producto en los dashboards UC5, enlace directo a `/traceability?term={ProductRef}`.
+- **Data Space / EcoDataNet (§5.5 y §11)**: el dataset exportable del UC5-A está preparado para publicación vía conectores EDC (`Users.PortalEDCProvider`).
+- **Dashboard principal (§0.1)**: los widgets de circularidad y score DPP pueden integrarse como cards adicionales en la home, condicionados al perfil.
 
 
 ---
@@ -2874,11 +2764,8 @@ Web/Components/Pages/Reporting/TratamientoReciclaje/
 | PlantEnergies | R | R | – | – | CRUD | – | R | R |
 | Incidents | CRUD | C+R | C+R | C+R | C+R | C+R | C+R | C+R |
 | DUMZones / Rules | CRUD | R | R | R | – | – | R | R |
-| TR Análisis Revalorización (TR-A) | R | R (suyos) | – | – | – | – | – | – |
-| TR Monit. Reciclaje Municipal (TR-B) | R | – | – | – | – | – | R (suyos) | – |
-| TR Validación Multi-SCRAP (TR-C) | R | – | – | – | – | – | – | R (suyos) |
-| TR Datos Operativos (TR-D) | R | – | – | – | – | – | – | – |
 | Users / Profiles | CRUD (tenant) | R (sus ops) | – | – | – | – | – | – |
+| Ecomodulación (UC5 — dashboards) | R | R (suyos) | – | – | – | – | R (su ámbito) | R (sus acuerdos) |
 
 Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **–**=sin acceso.
 
@@ -2975,10 +2862,9 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 | **Dashboard Optimización Logística** | `WasteMoveResidues`, `DUMZones`, `Entities` | — | — | R | — | — | — | R | — | R |
 | **Dashboard Monitorización Pública** | `WasteMoves`, `Settlements`, `MarketShares` | — | — | — | R | — | — | — | — | R |
 | **Dashboard Panel Operativo** | `ServiceOrders`, `WasteMoves`, `EntryCACs`, `EntryPlants`, `Incidents` | — | — | — | — | R | R | — | R | R |
-| **TR Análisis Revalorización** | `TreatmentPlants`, `TreatmentPlantResidues` | — | — | R-P | — | — | — | — | — | R |
-| **TR Monit. Reciclaje Municipal** | `TreatmentPlants`, `TreatmentPlantResidues` | — | — | — | R-P | — | — | — | — | R |
-| **TR Validación Multi-SCRAP** | `TreatmentPlants`, `TreatmentPlantResidues` | — | — | — | — | — | — | R-P | — | R |
-| **TR Datos Operativos** | `TreatmentPlants`, `TreatmentPlantResidues` | — | — | — | — | — | — | — | R | R |
+| **Ecomod. Visión SCRAP (UC5-A)** | `Residues`, `ProductSpecs`, `EcoModulationRules` | — | — | **R-P** | — | — | — | — | R | R |
+| **Ecomod. Vista Regulatoria (UC5-B)** | `Residues`, `ProductSpecs`, `Entities` | — | — | — | **R-P** | — | — | **R-P** | — | R |
+| **Ecomod. Preparación DPP (UC5-C)** | `Residues`, `ProductSpecs` | — | — | **R-P** | **R-P** | — | — | **R-P** | R | R |
 
 **Justificación:**
 - **Trazabilidad y Vista 360°**: Todos los perfiles acceden pero ven solo los traslados en los que participan. `SCRAP`, `PUBLIC_ENT`, `COORDINATOR`, `DISPATCH_OFFICE` y `ADMIN` ven transversalmente.
@@ -2987,10 +2873,9 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 - **Dashboard Optimización Logística** (`/logistics/optimization`): Policy `CanViewLogisticsOptimization`. Orientado a SCRAP y COORDINATOR para optimizar rutas, visualizar zonas DUM y analizar eficiencia. `SCRAP` ve solo sus traslados (`IdScrap`/`IdScrap2`).
 - **Dashboard Monitorización Pública** (`/logistics/public-monitoring`): Policy `CanViewPublicMonitoring`. Exclusivo para entidades públicas: servicios SCRAP, liquidaciones y objetivos municipales de sus acuerdos.
 - **Dashboard Panel Operativo** (`/logistics/operations`): Policy `CanViewOperationalDashboard`. Multirrol (se adapta al perfil activo): SO pendientes y planificación semanal para DISPATCH_OFFICE; stock y tickets para CAC_OP; balance de tratamiento e impropios para PLANT_OP.
-- **TR Análisis Revalorización** (`/reporting/tratamiento-reciclaje/scrap-analysis`): Policy `CanViewTRScrapAnalysis`. Orientado a SCRAPs para analizar calidad de materiales recuperados y aptitud de revalorización. `SCRAP` ve solo traslados donde `IdScrap`/`IdScrap2` = su entidad.
-- **TR Monit. Reciclaje Municipal** (`/reporting/tratamiento-reciclaje/municipal-monitoring`): Policy `CanViewTRMunicipalMonitoring`. Exclusivo para ayuntamientos: tasas de reciclaje, distribución R/D y alertas de calidad de su municipio.
-- **TR Validación Multi-SCRAP** (`/reporting/tratamiento-reciclaje/coordinator-validation`): Policy `CanViewTRCoordinatorValidation`. Para coordinadores (entidades certificadoras): validación transversal de datos compartidos entre SCRAPs vinculados a sus acuerdos.
-- **TR Datos Operativos** (`/reporting/tratamiento-reciclaje/dispatch-data`): Policy `CanViewTRDispatchData`. Oficina de Asignación: datos operativos completos para modelo Multi-SCRAP. Ve todos los datos del tenant sin restricción por entidad vinculada.
+- **Ecomod. Visión SCRAP** (`/reporting/ecomodulation/scrap-overview`): Policy `CanViewEcomodulationScrapOverview`. Los SCRAPs como proveedores del dato en el ecosistema Data Space controlan la calidad de fichas de ecodiseño y monitorizan el impacto económico de las reglas de eco-modulación. `SCRAP` ve solo productos vinculados a sus acuerdos. `DISPATCH_OFFICE` y `ADMIN` ven todos los datos del tenant.
+- **Ecomod. Vista Regulatoria** (`/reporting/ecomodulation/regulatory-view`): Policy `CanViewEcomodulationRegulatoryView`. Autoridades reguladoras, entidades públicas y coordinadores verifican el cumplimiento de criterios de ecodiseño y evalúan la madurez del sector. `COORDINATOR` ve transversalmente los SCRAPs de sus acuerdos. `PUBLIC_ENT` ve los SCRAPs de su ámbito territorial.
+- **Ecomod. Preparación DPP** (`/reporting/ecomodulation/dpp-readiness`): Policy `CanViewEcomodulationDppReadiness`. Evalúa el grado de preparación para el Pasaporte Digital de Producto europeo. Vista transversal para todos los perfiles con responsabilidad de supervisión. `SCRAP` ve solo sus datos; `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
 
 ---
 
@@ -3036,10 +2921,9 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 | **Dash. Optimización Logística** | — | — | **R** | — | — | — | **R** | — | R |
 | **Dash. Monitorización Pública** | — | — | — | **R** | — | — | — | — | R |
 | **Dash. Panel Operativo** | — | — | — | — | **R** | **R** | — | **R** | R |
-| **TR Análisis Revalorización** | — | — | **R-P** | — | — | — | — | — | R |
-| **TR Monit. Reciclaje Municipal** | — | — | — | **R-P** | — | — | — | — | R |
-| **TR Validación Multi-SCRAP** | — | — | — | — | — | — | **R-P** | — | R |
-| **TR Datos Operativos** | — | — | — | — | — | — | — | **R** | R |
+| **Ecomod. Visión SCRAP (UC5-A)** | — | — | **R-P** | — | — | — | — | R | R |
+| **Ecomod. Vista Regulatoria (UC5-B)** | — | — | — | **R-P** | — | — | **R-P** | — | R |
+| **Ecomod. Preparación DPP (UC5-C)** | — | — | **R-P** | **R-P** | — | — | **R-P** | R | R |
 | Usuarios | — | — | R-P | — | — | — | — | — | **CRUD** |
 | Perfiles | — | — | R | — | — | — | — | — | **CRUD** |
 
@@ -3123,6 +3007,79 @@ Se añaden los siguientes ítems:
 - [ ] Notificaciones al cambiar estado (EMITIDO → notifica a ADMIN; VALIDADO/RECHAZADO → notifica a PRODUCER).
 - [ ] Template de importación CSV/XLSX disponible para descarga.
 
+---
+
+## Actualización de la Matriz de Permisos (§8) — Módulo Ecomodulación (UC5)
+
+Las siguientes filas se añaden a la tabla de la sección 8:
+
+| Funcionalidad | ADMIN | SCRAP | PRODUCER | CARRIER | PLANT_OP | CAC_OP | PUBLIC_ENT | COORDINATOR |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Ecomodulación — Visión SCRAP (UC5-A) | R | R (suyos) | – | – | – | – | – | – |
+| Ecomodulación — Vista Regulatoria (UC5-B) | R | – | – | – | – | – | R (su ámbito) | R (sus acuerdos) |
+| Ecomodulación — Preparación DPP (UC5-C) | R | R (suyos) | – | – | – | – | R (su ámbito) | R (sus acuerdos) |
+
+---
+
+### Policies de autorización nuevas (§7.1)
+
+```
+Policy                                  Perfiles permitidos
+─────────────────────────────────────── ─────────────────────────────────────
+CanViewEcomodulationScrapOverview       SCRAP, DISPATCH_OFFICE, ADMIN
+CanViewEcomodulationRegulatoryView      PUBLIC_ENT, COORDINATOR, ADMIN
+CanViewEcomodulationDppReadiness        SCRAP, COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN
+```
+
+### Filtro por datos propios — Ecomodulación
+
+| Perfil | Campo de filtro | Lógica |
+|---|---|---|
+| `SCRAP` | `Agreements.IdScrap` cruzado con `ProductSpecs.IdProducer` | Solo ve fichas de ecodiseño de productores adheridos a sus acuerdos |
+| `PUBLIC_ENT` | `Agreements.IdPublicEntity` o `Entities.MunicipalityCode` | Solo ve datos de SCRAPs que operan en su ámbito territorial |
+| `COORDINATOR` | `Agreements.IdCoordinator` | Ve transversalmente los SCRAPs vinculados a sus acuerdos |
+| `DISPATCH_OFFICE` | `OwnerId` (sin restricción adicional) | Ve todos los datos del tenant, al igual que ADMIN |
+
+### Actualización de `PageDiscoveryService.InferModuleName()`
+
+Añadir el nuevo caso en `Infrastructure/Services/PageDiscoveryService.cs`:
+
+```
+| `Ecomodulation` · `/reporting/ecomodulation/` | Ecomodulación |
+```
+
+### Actualización de `PageDiscoveryService.HumanizeName()`
+
+Añadir las traducciones:
+- `ScrapOverview` → `"Ecomodulación — Visión SCRAP"`
+- `RegulatoryView` → `"Ecomodulación — Vista Regulatoria"`
+- `DppReadiness` → `"Ecomodulación — Preparación DPP"`
+
+### Parámetros configurables en `appsettings.json`
+
+```json
+{
+  "Ecomodulation": {
+    "CircularityIndex": {
+      "WeightRecycledContentPercent": 30,
+      "WeightReparabilityIndex": 25,
+      "WeightDisassemblyEase": 20,
+      "WeightNoHazardous": 15,
+      "WeightPotentialLERCodes": 10
+    },
+    "DppRequiredFields": [
+      "Name", "Reference", "IdLERCode", "ReparabilityIndex",
+      "DisassemblyEase", "RecycledContentPercent", "CompositionJson",
+      "ContainsHazardous", "PotentialLERCodesJson", "IdProducer"
+    ],
+    "Alerts": {
+      "MinCoverageThreshold": 50,
+      "MinCircularityThreshold": 40
+    }
+  }
+}
+```
+
 
 ---
 
@@ -3187,8 +3144,8 @@ El servicio `PageDiscoveryService.InferModuleName()` clasifica cada página en u
 | `/agreements` · `/settlements` · `/market-shares` | Contratos y Liquidaciones |
 | `/product-declarations` | Declaraciones de Producto |
 | `Mobility` · `/mobility/` | Movilidad Urbana |
+| `Ecomodulation` · `/reporting/ecomodulation/` | Ecomodulación |
 | `EcoDataNet` · `/ecodatanet/` | EcoDataNet |
-| `TratamientoReciclaje` · `/reporting/tratamiento-reciclaje/` | Tratamiento y Reciclaje |
 
 Si una ruta nueva no encaja en ningún módulo conocido, actualizar `InferModuleName()` en `Infrastructure/Services/PageDiscoveryService.cs`.
 
@@ -3302,20 +3259,6 @@ Se añaden los siguientes ítems:
 - [ ] Template de importación CSV/XLSX disponible para descarga.
 
 
-### Checklist adicional — Módulo de Tratamiento y Reciclaje
-
-Se añaden los siguientes ítems:
-
-- [ ] Policies nuevas registradas en `PolicyConstants.cs`: `CanViewTRScrapAnalysis`, `CanViewTRMunicipalMonitoring`, `CanViewTRCoordinatorValidation`, `CanViewTRDispatchData`.
-- [ ] Policies registradas en `Program.cs` con los perfiles permitidos.
-- [ ] Sección `RecyclingSettings` en `appsettings.json` con umbrales configurables: `MinRecyclingRateThreshold` (50), `MaxImproperRateThreshold` (15), `RecyclingTargetRate` (65).
-- [ ] `PageDiscoveryService.InferModuleName()` actualizado con caso `"/reporting/tratamiento-reciclaje"` → `"Tratamiento y Reciclaje"`.
-- [ ] `PageDiscoveryService.HumanizeName()` actualizado con nombres en español para los componentes TR (evitando conflictos con Mobility).
-- [ ] `RecyclingQualityEngine.cs` implementado como servicio de dominio para alertas de calidad.
-- [ ] Entradas en `NavMenu.razor` bajo la sección Reporting con consulta a `IPagePermissionService`.
-- [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
-
-
 ---
 
-*Documento unificado generado a partir de: Mapa_Funcionalidades_GreenTransit.md, Mapa_Autorizacion_GreenTransit.md, Modelo_de_Datos.md, PATRON_AUTORIZACION_PAGINAS.md, Dashboard_UC2_Optimizacion_RAEE.md, Dashboard_UC3_Movilidad_Urbana.md, Dashboard_Tratamiento_Reciclaje.md.*
+*Documento unificado generado a partir de: Mapa_Funcionalidades_GreenTransit.md, Mapa_Autorizacion_GreenTransit.md, Modelo_de_Datos.md, PATRON_AUTORIZACION_PAGINAS.md, Dashboard_UC2_Optimizacion_RAEE.md, Dashboard_UC3_Movilidad_Urbana.md, Dashboard_UC5_Ecomodulacion.md.*

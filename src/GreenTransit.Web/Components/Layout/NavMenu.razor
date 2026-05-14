@@ -499,7 +499,57 @@
         }
         }
 
-        @* Documentos: todos los autenticados *@
+        @* -- Dashboards Ecomodulación (UC5): SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE, ADMIN *@
+        @if (AllowAny("/reporting/ecomodulation/scrap-overview",
+                      "/reporting/ecomodulation/regulatory-view",
+                      "/reporting/ecomodulation/dpp-readiness"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesAnyEcomodulation">
+            <Authorized>
+                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-eco")'>
+                    <i class="bi bi-tree-fill nav-icon"></i>
+                    <span class="nav-label">Ecomodulación</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-eco") ? "rotated" : "")"></i>
+                </div>
+            </Authorized>
+        </ProfileAuthorizeView>
+        @if (!NavMenuState.IsCollapsed("reporting-eco"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesEcoScrap">
+            <Authorized>
+                @if (Allow("/reporting/ecomodulation/scrap-overview"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/ecomodulation/scrap-overview">
+                    <i class="bi bi-recycle nav-icon"></i>
+                    <span class="nav-label">Panel SCRAP</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesEcoRegulatory">
+            <Authorized>
+                @if (Allow("/reporting/ecomodulation/regulatory-view"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/ecomodulation/regulatory-view">
+                    <i class="bi bi-shield-check nav-icon"></i>
+                    <span class="nav-label">Vista Regulatoria</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesEcoDpp">
+            <Authorized>
+                @if (Allow("/reporting/ecomodulation/dpp-readiness"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/ecomodulation/dpp-readiness">
+                    <i class="bi bi-passport nav-icon"></i>
+                    <span class="nav-label">Preparación DPP</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        }
+        }
         @if (Allow("/documents"))
         {
         <NavLink class="nav-item nav-item--child" href="/documents">
@@ -811,5 +861,31 @@
     [
         ProfileConstants.Scrap, ProfileConstants.PublicEnt,
         ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // UC5-A — Panel SCRAP Ecomodulación: SCRAP, DISPATCH_OFFICE y ADMIN
+    private static readonly string[] _profilesEcoScrap =
+    [
+        ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // UC5-B — Vista Regulatoria: PUBLIC_ENT, COORDINATOR y ADMIN
+    private static readonly string[] _profilesEcoRegulatory =
+    [
+        ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.Admin
+    ];
+
+    // UC5-C — Preparación DPP: todos los perfiles con acceso a ecomodulación
+    private static readonly string[] _profilesEcoDpp =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Coordinator,
+        ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Sub-título Ecomodulación: cualquiera con acceso a algún dashboard UC5
+    private static readonly string[] _profilesAnyEcomodulation =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Coordinator,
+        ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 }

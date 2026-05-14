@@ -531,6 +531,24 @@ try
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
 
+        // ── ECOMODULACIÓN (UC5) ───────────────────────────────────────────────
+
+        // Dashboard UC5-A — Panel de Datos de Ecomodulación — SCRAP: SCRAP, DISPATCH_OFFICE y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewEcomodulationScrapOverview, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard UC5-B — Panel de Monitorización Regulatoria: PUBLIC_ENT, COORDINATOR y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewEcomodulationRegulatoryView, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.Admin)));
+
+        // Dashboard UC5-C — Preparación DPP: SCRAP, COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewEcomodulationDppReadiness, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.Coordinator,
+                ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
         // Operaciones exclusivas de administración del sistema.
         options.AddPolicy(PolicyConstants.AdminOnly, policy =>
             policy.AddRequirements(new ProfileRequirement(
@@ -599,6 +617,9 @@ try
     // ── Motor de recomendaciones de movilidad ─────────────────────────────────
     builder.Services.AddTransient<GreenTransit.Application.Features.Mobility.Services.IMobilityRecommendationEngine,
         GreenTransit.Application.Features.Mobility.Services.MobilityRecommendationEngine>();
+
+    // ── Motor de recomendaciones de ecomodulación ─────────────────────────────
+    builder.Services.AddTransient<GreenTransit.Application.Features.Ecomodulation.Services.EcomodulationRecommendationEngine>();
 
     // ── Opciones de configuración ─────────────────────────────────────────────
     builder.Services.Configure<GreenTransit.Application.Features.PlantEnergies.Queries.PlantEnergyOptions>(

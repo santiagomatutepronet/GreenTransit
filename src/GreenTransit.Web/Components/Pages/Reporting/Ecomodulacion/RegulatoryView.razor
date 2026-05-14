@@ -1,0 +1,287 @@
+@page "/reporting/ecomodulation/regulatory-view"
+@attribute [Authorize(Policy = PolicyConstants.CanViewEcomodulationRegulatoryView)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Ecomodulation.DTOs
+@using GreenTransit.Application.Features.Ecomodulation.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@using ApexCharts
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject ILogger<RegulatoryView> Logger
+
+<PageTitle>Ecomodulación — Vista Regulatoria — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-shield-check me-2"></i>Panel de Monitorización Regulatoria — Ecomodulación
+        </h1>
+        <p class="text-muted mb-0">Autoridad / Certificador · Ecomodulación · @_filterYear</p>
+        <p class="text-muted small mt-1">
+            Verificación del cumplimiento en ecodiseño, calidad de los datos compartidos y nivel de preparación del sector para el DPP europeo.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Categoría de producto</label>
+        <select class="form-select form-select-sm" @bind="_filterCategory" @bind:after="RefreshAsync">
+            <option value="">Todas</option>
+            @if (_data is not null)
+            {
+                @foreach (var c in _data.CategoryComparison.Select(x => x.Category).Distinct())
+                { <option value="@c">@c</option> }
+            }
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Cargando vista regulatoria…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── Resumen ejecutivo ─────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">SCRAPs con datos publicados</p>
+                    <p class="kpi-value">@_data.TotalScrapsWithData</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Total fichas de ecodiseño</p>
+                    <p class="kpi-value">@_data.TotalProductSpecs</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Índice circularidad ecosistema</p>
+                    <p class="kpi-value @(_data.EcosystemCircularityIndex >= 70 ? "text-success" : _data.EcosystemCircularityIndex >= 40 ? "text-warning" : "text-danger")">
+                        @_data.EcosystemCircularityIndex.ToString("F1")
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">% Productos con potencial mejora</p>
+                    <p class="kpi-value @(_data.PctProductsWithImprovementPotential > 40 ? "text-danger" : "text-success")">
+                        @_data.PctProductsWithImprovementPotential.ToString("F1")%
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Alertas de cumplimiento ───────────────────────────────────────────── *@
+    @if (_data.ComplianceAlerts.Any())
+    {
+        <div class="mb-4">
+            @foreach (var alert in _data.ComplianceAlerts)
+            {
+                <div class="alert @(alert.Severity == "Danger" ? "alert-danger" : "alert-warning") d-flex align-items-center" role="alert">
+                    <i class="bi @(alert.Severity == "Danger" ? "bi-x-circle-fill" : "bi-exclamation-triangle-fill") me-2"></i>
+                    @alert.Message
+                </div>
+            }
+        </div>
+    }
+
+    @* ── Ranking de SCRAPs ─────────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-trophy me-1"></i>Ranking de SCRAPs por madurez de datos de ecodiseño
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>SCRAP</th>
+                            <th class="text-end">Productos</th>
+                            <th class="text-end">% Cobertura fichas</th>
+                            <th class="text-end">Índice circularidad</th>
+                            <th class="text-end">Reglas activas</th>
+                            <th class="text-end">Índice madurez</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (scrap, idx) in _data.ScrapRanking.Select((s, i) => (s, i + 1)))
+                        {
+                            <tr>
+                                <td class="fw-semibold text-muted">@idx</td>
+                                <td>@scrap.ScrapName</td>
+                                <td class="text-end">@scrap.ProductCount</td>
+                                <td class="text-end">@scrap.SpecCoveragePct.ToString("F1")%</td>
+                                <td class="text-end">@scrap.AvgCircularityIndex.ToString("F1")</td>
+                                <td class="text-end">@scrap.ActiveRules</td>
+                                <td class="text-end fw-bold">@scrap.MaturityIndex.ToString("F1")</td>
+                                <td><span class="badge @TrafficLightBadge(scrap.TrafficLight)">@TrafficLightLabel(scrap.TrafficLight)</span></td>
+                            </tr>
+                        }
+                        @if (!_data.ScrapRanking.Any())
+                        {
+                            <tr><td colspan="8" class="text-center text-muted py-3">Sin datos.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Comparativa por categoría ─────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-bar-chart-fill me-1"></i>Análisis comparativo de ecodiseño por categoría
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Categoría</th>
+                            <th class="text-end">Reparabilidad media</th>
+                            <th class="text-end">% Reciclado medio</th>
+                            <th class="text-end">% Desmontaje fácil</th>
+                            <th class="text-end">% No peligrosos</th>
+                            <th class="text-end">% Con LER potencial</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cat in _data.CategoryComparison)
+                        {
+                            <tr>
+                                <td>@cat.Category</td>
+                                <td class="text-end">@cat.AvgReparability.ToString("F1")</td>
+                                <td class="text-end">@cat.AvgRecycledContent.ToString("F1")%</td>
+                                <td class="text-end">@cat.PctDisassemblyEasy.ToString("F1")%</td>
+                                <td class="text-end">@cat.PctNonHazardous.ToString("F1")%</td>
+                                <td class="text-end">@cat.PctWithLerCodes.ToString("F1")%</td>
+                            </tr>
+                        }
+                        @if (!_data.CategoryComparison.Any())
+                        {
+                            <tr><td colspan="6" class="text-center text-muted py-3">Sin datos.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Evolución temporal ────────────────────────────────────────────────── *@
+    @if (_data.Trends.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up me-1"></i>Evolución de indicadores de ecodiseño — @_filterYear
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Período</th>
+                                <th class="text-end">Índice circularidad</th>
+                                <th class="text-end">% Cobertura fichas</th>
+                                <th class="text-end">% Contenido reciclado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var t in _data.Trends)
+                            {
+                                <tr>
+                                    <td>@t.Period</td>
+                                    <td class="text-end">@t.CircularityIndex.ToString("F1")</td>
+                                    <td class="text-end">@t.SpecCoveragePct.ToString("F1")%</td>
+                                    <td class="text-end">@t.AvgRecycledContent.ToString("F1")%</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
+else
+{
+    <div class="alert alert-info mt-3">No hay datos regulatorios de ecomodulación disponibles.</div>
+}
+
+@code {
+    private bool   _loading        = true;
+    private int    _filterYear     = DateTime.Now.Year;
+    private string _filterCategory = "";
+
+    private EcomodulationRegulatoryViewDto? _data;
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        try
+        {
+            _data = await Mediator.Send(new GetEcomodulationRegulatoryViewQuery(
+                _filterYear,
+                ProductCategory: string.IsNullOrEmpty(_filterCategory) ? null : _filterCategory));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando vista regulatoria de ecomodulación");
+        }
+        finally { _loading = false; }
+    }
+
+    private static string TrafficLightBadge(string tl) => tl switch
+    {
+        "Green"  => "bg-success",
+        "Orange" => "bg-warning text-dark",
+        _        => "bg-danger"
+    };
+
+    private static string TrafficLightLabel(string tl) => tl switch
+    {
+        "Green"  => "Óptimo",
+        "Orange" => "Mejorable",
+        _        => "Crítico"
+    };
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
