@@ -549,6 +549,23 @@ try
                 ProfileConstants.Scrap, ProfileConstants.Coordinator,
                 ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
 
+        // ── MAPAS DE CALOR (HM) ───────────────────────────────────────────────
+
+        // Dashboard HM-A — Mapa de Calor de Densidad de Residuos: SCRAP, DISPATCH_OFFICE y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewHeatMapWasteDensity, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard HM-B — Análisis de Patrones y Estacionalidad: SCRAP, DISPATCH_OFFICE y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewHeatMapPatternAnalysis, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard HM-C — Vista Mapas de Calor para Entidades Públicas: PUBLIC_ENT, DISPATCH_OFFICE y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewHeatMapPublicView, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
         // Operaciones exclusivas de administración del sistema.
         options.AddPolicy(PolicyConstants.AdminOnly, policy =>
             policy.AddRequirements(new ProfileRequirement(
@@ -597,6 +614,9 @@ try
         GreenTransit.Infrastructure.Services.EntityUserProvisioningService>();
     builder.Services.AddScoped<IDataScopeService, GreenTransit.Infrastructure.Services.DataScopeService>();
     builder.Services.AddScoped<ISandboxDataSeeder, SandboxDataSeeder>();
+
+    // ── Servicios de Mapas de Calor ───────────────────────────────────────────
+    builder.Services.AddScoped<GreenTransit.Application.Features.Reporting.HeatMaps.Services.HeatMapAggregationService>();
 
     // ── Descubrimiento de pantallas ───────────────────────────────────────────
     var webAssembly = typeof(GreenTransit.Web.Components.App).Assembly;

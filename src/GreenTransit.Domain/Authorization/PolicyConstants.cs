@@ -79,6 +79,17 @@ public static class PolicyConstants
     /// <summary>Lectura de KPIs regulatorios: SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN.</summary>
     public const string CanViewKPIs = "CanViewKPIs";
 
+    // ─── Mapas de Calor ───────────────────────────────────────────────────────
+
+    /// <summary>Dashboard HM-A — Mapa de Calor de Densidad de Residuos: SCRAP, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewHeatMapWasteDensity = "CanViewHeatMapWasteDensity";
+
+    /// <summary>Dashboard HM-B — Análisis de Patrones y Estacionalidad: SCRAP, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewHeatMapPatternAnalysis = "CanViewHeatMapPatternAnalysis";
+
+    /// <summary>Dashboard HM-C — Vista de Mapas de Calor para Entidades Públicas: PUBLIC_ENT, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewHeatMapPublicView = "CanViewHeatMapPublicView";
+
     /// <summary>Acceso a módulo de reporting y trazabilidad: todos los autenticados (con filtrado por datos propios).</summary>
     public const string CanViewReporting = "CanViewReporting";
 

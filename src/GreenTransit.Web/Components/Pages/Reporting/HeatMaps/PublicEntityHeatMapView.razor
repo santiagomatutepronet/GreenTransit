@@ -1,0 +1,399 @@
+@page "/reporting/heat-maps/public-view"
+@attribute [Authorize(Policy = PolicyConstants.CanViewHeatMapPublicView)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Reporting.HeatMaps.DTOs
+@using GreenTransit.Application.Features.Reporting.HeatMaps.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
+@inject ILogger<PublicEntityHeatMapView> Logger
+
+<PageTitle>Mapa de Calor — Vista Entidad Pública — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-building-check me-2"></i>Mapa de Calor — Vista Entidad Pública
+        </h1>
+        <p class="text-muted mb-0">Dashboard HM-C · Entidad Pública · @_filterYear</p>
+        <p class="text-muted small mt-1">
+            Mapas de calor de su ámbito territorial para identificar zonas de alta densidad
+            de residuos y planificar actuaciones preventivas.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm me-2" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+        <button class="btn btn-outline-success btn-sm" @onclick="ExportAsync" disabled="@(_loading || _exporting)">
+            @if (_exporting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-file-earmark-excel me-1"></i>Exportar XLSX
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-select form-select-sm" @bind="_filterMonth" @bind:after="RefreshAsync">
+            <option value="">Todo el año</option>
+            @for (int m = 1; m <= 12; m++)
+                    { <option value="@m">@MonthName(m)</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Código LER</label>
+        <input class="form-control form-control-sm" @bind="_filterLerCode" @bind:after="RefreshAsync"
+               placeholder="ej. 16" />
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_data is null)
+{
+    <div class="alert alert-warning">No se han podido cargar los datos.</div>
+}
+else
+{
+    @* ── KPIs ejecutivos territoriales ───────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label">Kg totales recogidos</div>
+                    <div class="kpi-value">@FormatKg(_data.TotalKg)</div>
+                    @if (_data.TotalKgVariationPct != 0)
+                    {
+                        <div class="kpi-variation @(_data.TotalKgVariationPct >= 0 ? "text-danger" : "text-success")">
+                            @(_data.TotalKgVariationPct >= 0 ? "▲" : "▼")
+                            @Math.Abs(_data.TotalKgVariationPct).ToString("F1")% vs periodo ant.
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label">Puntos de recogida activos</div>
+                    <div class="kpi-value">@_data.ActivePickupPoints</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label">Tipología predominante</div>
+                    <div class="kpi-value" style="font-size:1rem">
+                        @(_data.PredominantLerCode ?? "—")
+                    </div>
+                    <small class="text-muted">@(_data.PredominantLerDescription ?? "")</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label">Frecuencia media (rec/punto/mes)</div>
+                    <div class="kpi-value">@_data.AvgPickupsPerPointPerMonth.ToString("F2")</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Mapa de calor territorial ────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-map me-1"></i>Mapa de Calor Territorial
+                </div>
+                <div class="card-body p-0">
+                    <div id="heatmap-public-view" style="height:500px;width:100%;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Tipología + Evolución temporal ──────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-lg-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-pie-chart me-1"></i>Distribución de residuos por tipología LER
+                </div>
+                <div class="card-body">
+                    <div id="chart-typology-hmc" style="min-height:280px;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-graph-up me-1"></i>Evolución temporal de recogidas por SCRAP
+                </div>
+                <div class="card-body">
+                    @if (!_data.MonthlyTrends.Any())
+                    {
+                        <p class="text-muted text-center py-4">Sin datos de evolución para el periodo.</p>
+                    }
+                    else
+                    {
+                        <div id="chart-monthly-hmc" style="min-height:280px;"></div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Detalle de puntos de recogida ───────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-list-ul me-1"></i>Detalle de puntos de recogida del municipio
+                </div>
+                <div class="card-body">
+                    @if (!_data.PickupPointDetails.Any())
+                    {
+                        <p class="text-muted text-center py-4">Sin puntos de recogida para el periodo seleccionado.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Punto de recogida</th>
+                                        <th>Municipio</th>
+                                        <th>Provincia</th>
+                                        <th class="text-end">Kg periodo</th>
+                                        <th class="text-end">Recogidas</th>
+                                        <th>LER predominante</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in _data.PickupPointDetails)
+                                    {
+                                        <tr>
+                                            <td>@p.EntityName</td>
+                                            <td>@(p.Municipality ?? "—")</td>
+                                            <td>@(p.Province ?? "—")</td>
+                                            <td class="text-end">@FormatKg(p.TotalKg)</td>
+                                            <td class="text-end">@p.PickupCount</td>
+                                            <td><small>@(p.PredominantLerCode ?? "—")</small></td>
+                                            <td>
+                                                <span class="badge @TrafficLightClass(p.TrafficLight)">
+                                                    @TrafficLightLabel(p.TrafficLight)
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Indicadores de zonas sensibles ──────────────────────────────────────── *@
+    @if (_data.SensitiveZoneIndicators.Any())
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <div class="card border-danger">
+                    <div class="card-header text-danger fw-semibold">
+                        <i class="bi bi-shield-exclamation me-1"></i>Indicadores de zonas sensibles
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Punto</th>
+                                    <th>Zona DUM</th>
+                                    <th class="text-end">Kg acumulados</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var z in _data.SensitiveZoneIndicators)
+                                {
+                                    <tr>
+                                        <td>@z.EntityName</td>
+                                        <td>@(z.ZoneName ?? "—")</td>
+                                        <td class="text-end">@FormatKg(z.TotalKg)</td>
+                                        <td>
+                                            <span class="badge @TrafficLightClass(z.TrafficLight)">
+                                                @(z.ExceedsThreshold ? "⚠ Supera umbral" : "Normal")
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private PublicEntityHeatMapDto? _data;
+    private bool    _loading        = true;
+    private bool    _exporting      = false;
+    private bool    _chartsRendered = false;
+    private int     _filterYear     = DateTime.Now.Year;
+    private int?    _filterMonth    = null;
+    private string? _filterLerCode;
+
+    private DotNetObjectReference<PublicEntityHeatMapView>? _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await RefreshAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_data is not null && !_loading && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _loading        = true;
+        _chartsRendered = false;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetPublicEntityHeatMapQuery(
+                Year         : _filterYear,
+                Month        : _filterMonth,
+                LerCodeFilter: _filterLerCode));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar datos del mapa de calor — vista pública");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            // Mapa Leaflet
+            var mapPoints = _data.HeatMapPoints
+                .Select(p => new { lat = p.Latitude, lng = p.Longitude, value = (double)p.TotalKg, name = p.EntityName })
+                .ToArray();
+            await JS.InvokeVoidAsync("heatMapCharts.renderLeafletHeatMap", "heatmap-public-view", mapPoints);
+
+            // Donut tipología
+            var typologyLabels = _data.WasteTypology.Take(8).Select(t => t.LerCode).ToArray();
+            var typologyValues = _data.WasteTypology.Take(8).Select(t => (double)t.TotalKg).ToArray();
+            await JS.InvokeVoidAsync("heatMapCharts.renderDonut",
+                "chart-typology-hmc", typologyLabels, typologyValues, "Tipología LER (kg)");
+
+            // Evolución mensual por SCRAP
+            if (_data.MonthlyTrends.Any())
+            {
+                var seriesData = _data.MonthlyTrends.Select(t => new
+                {
+                    name = t.LerDescription,
+                    data = t.MonthlyKg.Select(v => (double)v).ToArray()
+                }).ToArray();
+                await JS.InvokeVoidAsync("heatMapCharts.renderMultiLineChart",
+                    "chart-monthly-hmc", seriesData);
+            }
+        }
+        catch (Exception ex)
+        {
+            _chartsRendered = false;   // permitir reintento en el circuito interactivo
+            Logger.LogWarning(ex, "Error al renderizar gráficos del mapa de calor — vista pública");
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        _exporting = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Mediator.Send(new ExportHeatMapDataToExcelQuery(
+                Year         : _filterYear,
+                Month        : _filterMonth,
+                DashboardType: "PublicView",
+                LerCodeFilter: _filterLerCode));
+            await JS.InvokeVoidAsync("downloadFile", result.FileName, result.ContentType, result.Content);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al exportar mapa de calor — vista pública");
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string FormatKg(decimal kg) =>
+        kg >= 1_000_000 ? $"{kg / 1_000_000:F2} Mt"
+        : kg >= 1_000   ? $"{kg / 1_000:F2} t"
+        : $"{kg:F0} kg";
+
+    private static string TrafficLightClass(string tl) => tl switch
+    {
+        "Red"    => "bg-danger",
+        "Orange" => "bg-warning text-dark",
+        _        => "bg-success"
+    };
+
+    private static string TrafficLightLabel(string tl) => tl switch
+    {
+        "Red"    => "Alto",
+        "Orange" => "Medio",
+        _        => "Normal"
+    };
+
+    private static string MonthName(int m) =>
+        new System.DateTime(2000, m, 1).ToString("MMMM", new System.Globalization.CultureInfo("es-ES"));
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        await Task.CompletedTask;
+    }
+}

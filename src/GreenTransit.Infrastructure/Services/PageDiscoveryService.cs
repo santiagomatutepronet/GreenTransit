@@ -157,6 +157,7 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
         if (ns?.Contains("Security") == true) return "Seguridad";
         if (ns?.Contains("TratamientoReciclaje") == true) return "Tratamiento y Reciclaje";
         if (ns?.Contains("Ecomodulacion") == true)     return "Ecomodulación";
+        if (ns?.Contains("HeatMaps") == true)           return "Mapas de Calor";
         if (ns?.Contains("Reporting") == true)          return "Reporting";
         if (ns?.Contains("Logistics") == true) return "Dashboards Logísticos";
         if (ns?.Contains("Mobility") == true)  return "Movilidad Urbana";
@@ -237,7 +238,10 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["TRDispatchData"]            = "Datos Operativos de Tratamiento — Oficina de Asignación",
             ["ScrapOverview"]              = "Panel de Datos de Ecomodulación — SCRAP",
             ["RegulatoryView"]             = "Monitorización Regulatoria — Ecomodulación",
-            ["DppReadiness"]              = "Preparación DPP — Ecomodulación"
+            ["DppReadiness"]              = "Preparación DPP — Ecomodulación",
+            ["WasteDensityHeatMap"]        = "Mapa de Calor — Densidad de Residuos",
+            ["WastePatternAnalysis"]       = "Mapa de Calor — Patrones y Estacionalidad",
+            ["PublicEntityHeatMapView"]    = "Mapa de Calor — Vista Entidad Pública"
         };
 
         if (map.TryGetValue(componentName, out var name)) return name;

@@ -4,7 +4,7 @@
 >
 > Basado en el modelo de datos técnico **v4.1** (SQL Server Azure). Cada funcionalidad detalla **entidades implicadas**, **campos clave** y **transiciones de estado** del traslado.
 >
-> **Documento unificado** que integra: Mapa de Funcionalidades, Mapa de Autenticación y Autorización, Modelo de Datos, Patrón de Autorización en Páginas, Dashboard UC2 (Optimización RAEE), Dashboard UC3 (Movilidad Urbana) y Dashboard UC5 (Ecomodulación).
+> **Documento unificado** que integra: Mapa de Funcionalidades, Mapa de Autenticación y Autorización, Modelo de Datos, Patrón de Autorización en Páginas, Dashboard UC2 (Optimización RAEE), Dashboard UC3 (Movilidad Urbana) y Dashboard Mapas de Calor (Densidad y Patrones de Residuos).
 
 ---
 
@@ -627,9 +627,9 @@ CanViewProductDeclarations      ADMIN, PRODUCER, SCRAP, COORDINATOR
 CanManageProductDeclarations    PRODUCER, ADMIN
 CanValidateProductDeclarations  ADMIN
 CanManageDeclarationDicts       ADMIN
-CanViewEcomodulationScrapOverview     SCRAP, DISPATCH_OFFICE, ADMIN      ← UC5-A
-CanViewEcomodulationRegulatoryView    PUBLIC_ENT, COORDINATOR, ADMIN     ← UC5-B
-CanViewEcomodulationDppReadiness      SCRAP, COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN  ← UC5-C
+CanViewHeatMapWasteDensity      SCRAP, DISPATCH_OFFICE, ADMIN          ← Mapa Calor HM-A
+CanViewHeatMapPatternAnalysis   SCRAP, DISPATCH_OFFICE, ADMIN          ← Mapa Calor HM-B
+CanViewHeatMapPublicView        PUBLIC_ENT, DISPATCH_OFFICE, ADMIN     ← Mapa Calor HM-C
 AdminOnly                       ADMIN
 ```
 
@@ -1331,109 +1331,7 @@ Una recogida se considera **en hora punta** si `hora_decimal ∈ [Start1, End1) 
 
 ---
 
-### 5.7. Módulo de Ecomodulación — Pasaporte Digital de Producto (UC5)
-
-> Agrupa las vistas UC5 orientadas a facilitar el control de datos de ecodiseño por parte de los SCRAPs (proveedores del dato) y su consumo por parte de autoridades reguladoras, organismos europeos, certificadores y demás actores del ecosistema. Promueve la convergencia con el Pasaporte Digital de Producto (DPP) europeo. Dashboards accesibles desde **Reporting → Ecomodulación** del menú lateral.
-
-#### 5.7.1. UC5-A — Panel de Datos de Ecomodulación — SCRAP (Proveedor del dato)
-
-- **Ruta**: `/reporting/ecomodulation/scrap-overview`
-- **Perfil objetivo**: `SCRAP`, `DISPATCH_OFFICE`, `ADMIN`.
-- **Policy**: `CanViewEcomodulationScrapOverview`.
-- **Lógica**: los SCRAPs visualizan y validan la calidad de los datos de ecodiseño de los productos que gestionan, controlan el estado de las fichas técnicas (`ProductSpecs`) y monitorizan el impacto económico de las reglas de eco-modulación sobre sus liquidaciones.
-
-**Archivos a implementar**:
-- `Application/Features/Ecomodulation/Queries/GetEcomodulationScrapOverviewQuery.cs` — handler principal con filtros: `Year`, `ProductCategory?`, `IdProducer?`, `EcoModulationRuleSetId?`.
-- `Application/Features/Ecomodulation/DTOs/EcomodulationScrapOverviewDto.cs` — DTOs: `EcomodulationScrapOverviewDto`, `EcodesignCoverageDto`, `CircularityByCategoryDto`, `RuleImpactDto`, `ProducerCoverageDto`, `MaterialCompositionDto`, `EcomodulationExportRowDto`.
-- `Application/Features/Ecomodulation/Queries/ExportEcomodulationDataToExcelQuery.cs` — genera XLSX en memoria (ClosedXML) con los datos del `ExportDataset`.
-- `Application/Features/Ecomodulation/Services/EcomodulationRecommendationEngine.cs` — motor de recomendaciones de ecodiseño.
-- `Web/Components/Pages/Reporting/Ecomodulación/ScrapOverview.razor` — página `/reporting/ecomodulation/scrap-overview`.
-
-**Widgets principales**:
-
-| Widget | Fuente de datos | Descripción |
-|---|---|---|
-| Cobertura fichas ecodiseño | `Residues` (ProductSpec) + `ProductSpecs` | % fichas completas vs parciales vs sin ficha (donut) |
-| Índice circularidad por categoría | `Residues` (ProductSpec) campos ecodiseño | Bar chart horizontal con semáforo (verde >70, naranja 40–70, rojo <40) |
-| Impacto económico eco-modulación | `EcoModulationRuleSets` + `EcoModulationRules` + `SettlementLines` | Tabla con ajuste €/regla + sparkline de evolución |
-| Estado fichas por productor | `ProductSpecs` + `Residues` + `Entities` (Producer) | Tabla semáforo por % cobertura |
-| Composición materiales | `Residues.CompositionJson` (ProductSpec) | Treemap de materiales predominantes |
-| Dataset exportable (Data Space) | `ProductSpecs` + `Residues` + `EcoModulationRules` | Tabla plana exportable a XLSX para publicación EDC |
-
-**Filtros disponibles**: `Year` (obligatorio), `ProductCategory?`, `IdProducer?` (solo productores adheridos vía `Agreements`), `EcoModulationRuleSetId?`.
-
-**Exportación**: botón "Exportar XLSX" → `ExportEcomodulationDataToExcelQuery` genera el dataset como hoja Excel.
-
----
-
-#### 5.7.2. UC5-B — Panel de Monitorización Regulatoria — Autoridad / Certificador
-
-- **Ruta**: `/reporting/ecomodulation/regulatory-view`
-- **Perfil objetivo**: `PUBLIC_ENT`, `COORDINATOR`, `ADMIN`.
-- **Policy**: `CanViewEcomodulationRegulatoryView`.
-- **Lógica**: las autoridades reguladoras, entidades públicas, coordinadores y certificadores consumen los datos del ecosistema para verificar el cumplimiento de criterios de ecodiseño, validar la calidad de los datos compartidos y evaluar la preparación del sector para la convergencia con el DPP europeo.
-
-**Archivos a implementar**:
-- `Application/Features/Ecomodulation/Queries/GetEcomodulationRegulatoryViewQuery.cs` — handler principal con filtros: `Year`, `IdScrap?`, `ProductCategory?`, `ProvinceCode?`, `AutonomousCommunity?`.
-- `Application/Features/Ecomodulation/DTOs/EcomodulationRegulatoryViewDto.cs` — DTOs: `EcomodulationRegulatoryViewDto`, `ScrapMaturityRankingDto`, `CategoryComparisonDto`, `EcodesignTrendDto`, `ComplianceAlertDto`.
-- `Web/Components/Pages/Reporting/Ecomodulación/RegulatoryView.razor` — página `/reporting/ecomodulation/regulatory-view`.
-
-**Widgets principales**:
-
-| Widget | Fuente de datos | Descripción |
-|---|---|---|
-| Resumen ejecutivo ecomodulación | `Entities` (SCRAP) + `ProductSpecs` + `Residues` | Cards de KPI: nº SCRAPs con datos, nº fichas, índice circularidad medio, % productos con potencial de mejora |
-| Ranking SCRAPs por madurez | `Entities` + `ProductSpecs` + `Residues` + `EcoModulationRules` | Tabla ranking + sparklines con índice de madurez (0–100) |
-| Comparativa ecodiseño por categoría | `Residues` (ProductSpec) agrupado por `ProductCategory` | Radar chart: reparabilidad, % reciclado, desmontaje, no peligrosos, cobertura LER |
-| Evolución temporal indicadores | Agregación trimestral/anual de métricas | Line chart multi-serie: circularidad, cobertura fichas, % reciclado |
-| Alertas de cumplimiento | Generadas por backend al recalcular | Lista tipo inbox con umbrales configurables |
-
-**Filtros disponibles**: `Year`, `IdScrap?` (todos para reguladores, los de sus acuerdos para coordinadores), `ProductCategory?`, `ProvinceCode?` / `AutonomousCommunity?`.
-
----
-
-#### 5.7.3. UC5-C — Panel de Preparación para el Pasaporte Digital de Producto (DPP)
-
-- **Ruta**: `/reporting/ecomodulation/dpp-readiness`
-- **Perfil objetivo**: `SCRAP`, `COORDINATOR`, `PUBLIC_ENT`, `DISPATCH_OFFICE`, `ADMIN`.
-- **Policy**: `CanViewEcomodulationDppReadiness`.
-- **Lógica**: evalúa el grado de preparación de los datos del ecosistema para cumplir con los requisitos del Pasaporte Digital de Producto europeo. Identifica campos faltantes, valida la completitud de las fichas técnicas y genera un score de preparación DPP por producto y por categoría.
-
-**Archivos a implementar**:
-- `Application/Features/Ecomodulation/Queries/GetEcomodulationDppReadinessQuery.cs` — handler principal con filtros: `Year`, `IdScrap?`, `ProductCategory?`, `IdProducer?`.
-- `Application/Features/Ecomodulation/DTOs/EcomodulationDppReadinessDto.cs` — DTOs: `EcomodulationDppReadinessDto`, `DppScoreGlobalDto`, `DppProductDetailDto`, `DppHeatmapCellDto`, `DppPriorityProductDto`, `DppByScrapDto`, `DppTrendDto`.
-- `Application/Features/Ecomodulation/Queries/GetCircularityIndexQuery.cs` — widget compartido: índice de circularidad.
-- `Application/Features/Ecomodulation/Queries/GetEcomodulationRuleImpactQuery.cs` — widget compartido: impacto reglas eco-modulación.
-- `Web/Components/Pages/Reporting/Ecomodulación/DppReadiness.razor` — página `/reporting/ecomodulation/dpp-readiness`.
-
-**Campos DPP evaluados** (mapeados a `Residues` ProductSpec):
-- `Name` → Nombre del producto
-- `Reference` → Identificador único
-- `IdLERCode` → Clasificación de residuo al fin de vida
-- `ReparabilityIndex` → Índice de reparabilidad
-- `DisassemblyEase` → Facilidad de desmontaje
-- `RecycledContentPercent` → Contenido reciclado
-- `CompositionJson` → Composición de materiales
-- `ContainsHazardous` + `DangerousCode` → Sustancias peligrosas
-- `PotentialLERCodesJson` → Códigos LER potenciales
-- `IdProducer` → Productor identificado
-
-**Score DPP** = (campos informados / campos requeridos) × 100, promediado sobre todos los productos.
-
-**Widgets principales**:
-
-| Widget | Fuente de datos | Descripción |
-|---|---|---|
-| Score global DPP | `ProductSpecs` + `Residues` (ProductSpec) | Gauge grande + trend: % de campos DPP informados |
-| Detalle por producto | `ProductSpecs` + `Residues` | Tabla con checkmarks (✓/✗) por campo DPP + score individual |
-| Heatmap completitud | `Residues` agrupado por categoría × campo DPP | % de productos con campo informado (verde >80%, naranja 50–80%, rojo <50%) |
-| Productos prioritarios | `ProductSpecs` ordenadas por score ascendente | Top-N con peor score, campos faltantes listados |
-| Comparativa DPP por SCRAP | `ProductSpecs` agrupadas por SCRAP (vía Agreements) | Bar chart horizontal: score DPP medio por SCRAP |
-| Evolución score DPP | Agregación trimestral/anual | Line chart: progreso hacia convergencia DPP |
-
-**Filtros disponibles**: `Year`, `IdScrap?`, `ProductCategory?`, `IdProducer?`.
-
----
+## 6. 👥 Gestión de Usuarios, Perfiles y Seguridad
 
 > **Estado**: ✅ Implementado — Application + Web layers completos.
 
@@ -2465,203 +2363,257 @@ Web/Components/Pages/Mobility/
 
 ---
 
-## ♻️ Módulo de Ecomodulación — Pasaporte Digital de Producto (UC5)
+## 🗺️ Módulo de Mapas de Calor — Densidad y Patrones de Residuos (UC Mapas de Calor)
 
-## 🎯 Objetivo — Caso de Uso 5 (UC5)
+## 🎯 Objetivo
 
-Crear un **nuevo módulo de dashboard titulado "Ecomodulación"** que sincronice la documentación y el seguimiento de los residuos a partir de los datos compartidos entre los participantes del ecosistema. La alineación de GreenTransit con estándares europeos para la compartición del dato propicia el desarrollo de herramientas de trazabilidad de desechos capaces de facilitar el ecodiseño de los productos. El caso de uso está orientado a:
+Crear un **nuevo módulo de dashboards "Mapas de Calor"** dentro de la carpeta `Reporting` que permita visualizar **mapas de calor a partir de los datos operativos de reciclado** existentes en GreenTransit. El objetivo es identificar zonas de elevada densidad de residuos, patrones de generación, estacionalidad y tipología, facilitando la planificación urbana y la optimización de recursos para un entorno más sostenible.
 
-1. **Los SCRAPs (Proveedores del dato)** controlen la calidad de los datos de ecodiseño publicados en el Espacio de Datos, visualicen el impacto económico de las reglas de eco-modulación y validen la completitud de las fichas técnicas de sus productores.
-2. **Las Autoridades Reguladoras, Certificadores y Coordinadores** consuman los datos del ecosistema para verificar el cumplimiento de criterios de ecodiseño, evaluar la madurez del sector y validar la calidad de los datos compartidos.
-3. **Todos los actores relevantes del ecosistema** evalúen el grado de preparación para la convergencia con el **Pasaporte Digital de Producto (DPP)** europeo, identificando campos faltantes y priorizando productos que necesitan datos.
+Los datos visualizados incluyen:
+- **Clasificación detallada del residuo** según composición (código LER, flujo de residuo), con cantidad exacta.
+- **Datos georreferenciados** de los puntos de recogida en territorio español (latitud/longitud de las entidades).
+- **Frecuencia de generación y recogida** basada en el volumen de solicitudes (órdenes de servicio) en cada punto de recogida.
 
-Este caso de uso se alinea con iniciativas europeas como el DPP y con la arquitectura de Data Spaces (IDSA/Gaia-X) ya preparada en GreenTransit mediante conectores EDC.
+**Participantes del ecosistema**:
+- **Proveedores de datos**: los SCRAPs, que generan la operativa de recogida y tratamiento.
+- **Consumidores de datos**: entes públicos (ayuntamientos, CCAA) que acceden a los mapas de calor para planificación urbana.
+
+**Objetivos específicos**:
+1. Facilitar la identificación de áreas con alta concentración de residuos por comunidad autónoma, provincia y municipio.
+2. Prevenir la acumulación de residuos en zonas sensibles.
+3. Analizar patrones temporales (estacionalidad) y de tipología de residuos.
+
+---
+
+## 📁 Ubicación de archivos
+
+Todos los dashboards de este módulo deben crearse dentro de la carpeta `Reporting/HeatMaps/`:
+
+### Capa Web (Blazor)
+
+```
+Web/Components/Pages/Reporting/HeatMaps/
+├── WasteDensityHeatMap.razor                → /reporting/heat-maps/waste-density
+├── WastePatternAnalysis.razor               → /reporting/heat-maps/pattern-analysis
+└── PublicEntityHeatMapView.razor            → /reporting/heat-maps/public-view
+```
+
+### Capa Application (CQRS)
+
+```
+Application/Features/Reporting/HeatMaps/
+├── Queries/
+│   ├── GetWasteDensityHeatMapQuery.cs       → Dashboard HM-A (SCRAP)
+│   ├── GetWastePatternAnalysisQuery.cs      → Dashboard HM-B (SCRAP — análisis temporal)
+│   ├── GetPublicEntityHeatMapQuery.cs       → Dashboard HM-C (PUBLIC_ENT)
+│   ├── GetWasteFrequencyByPickupPointQuery.cs → Widget compartido: frecuencia de recogida
+│   ├── GetSeasonalityAnalysisQuery.cs       → Widget compartido: estacionalidad
+│   └── ExportHeatMapDataToExcelQuery.cs     → Exportación XLSX (patrón ClosedXML)
+├── DTOs/
+│   ├── WasteDensityHeatMapDto.cs
+│   ├── WastePatternAnalysisDto.cs
+│   ├── PublicEntityHeatMapDto.cs
+│   ├── WasteFrequencyByPickupPointDto.cs
+│   ├── SeasonalityAnalysisDto.cs
+│   └── HeatMapExportDto.cs
+└── Services/
+    └── HeatMapAggregationService.cs         → Servicio de agregación geoespacial
+```
+
+### Componentes reutilizables (complementan los ya existentes)
+
+```
+Web/Components/Shared/HeatMaps/
+├── WasteHeatMapLayer.razor                  → Capa de heatmap de densidad sobre mapa Leaflet
+├── SeasonalityChart.razor                   → Gráfico de estacionalidad (line/area chart)
+├── FrequencyByPointTable.razor              → Tabla de frecuencia por punto de recogida
+└── WasteTypologyDonut.razor                 → Donut de tipología de residuos (por código LER)
+```
+
+> **Reutilizar** de los dashboards existentes: `WasteVolumeMap.razor`, `DUMComplianceDonut.razor`, `EmissionsCard.razor`.
 
 ---
 
 ## 📊 Dashboards a crear (son TRES vistas diferenciadas)
 
-> Todos los dashboards están bajo la carpeta **Reporting → Ecomodulación** del menú lateral.
+### Dashboard HM-A — **Mapa de Calor de Densidad de Residuos — SCRAP** (`/reporting/heat-maps/waste-density`)
 
-### Dashboard UC5-A — **Panel de Datos de Ecomodulación — SCRAP (Proveedor del dato)** (`/reporting/ecomodulation/scrap-overview`)
+**Destinado a**: perfiles `SCRAP` y `ADMIN`.
 
-**Destinado a**: perfiles `SCRAP`, `DISPATCH_OFFICE` y `ADMIN`.
+**Policy de autorización**: `CanViewHeatMapWasteDensity` (nueva, a registrar en `PolicyConstants.cs`).
 
-**Policy de autorización**: `CanViewEcomodulationScrapOverview` (nueva, a registrar en `PolicyConstants.cs`).
-
-**Propósito**: los SCRAPs, como proveedores principales de datos en el Espacio de Datos compartido, visualizan y validan la calidad de los datos de ecodiseño de los productos que gestionan, controlan el estado de las fichas técnicas (`ProductSpecs`) y monitorizan el impacto económico de las reglas de eco-modulación sobre sus liquidaciones.
+**Propósito**: vista estratégica para que los SCRAPs visualicen la distribución geográfica de la densidad de residuos en los puntos de recogida bajo su ámbito, identificando zonas de alta concentración y patrones por tipología.
 
 #### Widgets / KPIs requeridos:
 
-1. **Cobertura de fichas de ecodiseño** (cards de KPI + donut chart)
-   - Fuente: `Residues` WHERE `ResidueType = 'ProductSpec'` cruzado con `ProductSpecs`.
+1. **Mapa de calor de densidad de residuos** (mapa interactivo con capa heatmap)
+   - Fuente: `WasteMoveResidues` JOIN `WasteMoves` JOIN `ServiceOrders` → coordenadas del punto de recogida vía `ServiceOrders.IdPickupPoint` → `Entities.Latitude` / `Entities.Longitude`.
+   - Capa heatmap: intensidad basada en `SUM(WasteMoveResidues.Weight)` por punto de recogida georreferenciado.
+   - Filtrable por `LERCodes.Code` (flujo de residuo) para aislar tipologías concretas.
+   - Capa adicional: polígonos de `DUMZones.GeometryJson` con semáforo de `DUMRestrictionRules.ActionType` (`Block` = rojo, `Restrict` = naranja, `Allow` = verde, `Notify` = azul).
+   - Al hacer clic en un cluster/punto: popup con nombre de la entidad, dirección, kg totales del periodo, nº de recogidas, tipología predominante (código LER más frecuente) y última recogida.
+
+2. **Densidad de residuos por zona geográfica** (bar chart / treemap)
+   - Fuente: `WasteMoveResidues` JOIN `WasteMoves` JOIN `ServiceOrders` → agrupar por `Entities.ProvinceCode` o `Entities.MunicipalityCode` del `IdPickupPoint`.
+   - Métricas: `SUM(WasteMoveResidues.Weight)` agrupado por zona y `LERCodes.Code`.
+   - Drill-down: de Comunidad Autónoma → Provincia → Municipio.
+
+3. **Tipología de residuos por zona** (donut chart + tabla)
+   - Fuente: `WasteMoveResidues` JOIN `Residues` JOIN `LERCodes`.
+   - Distribución porcentual por `LERCodes.Code` (capítulo/subcapítulo) del peso total recogido.
+   - Indicar `LERCodes.IsDangerous` con icono de advertencia.
+
+4. **Top 20 puntos de recogida por volumen** (tabla ranking)
+   - Fuente: `ServiceOrders.IdPickupPoint` → `Entities`, `SUM(WasteMoveResidues.Weight)`.
+   - Columnas: nombre entidad, municipio, provincia, kg totales, nº recogidas, kg promedio por recogida, tipología predominante.
+   - Ordenado por kg totales descendente. Semáforo: rojo > percentil 90, naranja P75–P90, verde < P75.
+
+5. **Frecuencia de recogida por punto** (card + sparklines)
+   - Fuente: `COUNT(ServiceOrders)` agrupado por `IdPickupPoint` y periodo (semana/mes).
    - KPIs:
-     - **Total de productos gestionados** = `COUNT(Residues)` WHERE `ResidueType IN ('Product', 'ProductSpec')` y vinculados a traslados del SCRAP.
-     - **% con ficha de ecodiseño completa** = productos con `ReparabilityIndex IS NOT NULL AND RecycledContentPercent IS NOT NULL AND CompositionJson IS NOT NULL` / total.
-     - **% con código LER potencial al fin de vida** = productos con `PotentialLERCodesJson IS NOT NULL` / total.
-   - Donut: "Con ficha completa" vs "Ficha parcial" vs "Sin ficha".
+     - **Frecuencia promedio** = nº medio de recogidas por punto de recogida por mes.
+     - **Puntos con frecuencia anómala** = puntos cuya frecuencia supera 2× la media.
+   - Sparkline de evolución mensual.
 
-2. **Índice de circularidad agregado por categoría** (bar chart horizontal)
-   - Fuente: `Residues` (ProductSpec) → campos `RecycledContentPercent`, `ReparabilityIndex`, `DisassemblyEase`, `ContainsHazardous`.
-   - **Índice de circularidad** = ponderación configurable (por defecto: 30% RecycledContentPercent + 25% ReparabilityIndex normalizado + 20% DisassemblyEase normalizado + 15% !ContainsHazardous + 10% tiene PotentialLERCodesJson).
-   - Agrupado por `ProductCategory`.
-   - Semáforo: verde > 70, naranja 40–70, rojo < 40.
+6. **Comparativa de densidad entre periodos** (bar chart comparativo)
+   - Permite seleccionar dos periodos (mes A vs mes B, o trimestre A vs trimestre B).
+   - Compara por zona geográfica: kg totales, nº recogidas, kg/recogida promedio.
 
-3. **Impacto económico de las reglas de eco-modulación** (tabla + sparklines)
-   - Fuente: `EcoModulationRuleSets` JOIN `EcoModulationRules` cruzado con `SettlementLines` del periodo.
-   - Columnas por regla aplicada: nombre de la regla, nº de productos afectados, ajuste económico total (€), tipo de impacto (Percent/Fixed/PerUnit), variación vs periodo anterior.
-   - Sparkline de evolución mensual del ajuste.
+#### Filtros globales del dashboard:
+- `Year`, `Month` / `Quarter`.
+- `AutonomousCommunity` / `ProvinceCode` / `MunicipalityCode`.
+- `LERCodes.Code` (filtro por flujo/tipología de residuo).
+- `WasteStream` (para aislar flujos concretos: RAEE, envases, etc.).
+- `IdScrap`: **ADMIN** puede ver todos; **SCRAP** ve solo los suyos (filtrado por `WasteMoves.IdScrap` o `WasteMoves.IdScrap2`).
 
-4. **Estado de validación de fichas técnicas por productor** (tabla con semáforo)
-   - Fuente: `ProductSpecs` JOIN `Residues` JOIN `Entities` (Producer).
-   - Columnas: Productor, nº productos declarados, nº con ficha completa, nº con ficha parcial, nº sin ficha, % cobertura.
-   - Semáforo por fila según % cobertura (verde > 80%, naranja 50–80%, rojo < 50%).
-   - Drill-down al detalle del productor.
+---
 
-5. **Composición de materiales agregada** (treemap o stacked bar chart)
-   - Fuente: `Residues.CompositionJson` (ProductSpec) — parsear el JSON para extraer materiales y porcentajes.
-   - Visualización: distribución de materiales predominantes en el portafolio del SCRAP.
-   - Objetivo: identificar oportunidades de mejora en reciclabilidad.
+### Dashboard HM-B — **Análisis de Patrones y Estacionalidad — SCRAP** (`/reporting/heat-maps/pattern-analysis`)
 
-6. **Panel de datos exportables para análisis externo / Data Space** (tabla con exportación XLSX)
-   - Fuente: `ProductSpecs` + `Residues` (ProductSpec) + `Entities` (Producer) + `EcoModulationRules`.
-   - Dataset plano con campos: referencia producto, productor, categoría, código LER, índice reparabilidad, % contenido reciclado, facilidad desmontaje, contiene peligrosos (sí/no), composición, regla eco-modulación aplicable, ajuste económico.
-   - Exportable a XLSX (patrón ClosedXML existente).
-   - Objetivo: proveer datos limpios y estructurados para publicación en el Data Space (EDC) o análisis externo.
+**Destinado a**: perfiles `SCRAP` y `ADMIN`.
+
+**Policy de autorización**: `CanViewHeatMapPatternAnalysis` (nueva).
+
+**Propósito**: análisis temporal de los patrones de generación de residuos: estacionalidad, tendencias, picos y valles para optimizar la planificación de recogidas y anticipar acumulaciones.
+
+#### Widgets / KPIs requeridos:
+
+1. **Heatmap temporal de generación de residuos** (heatmap 12 meses × tipología)
+   - Fuente: `WasteMoveResidues` JOIN `WasteMoves` → `SUM(Weight)` agrupado por mes y `LERCodes.Code` (capítulo).
+   - Matriz de calor: eje X = meses del año, eje Y = tipología de residuo, intensidad = kg totales.
+   - Permite identificar estacionalidad por tipo de residuo.
+
+2. **Tendencia de volumen mensual** (line chart multi-serie)
+   - Series separadas por `LERCodes.Code` (top 5 tipologías por volumen).
+   - Línea de tendencia con media móvil de 3 meses.
+   - Eje Y: kg totales. Eje X: meses.
+
+3. **Heatmap semanal de frecuencia de recogidas** (heatmap 7×24)
+   - Fuente: `ServiceOrders.PlannedPickupStart` o `WasteMoves.ActualPickupStart`, agrupado por día de semana y franja horaria.
+   - Intensidad: nº de recogidas por celda.
+   - Objetivo: identificar concentraciones horarias para redistribuir.
+
+4. **Índice de concentración geográfica** (card + gauge)
+   - Métrica calculada: coeficiente de Gini o índice de Herfindahl sobre la distribución de kg por punto de recogida.
+   - Valor alto = residuos muy concentrados en pocos puntos → riesgo de acumulación.
+   - Valor bajo = distribución más uniforme.
+   - Comparativa con periodo anterior (% variación).
+
+5. **Alertas de acumulación** (panel tipo inbox)
+   - Motor de reglas simple que genera alertas basadas en umbrales (calculadas en backend):
+     - Si un punto de recogida supera X kg sin recogida en Y días → "Punto [nombre] en [municipio] acumula [kg] sin recogida desde [fecha]".
+     - Si un municipio supera el percentil 95 de densidad → "Municipio [nombre] presenta concentración anormalmente alta".
+     - Si la frecuencia de recogida baja más de un 30% respecto al periodo anterior → "Frecuencia de recogida reducida en [zona]".
+   - Las alertas se generan en el backend (`HeatMapAggregationService.cs`), no en el cliente.
 
 #### Filtros globales:
-- `Year`.
-- `ProductCategory`.
-- `IdProducer` (filtrar por productor específico vinculado al SCRAP vía `Agreements`).
-- `EcoModulationRuleSetId` (versión de reglas a aplicar).
+- `Year`, `Month` / `Quarter`.
+- `AutonomousCommunity` / `ProvinceCode` / `MunicipalityCode`.
+- `LERCodes.Code` (flujo de residuo).
+- `WasteStream`.
 
 ---
 
-### Dashboard UC5-B — **Panel de Monitorización Regulatoria — Autoridad / Certificador** (`/reporting/ecomodulation/regulatory-view`)
+### Dashboard HM-C — **Vista de Mapas de Calor para Entidades Públicas** (`/reporting/heat-maps/public-view`)
 
-**Destinado a**: perfiles `PUBLIC_ENT`, `COORDINATOR` y `ADMIN`.
+**Destinado a**: perfiles `PUBLIC_ENT` y `ADMIN`.
 
-**Policy de autorización**: `CanViewEcomodulationRegulatoryView` (nueva).
+**Policy de autorización**: `CanViewHeatMapPublicView` (nueva).
 
-**Propósito**: las autoridades reguladoras, entidades públicas, coordinadores y certificadores consumen los datos del ecosistema para verificar el cumplimiento de criterios de ecodiseño, validar la calidad de los datos compartidos y evaluar la preparación del sector para la convergencia con el DPP europeo.
+**Propósito**: los entes públicos (ayuntamientos, diputaciones) acceden a mapas de calor de su ámbito territorial para identificar zonas de alta densidad de residuos, analizar patrones de generación y planificar actuaciones preventivas.
 
 #### Widgets / KPIs requeridos:
 
-1. **Resumen ejecutivo de ecomodulación** (cards de KPI)
-   - **Total de SCRAPs con datos publicados**: `COUNT(DISTINCT WasteMoves.IdScrap)` WHERE tienen `ProductSpecs` asociadas.
-   - **Nº total de fichas de ecodiseño**: `COUNT(ProductSpecs)`.
-   - **Índice de circularidad medio del ecosistema**: media ponderada del índice por categoría.
-   - **% de productos con potencial de mejora**: productos con `ReparabilityIndex < 5` o `RecycledContentPercent < 30%`.
+1. **Resumen ejecutivo territorial** (cards de KPI)
+   - **Kg totales recogidos** en su ámbito territorial (municipio): `SUM(WasteMoveResidues.Weight)` WHERE `Entities.MunicipalityCode` del `IdPickupPoint` = municipio de la entidad pública logueada.
+   - **Nº de puntos de recogida activos**: `COUNT(DISTINCT ServiceOrders.IdPickupPoint)` del periodo.
+   - **Tipología predominante**: código LER con mayor peso acumulado.
+   - **Frecuencia media de recogida**: recogidas/punto/mes.
    - **Variación % vs periodo anterior** en cada KPI.
 
-2. **Ranking de SCRAPs por madurez de datos de ecodiseño** (tabla ranking + sparklines)
-   - Fuente: `Entities` (SCRAP) cruzado con `ProductSpecs` y `Residues`.
-   - Métricas por SCRAP: Nº de productos, % cobertura fichas, índice circularidad medio, nº reglas eco-modulación activas.
-   - **Índice de madurez** = ponderación configurable (0–100).
-   - Ordenado por índice descendente. Semáforo: verde > 70, naranja 40–70, rojo < 40.
+2. **Mapa de calor territorial** (mapa interactivo)
+   - Fuente: misma que HM-A pero filtrado por `Entities.MunicipalityCode` = municipio de la entidad pública logueada (o `ServiceOrders.IdIssuedBy = LinkedEntityId`).
+   - Capa heatmap de densidad por kg en puntos de recogida de su municipio.
+   - Al hacer clic: popup con detalle del punto.
 
-3. **Análisis comparativo de ecodiseño por categoría de producto** (radar chart o grouped bar chart)
-   - Fuente: `Residues` (ProductSpec) agrupado por `ProductCategory`.
-   - Ejes: Reparabilidad media, % reciclado medio, facilidad desmontaje (% Easy), % sin sustancias peligrosas, cobertura LER potencial.
+3. **Distribución de residuos por tipología** (donut chart)
+   - Distribución porcentual por `LERCodes.Code` del peso total recogido en su ámbito.
 
-4. **Evolución temporal de indicadores de ecodiseño** (line chart multi-serie)
-   - Series: índice de circularidad medio, % cobertura fichas, % contenido reciclado medio.
-   - Fuente: agregación trimestral/anual de las métricas.
+4. **Evolución temporal de recogidas** (line chart mensual)
+   - Eje Y: kg totales. Eje X: meses.
+   - Líneas separadas por SCRAP (si hay más de uno operando en el municipio).
+   - Permite detectar estacionalidad a nivel municipal.
 
-5. **Alertas de cumplimiento** (lista tipo inbox)
-   - Alertas generadas cuando:
-     - Un SCRAP tiene < 50% de cobertura de fichas de ecodiseño.
-     - El índice de circularidad de una categoría cae por debajo del umbral configurable.
-     - Se detectan productos con `ContainsHazardous = 1` y sin `DangerousCode` informado.
+5. **Detalle de puntos de recogida** (tabla con exportación)
+   - Columnas: nombre del punto, dirección, kg periodo, nº recogidas, última recogida, tipología predominante.
+   - Exportable a XLSX.
 
-#### Filtros:
-- `Year`.
-- `IdScrap` (todos para reguladores; los de sus acuerdos para coordinadores vía `Agreements.IdCoordinator`).
-- `ProductCategory`.
-- `ProvinceCode` / `AutonomousCommunity`.
-
----
-
-### Dashboard UC5-C — **Panel de Preparación para el Pasaporte Digital de Producto (DPP)** (`/reporting/ecomodulation/dpp-readiness`)
-
-**Destinado a**: perfiles `SCRAP`, `COORDINATOR`, `PUBLIC_ENT`, `DISPATCH_OFFICE` y `ADMIN`.
-
-**Policy de autorización**: `CanViewEcomodulationDppReadiness` (nueva).
-
-**Propósito**: evalúa el grado de preparación de los datos del ecosistema para cumplir con los requisitos del Pasaporte Digital de Producto europeo. Identifica campos faltantes, valida la completitud de las fichas técnicas y genera un score de preparación DPP por producto y por categoría.
-
-#### Widgets / KPIs requeridos:
-
-1. **Score global de preparación DPP** (gauge grande + trend)
-   - **Score DPP** = % de campos requeridos por el DPP que están informados en las fichas de ecodiseño del ecosistema.
-   - Campos DPP evaluados (mapeados a `Residues` ProductSpec): `Name`, `Reference`, `IdLERCode`, `ReparabilityIndex`, `DisassemblyEase`, `RecycledContentPercent`, `CompositionJson`, `ContainsHazardous` + `DangerousCode`, `PotentialLERCodesJson`, `IdProducer`.
-   - Score = (campos informados / campos requeridos) × 100, promediado sobre todos los productos.
-
-2. **Detalle de preparación DPP por producto** (tabla con checkmarks)
-   - Fuente: `ProductSpecs` JOIN `Residues` (ProductSpec).
-   - Columnas: Referencia, Nombre, Productor, y una columna por cada campo DPP con ✓ (informado) o ✗ (faltante).
-   - Score individual por producto. Filtrable y ordenable por score ascendente.
-
-3. **Mapa de calor de completitud por categoría × campo DPP** (heatmap)
-   - Ejes: categorías de producto (filas) × campos DPP (columnas).
-   - Valores: % de productos con campo informado. Color: verde > 80%, naranja 50–80%, rojo < 50%.
-
-4. **Productos prioritarios para completar** (tabla top-N)
-   - Los N productos con peor score DPP, ordenados ascendentemente.
-   - Incluye: referencia, productor, campos faltantes (listados), score actual.
-
-5. **Comparativa de preparación DPP por SCRAP** (bar chart horizontal)
-   - Fuente: `ProductSpecs` agrupadas por SCRAP (vía `Entities.IdProducer` → `Agreements.IdScrap`).
-   - Barra: score DPP medio por SCRAP.
-
-6. **Histórico de evolución del score DPP** (line chart)
-   - Serie: score DPP global por trimestre/año.
+6. **Indicadores de zonas sensibles** (tabla + semáforo)
+   - Puntos de recogida cercanos a zonas sensibles (cruce con `DUMZones` si aplica, o configuración estática de zonas de interés: centros escolares, hospitales, zonas peatonales).
+   - Semáforo: rojo si el punto supera umbral de acumulación en zona sensible.
 
 #### Filtros:
-- `Year`.
-- `IdScrap`.
-- `ProductCategory`.
-- `IdProducer`.
+- `Year`, `Month`.
+- `LERCodes.Code` (flujo de residuo).
+- `WasteStream`.
+- `IdScrap` (los SCRAPs que operan en su municipio — derivado de `WasteMoves` históricas o `Agreements`).
 
 ---
 
 ## 🗄️ Modelo de datos — Tablas y campos clave
 
-> **No se crean tablas nuevas**. Todo el UC5 se alimenta de las tablas existentes del modelo v4.1. Los nuevos índices (circularidad, score DPP, madurez) se calculan en las Queries CQRS.
+> **No se crean tablas nuevas**. Todo el módulo de Mapas de Calor se alimenta de las tablas existentes del modelo v4.1. Las métricas derivadas (frecuencia, índice de concentración, alertas) se calculan en las Queries CQRS y en `HeatMapAggregationService.cs`.
 
-| Tabla | Campos principales para este UC5 |
-|-------|----------------------------------|
-| `Residues` | `Id`, `ResidueType` (filtrar por `Product` y `ProductSpec`), `Name`, `Reference`, `IdLERCode`, `ReparabilityIndex`, `DisassemblyEase`, `ContainsHazardous`, `RecycledContentPercent`, `CompositionJson`, `PotentialLERCodesJson`, `MaterialsJson`, `IdProducer`, `ProductCategory`, `IsActive` |
-| `ProductSpecs` | `Id`, `ProductRef`, `IdResidue` (FK → Residues ProductSpec), `ProductUse`, `ProductCategory`, `IdProducer`, `Version`, `Hash` |
-| `ProductDeclaration` | `Id`, `IdProducer`, `Period`, `Year`, `State`, `OwnerId` |
-| `Products` | `Id`, `IdProductDeclaration`, `IdResidue` (FK → Residues Product), `Reference`, `Quantity`, `MeasureUnit` |
-| `EcoModulationRuleSets` | `Id`, `RuleSetName`, `Version`, `ValidFrom`, `ValidTo`, `Status` |
-| `EcoModulationRules` | `Id`, `RuleSetId`, `CriteriaJson`, `ImpactType` (Percent/Fixed/PerUnit), `ImpactValue` |
-| `Entities` | `Id`, `Name`, `EntityRole`, `ProvinceCode`, `MunicipalityCode` |
+| Tabla | Campos principales para este módulo |
+|-------|--------------------------------------|
+| `Entities` | `Id`, `Name`, `EntityRole`, `Latitude`, `Longitude`, `ProvinceCode`, `MunicipalityCode`, `CenterCode` |
+| `ServiceOrders` | `Id`, `Status`, `IdPickupPoint`, `IdIssuedBy`, `PlannedPickupStart`, `PlannedPickupEnd`, `WasteStream`, `IdLERCode`, `OwnerId` |
+| `WasteMoves` | `Id`, `IdSource`, `IdScrap`, `IdScrap2`, `ServiceOrderId`, `ServiceStatus`, `ActualPickupStart`, `ActualPickupEnd`, `PlannedPickupStart`, `OwnerId` |
+| `WasteMoveResidues` | `IdWasteMove`, `IdResidue`, `Weight`, `MeasureUnit`, `VehicleType`, `TransportInfo_TransportDistance`, `TransportInfo_TransportCarbonEmissions` |
+| `Residues` | `Id`, `Name`, `Reference`, `ResidueType`, `IdLERCode`, `IdProducer` |
+| `LERCodes` | `Id`, `Code`, `Description`, `IsDangerous`, `ChapterCode`, `SubChapterCode` |
+| `DUMZones` | `Id`, `ZoneCode`, `GeometryJson`, `Status` |
+| `DUMRestrictionRules` | `ZoneId`, `ConditionsJson`, `ActionType`, `ValidFrom`, `ValidTo` |
 | `Agreements` | `Id`, `IdScrap`, `IdCoordinator`, `IdPublicEntity` |
-| `Settlements` | `Id`, `IdScrap`, `AgreementId`, `Year`, `Month`, `Status` |
-| `SettlementLines` | `Id`, `SettlementId`, `IdLERCode`, `Weight`, `Amount` |
-| `LERCodes` | `Id`, `Code`, `Description`, `IsDangerous`, `IsRAEE` |
+| `EntryPlants` | `PlantEntryDate`, `NetWeight`, `ServiceOrderId`, `OwnerId` |
+| `Incidents` | `Id`, `Type`, `Severity`, `OpenedAt`, `ClosedAt`, `WasteMoveReference` |
 
 ---
 
 ## 🔒 Reglas de autorización y filtrado de datos
 
-> ⚠️ **CRÍTICO**: El acceso a estos dashboards **NO se hardcodea en código**. Se gestiona dinámicamente mediante el sistema `PageDefinitions`/`PagePermissions` existente, configurable desde la interfaz de administración `/security/page-permissions`. Las policies en código actúan como **mínimo de seguridad estático** (suelo).
+> **IMPORTANTE**: El acceso a estos dashboards se gestiona mediante el **sistema de autorización por pantalla configurable desde la interfaz de administración** (`/security/page-permissions`) utilizando las tablas `PageDefinitions` y `PagePermissions`. **No se hardcodea el acceso en código.** Las policies en código actúan como mínimo de seguridad estático; el control fino se delega al sistema dinámico de BD.
 
 | Perfil | Dashboard(s) accesible(s) | Filtrado de datos |
 |--------|---------------------------|-------------------|
-| `SCRAP` | UC5-A, UC5-C | Solo ve datos de productos vinculados a sus acuerdos (`Agreements.IdScrap = LinkedEntityId`). Los productores cuyas fichas visualiza son los adheridos a sus acuerdos. |
-| `PUBLIC_ENT` | UC5-B, UC5-C | Solo ve datos de SCRAPs que operan en su ámbito territorial (`Agreements.IdPublicEntity = LinkedEntityId` o `Entities.MunicipalityCode` de productores en su municipio). |
-| `COORDINATOR` | UC5-B, UC5-C | Ve transversalmente los SCRAPs vinculados a sus acuerdos (`Agreements.IdCoordinator = LinkedEntityId`). |
-| `DISPATCH_OFFICE` | UC5-A, UC5-C | Ve todos los datos del tenant (`OwnerId`). Acceso equivalente a ADMIN en cuanto a filtrado de datos. |
-| `ADMIN` | UC5-A, UC5-B, UC5-C | Sin restricciones dentro del tenant. Puede filtrar por cualquier SCRAP, productor o categoría. |
+| `SCRAP` | HM-A, HM-B | Solo ve datos de recogidas donde `WasteMoves.IdScrap = LinkedEntityId` OR `WasteMoves.IdScrap2 = LinkedEntityId`. |
+| `PUBLIC_ENT` | HM-C | Solo ve recogidas cuyo punto de recogida (`ServiceOrders.IdPickupPoint` → `Entities.MunicipalityCode`) pertenece a su municipio, o cuya SO fue emitida por su entidad (`ServiceOrders.IdIssuedBy = LinkedEntityId`). |
+| `DISPATCH_OFFICE` | HM-A, HM-B, HM-C | Ve todos los datos del tenant (`OwnerId`). Visión completa equivalente a ADMIN dentro de su ámbito operativo. |
+| `ADMIN` | HM-A, HM-B, HM-C | Sin restricciones dentro del tenant. Puede filtrar por cualquier SCRAP, entidad pública o municipio. |
 
-**Patrón de filtrado de datos**: usar `ICurrentUserService.LinkedEntityId` + `ICurrentUserService.IsInAnyProfile(...)` (ya implementado). Aplicar `IDataScopeService.ApplyScope()` en todos los Query handlers.
+**Patrón de filtrado de datos**: usar `ICurrentUserService.LinkedEntityId` + `ICurrentUserService.IsInAnyProfile(...)` (ya implementado).
 
-**Excepción para ADMIN y DISPATCH_OFFICE**: estos perfiles **deben ver todos los datos** del tenant sin restricción adicional de `LinkedEntityId`. El `ApplyScope` solo aplica `OwnerId` para ellos.
-
-**Control de acceso a pantallas**: los permisos se gestionan dinámicamente desde `/security/page-permissions` mediante el sistema `PageDefinitions`/`PagePermissions`. La tabla anterior documenta la **configuración recomendada por defecto** que el administrador debe aplicar tras el despliegue. Las policies en código actúan como mínimo de seguridad; el control fino se delega al sistema dinámico de BD.
+**Control de acceso a pantallas**: los permisos se gestionan dinámicamente desde `/security/page-permissions` mediante el sistema `PageDefinitions`/`PagePermissions`. La tabla anterior documenta la configuración recomendada por defecto. Las policies en código (`CanViewHeatMapWasteDensity`, etc.) actúan como mínimo de seguridad estático.
 
 ---
 
@@ -2670,73 +2622,70 @@ Este caso de uso se alinea con iniciativas europeas como el DPP y con la arquite
 ### Capa Application (CQRS)
 
 ```
-Application/Features/Ecomodulation/
+Application/Features/Reporting/HeatMaps/
 ├── Queries/
-│   ├── GetEcomodulationScrapOverviewQuery.cs       → UC5-A (SCRAP — proveedor del dato)
-│   ├── GetEcomodulationRegulatoryViewQuery.cs       → UC5-B (Regulador / Certificador)
-│   ├── GetEcomodulationDppReadinessQuery.cs          → UC5-C (DPP — vista Pasaporte Digital)
-│   ├── GetEcomodulationRuleImpactQuery.cs            → Widget compartido: impacto reglas eco-modulación
-│   ├── GetCircularityIndexQuery.cs                   → Widget compartido: índice de circularidad
-│   └── ExportEcomodulationDataToExcelQuery.cs        → Exportación XLSX (patrón ClosedXML existente)
+│   ├── GetWasteDensityHeatMapQuery.cs       → HM-A (SCRAP)
+│   ├── GetWastePatternAnalysisQuery.cs      → HM-B (SCRAP)
+│   ├── GetPublicEntityHeatMapQuery.cs       → HM-C (PUBLIC_ENT)
+│   ├── GetWasteFrequencyByPickupPointQuery.cs → Widget compartido
+│   ├── GetSeasonalityAnalysisQuery.cs       → Widget compartido
+│   └── ExportHeatMapDataToExcelQuery.cs     → Exportación XLSX (patrón ClosedXML)
 ├── DTOs/
-│   ├── EcomodulationScrapOverviewDto.cs
-│   ├── EcomodulationRegulatoryViewDto.cs
-│   ├── EcomodulationDppReadinessDto.cs
-│   ├── EcomodulationRuleImpactDto.cs
-│   ├── CircularityIndexDto.cs
-│   └── EcomodulationExportRowDto.cs
+│   ├── WasteDensityHeatMapDto.cs
+│   ├── WastePatternAnalysisDto.cs
+│   ├── PublicEntityHeatMapDto.cs
+│   ├── WasteFrequencyByPickupPointDto.cs
+│   ├── SeasonalityAnalysisDto.cs
+│   └── HeatMapExportDto.cs
 └── Services/
-    └── EcomodulationRecommendationEngine.cs          → Motor de recomendaciones de ecodiseño
+    └── HeatMapAggregationService.cs         → Servicio de agregación geoespacial y alertas
 ```
 
 ### Capa Web (Blazor)
 
 ```
-Web/Components/Pages/Reporting/Ecomodulación/
-├── ScrapOverview.razor            → /reporting/ecomodulation/scrap-overview
-├── RegulatoryView.razor           → /reporting/ecomodulation/regulatory-view
-└── DppReadiness.razor             → /reporting/ecomodulation/dpp-readiness
+Web/Components/Pages/Reporting/HeatMaps/
+├── WasteDensityHeatMap.razor                → /reporting/heat-maps/waste-density
+├── WastePatternAnalysis.razor               → /reporting/heat-maps/pattern-analysis
+└── PublicEntityHeatMapView.razor            → /reporting/heat-maps/public-view
 ```
 
-### Componentes reutilizables
+### Componentes reutilizables (complementan los ya existentes)
 
-```
-Web/Components/Pages/Reporting/Ecomodulación/Components/
-├── CircularityGauge.razor         → gauge de índice de circularidad por producto/categoría
-├── EcomodulationRuleCard.razor    → card de regla de eco-modulación con impacto económico
-├── DppComplianceTable.razor       → tabla de preparación DPP por producto
-├── MaterialCompositionChart.razor → gráfico de composición de materiales (ApexCharts)
-└── EcodesignScorecard.razor       → scorecard de ecodiseño (reparabilidad, desmontaje, reciclado)
-```
+- `WasteHeatMapLayer.razor` — capa de heatmap de densidad sobre mapa Leaflet/Mapbox.
+- `SeasonalityChart.razor` — gráfico de estacionalidad (line/area chart).
+- `FrequencyByPointTable.razor` — tabla de frecuencia por punto de recogida.
+- `WasteTypologyDonut.razor` — donut de tipología de residuos por código LER.
 
-> **Reutilizar** de los dashboards existentes: `EmissionsCard.razor`, `IncidentsBadge.razor`.
+> **Reutilizar** de los dashboards existentes: `WasteVolumeMap.razor`, `DUMComplianceDonut.razor`, `EmissionsCard.razor`.
 
 ---
 
 ## 📋 Criterios de aceptación
 
-1. Cada dashboard respeta el filtrado multi-tenant (`OwnerId`) y por perfil (`LinkedEntityId`), con la excepción explícita de `ADMIN` y `DISPATCH_OFFICE` que ven todos los datos del tenant.
+1. Cada dashboard respeta el filtrado multi-tenant (`OwnerId`) y por perfil (`LinkedEntityId`).
 2. Los filtros globales persisten en la URL (query string) para permitir compartir enlaces.
 3. Los gráficos usan **ApexCharts** (consistente con el módulo de KPIs existente).
-4. Las consultas SQL usan índices existentes y no generan table scans sobre tablas operativas.
-5. Exportación a XLSX disponible en UC5-A (patrón ya implementado con ClosedXML en `ExportKpisToExcelQuery.cs`).
-6. Responsive mobile-first (operadores de campo).
-7. Modo oscuro/claro (consistente con `MainLayout.razor`).
-8. El **índice de circularidad** usa pesos configurables (en `appsettings.json`, no hardcodeados): 30% RecycledContentPercent + 25% ReparabilityIndex + 20% DisassemblyEase + 15% !ContainsHazardous + 10% PotentialLERCodesJson.
-9. El **score DPP** se calcula en el backend (Query handler), no en el cliente.
-10. Las recomendaciones de ecodiseño se generan en el backend (`EcomodulationRecommendationEngine.cs`), no en el cliente.
-11. Los campos JSON (`CompositionJson`, `PotentialLERCodesJson`, `MaterialsJson`, `CriteriaJson`) se parsean en la capa Application, no en SQL.
+4. El mapa interactivo reutiliza el componente de mapa ya implementado, añadiendo la capa de heatmap de densidad (`WasteHeatMapLayer.razor`).
+5. Las consultas SQL usan índices existentes y no generan table scans sobre tablas operativas.
+6. Exportación a XLSX disponible en HM-A y HM-C (patrón ya implementado con ClosedXML en `ExportKpisToExcelQuery.cs`).
+7. Responsive mobile-first.
+8. Modo oscuro/claro (consistente con `MainLayout.razor`).
+9. Las alertas de acumulación se generan en el backend (`HeatMapAggregationService.cs`), no en el cliente.
+10. Los umbrales de alertas son configurables (en `appsettings.json` o como parámetros del sistema).
+11. **No se crean nuevas entidades de dominio**. Todo se implementa con las entidades del modelo v4.1 existente.
+12. El acceso a cada dashboard **no está hardcodeado en código**. Se gestiona mediante el sistema de autorización por pantalla (`PageDefinitions`/`PagePermissions`) configurable desde `/security/page-permissions`.
+13. Cada usuario solo ve datos de las entidades asignadas a él o creadas por él, a excepción de `ADMIN` y `DISPATCH_OFFICE` que ven todos los datos del tenant.
 
 ---
 
 ## 🔗 Integración con módulos existentes
 
-- **KPIs regulatorios (§5.2)**: el KPI de "tasa de reciclaje" y "preparación para reutilización" ya existe en `/kpis`; aquí se desglosa por producto y se cruza con datos de ecodiseño.
-- **Declaraciones de producto (§10)**: las fichas de ecodiseño se nutren de las declaraciones de producto (`ProductDeclaration` + `Products`). Enlace cruzado desde UC5-A a `/product-declarations`.
-- **Liquidaciones (§2.2)**: el impacto económico de las reglas de eco-modulación se calcula sobre `SettlementLines`. Enlace desde el widget de impacto económico a `/settlements/{id}`.
-- **Trazabilidad (§5.1)**: desde cualquier producto en los dashboards UC5, enlace directo a `/traceability?term={ProductRef}`.
-- **Data Space / EcoDataNet (§5.5 y §11)**: el dataset exportable del UC5-A está preparado para publicación vía conectores EDC (`Users.PortalEDCProvider`).
-- **Dashboard principal (§0.1)**: los widgets de circularidad y score DPP pueden integrarse como cards adicionales en la home, condicionados al perfil.
+- **Dashboard principal (§0.1)**: los widgets de densidad y frecuencia pueden integrarse como cards adicionales en la home, condicionados al perfil.
+- **Dashboard Optimización Logística (UC2)**: el mapa de calor comparte fuentes de datos con el mapa interactivo del Dashboard 1. Reutilizar componentes: `WasteVolumeMap.razor`, `DUMComplianceDonut.razor`.
+- **Dashboard Movilidad Urbana (UC3)**: los datos de densidad y frecuencia complementan el análisis de impacto en movilidad. Enlace cruzado desde HM-A al UC3-A para correlacionar densidad con conflicto de movilidad.
+- **Trazabilidad (§5.1)**: desde cualquier punto de recogida en los mapas de calor, enlace directo a `/traceability?term={WasteMoveReference}`.
+- **KPIs regulatorios (§5.2)**: los KPIs de volumen por zona complementan los indicadores regulatorios existentes en `/kpis`.
 
 
 ---
@@ -2765,7 +2714,6 @@ Web/Components/Pages/Reporting/Ecomodulación/Components/
 | Incidents | CRUD | C+R | C+R | C+R | C+R | C+R | C+R | C+R |
 | DUMZones / Rules | CRUD | R | R | R | – | – | R | R |
 | Users / Profiles | CRUD (tenant) | R (sus ops) | – | – | – | – | – | – |
-| Ecomodulación (UC5 — dashboards) | R | R (suyos) | – | – | – | – | R (su ámbito) | R (sus acuerdos) |
 
 Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **–**=sin acceso.
 
@@ -2862,9 +2810,9 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 | **Dashboard Optimización Logística** | `WasteMoveResidues`, `DUMZones`, `Entities` | — | — | R | — | — | — | R | — | R |
 | **Dashboard Monitorización Pública** | `WasteMoves`, `Settlements`, `MarketShares` | — | — | — | R | — | — | — | — | R |
 | **Dashboard Panel Operativo** | `ServiceOrders`, `WasteMoves`, `EntryCACs`, `EntryPlants`, `Incidents` | — | — | — | — | R | R | — | R | R |
-| **Ecomod. Visión SCRAP (UC5-A)** | `Residues`, `ProductSpecs`, `EcoModulationRules` | — | — | **R-P** | — | — | — | — | R | R |
-| **Ecomod. Vista Regulatoria (UC5-B)** | `Residues`, `ProductSpecs`, `Entities` | — | — | — | **R-P** | — | — | **R-P** | — | R |
-| **Ecomod. Preparación DPP (UC5-C)** | `Residues`, `ProductSpecs` | — | — | **R-P** | **R-P** | — | — | **R-P** | R | R |
+| **Dash. Mapa Calor Densidad** | `WasteMoveResidues`, `Entities`, `LERCodes` | — | — | R | — | — | — | — | R | R |
+| **Dash. Mapa Calor Patrones** | `WasteMoveResidues`, `ServiceOrders`, `LERCodes` | — | — | R | — | — | — | — | R | R |
+| **Dash. Mapa Calor Público** | `WasteMoveResidues`, `Entities`, `LERCodes` | — | — | — | R | — | — | — | R | R |
 
 **Justificación:**
 - **Trazabilidad y Vista 360°**: Todos los perfiles acceden pero ven solo los traslados en los que participan. `SCRAP`, `PUBLIC_ENT`, `COORDINATOR`, `DISPATCH_OFFICE` y `ADMIN` ven transversalmente.
@@ -2873,9 +2821,9 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 - **Dashboard Optimización Logística** (`/logistics/optimization`): Policy `CanViewLogisticsOptimization`. Orientado a SCRAP y COORDINATOR para optimizar rutas, visualizar zonas DUM y analizar eficiencia. `SCRAP` ve solo sus traslados (`IdScrap`/`IdScrap2`).
 - **Dashboard Monitorización Pública** (`/logistics/public-monitoring`): Policy `CanViewPublicMonitoring`. Exclusivo para entidades públicas: servicios SCRAP, liquidaciones y objetivos municipales de sus acuerdos.
 - **Dashboard Panel Operativo** (`/logistics/operations`): Policy `CanViewOperationalDashboard`. Multirrol (se adapta al perfil activo): SO pendientes y planificación semanal para DISPATCH_OFFICE; stock y tickets para CAC_OP; balance de tratamiento e impropios para PLANT_OP.
-- **Ecomod. Visión SCRAP** (`/reporting/ecomodulation/scrap-overview`): Policy `CanViewEcomodulationScrapOverview`. Los SCRAPs como proveedores del dato en el ecosistema Data Space controlan la calidad de fichas de ecodiseño y monitorizan el impacto económico de las reglas de eco-modulación. `SCRAP` ve solo productos vinculados a sus acuerdos. `DISPATCH_OFFICE` y `ADMIN` ven todos los datos del tenant.
-- **Ecomod. Vista Regulatoria** (`/reporting/ecomodulation/regulatory-view`): Policy `CanViewEcomodulationRegulatoryView`. Autoridades reguladoras, entidades públicas y coordinadores verifican el cumplimiento de criterios de ecodiseño y evalúan la madurez del sector. `COORDINATOR` ve transversalmente los SCRAPs de sus acuerdos. `PUBLIC_ENT` ve los SCRAPs de su ámbito territorial.
-- **Ecomod. Preparación DPP** (`/reporting/ecomodulation/dpp-readiness`): Policy `CanViewEcomodulationDppReadiness`. Evalúa el grado de preparación para el Pasaporte Digital de Producto europeo. Vista transversal para todos los perfiles con responsabilidad de supervisión. `SCRAP` ve solo sus datos; `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
+- **Dashboard Mapa Calor Densidad** (`/reporting/heat-maps/waste-density`): Policy `CanViewHeatMapWasteDensity`. Orientado a SCRAP para visualizar la distribución geográfica de densidad de residuos. `SCRAP` ve solo recogidas de sus traslados (`IdScrap`/`IdScrap2`). `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
+- **Dashboard Mapa Calor Patrones** (`/reporting/heat-maps/pattern-analysis`): Policy `CanViewHeatMapPatternAnalysis`. Análisis temporal de estacionalidad y patrones para SCRAP. Mismas reglas de filtrado que Mapa Calor Densidad.
+- **Dashboard Mapa Calor Público** (`/reporting/heat-maps/public-view`): Policy `CanViewHeatMapPublicView`. Los entes públicos ven mapas de calor de su municipio (`Entities.MunicipalityCode` del punto de recogida = municipio de su entidad, o `ServiceOrders.IdIssuedBy = LinkedEntityId`). `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
 
 ---
 
@@ -2921,9 +2869,9 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 | **Dash. Optimización Logística** | — | — | **R** | — | — | — | **R** | — | R |
 | **Dash. Monitorización Pública** | — | — | — | **R** | — | — | — | — | R |
 | **Dash. Panel Operativo** | — | — | — | — | **R** | **R** | — | **R** | R |
-| **Ecomod. Visión SCRAP (UC5-A)** | — | — | **R-P** | — | — | — | — | R | R |
-| **Ecomod. Vista Regulatoria (UC5-B)** | — | — | — | **R-P** | — | — | **R-P** | — | R |
-| **Ecomod. Preparación DPP (UC5-C)** | — | — | **R-P** | **R-P** | — | — | **R-P** | R | R |
+| **Dash. Mapa Calor Densidad** | — | — | **R** | — | — | — | — | **R** | R |
+| **Dash. Mapa Calor Patrones** | — | — | **R** | — | — | — | — | **R** | R |
+| **Dash. Mapa Calor Público** | — | — | — | **R** | — | — | — | **R** | R |
 | Usuarios | — | — | R-P | — | — | — | — | — | **CRUD** |
 | Perfiles | — | — | R | — | — | — | — | — | **CRUD** |
 
@@ -3007,79 +2955,6 @@ Se añaden los siguientes ítems:
 - [ ] Notificaciones al cambiar estado (EMITIDO → notifica a ADMIN; VALIDADO/RECHAZADO → notifica a PRODUCER).
 - [ ] Template de importación CSV/XLSX disponible para descarga.
 
----
-
-## Actualización de la Matriz de Permisos (§8) — Módulo Ecomodulación (UC5)
-
-Las siguientes filas se añaden a la tabla de la sección 8:
-
-| Funcionalidad | ADMIN | SCRAP | PRODUCER | CARRIER | PLANT_OP | CAC_OP | PUBLIC_ENT | COORDINATOR |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| Ecomodulación — Visión SCRAP (UC5-A) | R | R (suyos) | – | – | – | – | – | – |
-| Ecomodulación — Vista Regulatoria (UC5-B) | R | – | – | – | – | – | R (su ámbito) | R (sus acuerdos) |
-| Ecomodulación — Preparación DPP (UC5-C) | R | R (suyos) | – | – | – | – | R (su ámbito) | R (sus acuerdos) |
-
----
-
-### Policies de autorización nuevas (§7.1)
-
-```
-Policy                                  Perfiles permitidos
-─────────────────────────────────────── ─────────────────────────────────────
-CanViewEcomodulationScrapOverview       SCRAP, DISPATCH_OFFICE, ADMIN
-CanViewEcomodulationRegulatoryView      PUBLIC_ENT, COORDINATOR, ADMIN
-CanViewEcomodulationDppReadiness        SCRAP, COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN
-```
-
-### Filtro por datos propios — Ecomodulación
-
-| Perfil | Campo de filtro | Lógica |
-|---|---|---|
-| `SCRAP` | `Agreements.IdScrap` cruzado con `ProductSpecs.IdProducer` | Solo ve fichas de ecodiseño de productores adheridos a sus acuerdos |
-| `PUBLIC_ENT` | `Agreements.IdPublicEntity` o `Entities.MunicipalityCode` | Solo ve datos de SCRAPs que operan en su ámbito territorial |
-| `COORDINATOR` | `Agreements.IdCoordinator` | Ve transversalmente los SCRAPs vinculados a sus acuerdos |
-| `DISPATCH_OFFICE` | `OwnerId` (sin restricción adicional) | Ve todos los datos del tenant, al igual que ADMIN |
-
-### Actualización de `PageDiscoveryService.InferModuleName()`
-
-Añadir el nuevo caso en `Infrastructure/Services/PageDiscoveryService.cs`:
-
-```
-| `Ecomodulation` · `/reporting/ecomodulation/` | Ecomodulación |
-```
-
-### Actualización de `PageDiscoveryService.HumanizeName()`
-
-Añadir las traducciones:
-- `ScrapOverview` → `"Ecomodulación — Visión SCRAP"`
-- `RegulatoryView` → `"Ecomodulación — Vista Regulatoria"`
-- `DppReadiness` → `"Ecomodulación — Preparación DPP"`
-
-### Parámetros configurables en `appsettings.json`
-
-```json
-{
-  "Ecomodulation": {
-    "CircularityIndex": {
-      "WeightRecycledContentPercent": 30,
-      "WeightReparabilityIndex": 25,
-      "WeightDisassemblyEase": 20,
-      "WeightNoHazardous": 15,
-      "WeightPotentialLERCodes": 10
-    },
-    "DppRequiredFields": [
-      "Name", "Reference", "IdLERCode", "ReparabilityIndex",
-      "DisassemblyEase", "RecycledContentPercent", "CompositionJson",
-      "ContainsHazardous", "PotentialLERCodesJson", "IdProducer"
-    ],
-    "Alerts": {
-      "MinCoverageThreshold": 50,
-      "MinCircularityThreshold": 40
-    }
-  }
-}
-```
-
 
 ---
 
@@ -3136,7 +3011,7 @@ El servicio `PageDiscoveryService.InferModuleName()` clasifica cada página en u
 | Namespace / Ruta | Módulo asignado |
 |---|---|
 | `Security` · `/users` · `/profiles` · `/security` | Seguridad |
-| `Reporting` · `/traceability` · `/kpis` · `/documents` | Reporting |
+| `Reporting` · `/traceability` · `/kpis` · `/documents` · `/reporting/heat-maps/` | Reporting |
 | `Logistics` · `/logistics/` | Dashboards Logísticos |
 | `Sustainability` · `/incidents` · `/dum-zones` · `/emissions` · `/plant-energies` | Sostenibilidad |
 | `/entities` · `/ler-codes` · `/residues` · `/treatment-operations` | Configuración |
@@ -3144,12 +3019,19 @@ El servicio `PageDiscoveryService.InferModuleName()` clasifica cada página en u
 | `/agreements` · `/settlements` · `/market-shares` | Contratos y Liquidaciones |
 | `/product-declarations` | Declaraciones de Producto |
 | `Mobility` · `/mobility/` | Movilidad Urbana |
-| `Ecomodulation` · `/reporting/ecomodulation/` | Ecomodulación |
 | `EcoDataNet` · `/ecodatanet/` | EcoDataNet |
 
 Si una ruta nueva no encaja en ningún módulo conocido, actualizar `InferModuleName()` en `Infrastructure/Services/PageDiscoveryService.cs`.
 
 El método `PageDiscoveryService.HumanizeName()` convierte nombres de componentes en nombres legibles en español. Si el nombre no es autoexplicativo, se puede actualizar el diccionario o renombrarlo manualmente desde `/security/page-permissions`.
+
+Nombres legibles recomendados para las pantallas de Mapas de Calor:
+
+| Componente | Nombre legible |
+|---|---|
+| `WasteDensityHeatMap` | `Mapa de Calor — Densidad de Residuos` |
+| `WastePatternAnalysis` | `Mapa de Calor — Patrones y Estacionalidad` |
+| `PublicEntityHeatMapView` | `Mapa de Calor — Vista Entidad Pública` |
 
 ---
 
@@ -3259,6 +3141,27 @@ Se añaden los siguientes ítems:
 - [ ] Template de importación CSV/XLSX disponible para descarga.
 
 
+### Checklist adicional — Módulo de Mapas de Calor
+
+Se añaden los siguientes ítems:
+
+- [ ] Policies registradas en `PolicyConstants.cs`: `CanViewHeatMapWasteDensity`, `CanViewHeatMapPatternAnalysis`, `CanViewHeatMapPublicView`.
+- [ ] Policies registradas en `Program.cs` con los perfiles indicados.
+- [ ] Páginas Blazor creadas en `Web/Components/Pages/Reporting/HeatMaps/` con `@attribute [Authorize(Policy = ...)]`.
+- [ ] Queries CQRS creadas en `Application/Features/Reporting/HeatMaps/Queries/`.
+- [ ] DTOs creados en `Application/Features/Reporting/HeatMaps/DTOs/`.
+- [ ] `HeatMapAggregationService.cs` implementado con motor de alertas de acumulación.
+- [ ] Componentes reutilizables creados en `Web/Components/Shared/HeatMaps/`.
+- [ ] Entradas en `NavMenu.razor` en sección Reporting con consulta a `IPagePermissionService`.
+- [ ] `InferModuleName()` actualizado para reconocer `/reporting/heat-maps/` → Reporting (si no se infiere automáticamente).
+- [ ] `HumanizeName()` actualizado con nombres legibles en español para los 3 componentes.
+- [ ] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
+- [ ] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PUBLIC_ENT (MunicipalityCode/IdIssuedBy).
+- [ ] Umbrales de alertas configurables en `appsettings.json`.
+- [ ] Exportación XLSX implementada en HM-A y HM-C (patrón ClosedXML).
+- [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
+
+
 ---
 
-*Documento unificado generado a partir de: Mapa_Funcionalidades_GreenTransit.md, Mapa_Autorizacion_GreenTransit.md, Modelo_de_Datos.md, PATRON_AUTORIZACION_PAGINAS.md, Dashboard_UC2_Optimizacion_RAEE.md, Dashboard_UC3_Movilidad_Urbana.md, Dashboard_UC5_Ecomodulacion.md.*
+*Documento unificado generado a partir de: Mapa_Funcionalidades_GreenTransit.md, Mapa_Autorizacion_GreenTransit.md, Modelo_de_Datos.md, PATRON_AUTORIZACION_PAGINAS.md, Dashboard_UC2_Optimizacion_RAEE.md, Dashboard_UC3_Movilidad_Urbana.md, Dashboard_Mapas_de_Calor.md.*

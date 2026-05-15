@@ -147,6 +147,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.RegulatoryTargets
                 .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.ProductSpecs
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
             await _db.Residues
                 .Where(x => x.SourceSystem == Seed).ExecuteDeleteAsync(ct);
 
@@ -186,10 +188,155 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     private async Task Phase0_CataloguesAsync(CancellationToken ct)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        await SeedGeographyAsync(ct);
         await SeedTreatmentOperationsAsync(ct);
         await SeedLerCodesAsync(ct);
         await SeedEmissionFactorSetAsync(ct);
         _log.LogInformation("  Fase 0 completada en {Ms}ms", sw.ElapsedMilliseconds);
+    }
+
+    private async Task SeedGeographyAsync(CancellationToken ct)
+    {
+        // Solo insertar si no existe ningún municipio de los usados en el sandbox
+        if (await _db.Municipalities.AnyAsync(m => m.Code == "28079", ct)) return;
+
+        // ── País ─────────────────────────────────────────────────────────────
+        var country = await _db.Countries.FirstOrDefaultAsync(c => c.Code == "ES", ct);
+        if (country is null)
+        {
+            country = new Country
+            {
+                Ref  = "España",
+                Code = "ES",
+                MunicipalityDataLinkedRequired = false,
+                MunicipalityDataRequired       = false,
+                UE   = true
+            };
+            _db.Countries.Add(country);
+            await _db.SaveChangesAsync(ct);
+        }
+
+        // ── Comunidades Autónomas (TerritoryState) ────────────────────────────
+        // Code = código autonómico INE de 2 dígitos
+        var stateDefs = new (string Ref, string Code)[]
+        {
+            ("Aragón",                    "AR"),
+            ("Comunidad de Madrid",       "MD"),
+            ("Cataluña",                  "CT"),
+            ("Andalucía",                 "AN"),
+            ("Comunitat Valenciana",      "VC"),
+            ("País Vasco",                "PV"),
+            ("Región de Murcia",          "MC"),
+            ("Castilla y León",           "CL"),
+            ("Illes Balears",             "IB"),
+            ("Cantabria",                 "CB"),
+            ("Comunidad Foral de Navarra","NC"),
+            ("La Rioja",                  "RI"),
+            ("Principado de Asturias",    "AS"),
+            ("Galicia",                   "GA"),
+            ("Castilla-La Mancha",        "CM"),
+            ("Extremadura",               "EX"),
+        };
+
+        var existingStateCodes = await _db.TerritoryStates
+            .Where(s => s.IdCountry == country.Id)
+            .Select(s => s.Code)
+            .ToHashSetAsync(ct);
+
+        var states = stateDefs
+            .Where(d => !existingStateCodes.Contains(d.Code))
+            .Select(d => new TerritoryState { IdCountry = country.Id, Ref = d.Ref, Code = d.Code, Name = d.Ref })
+            .ToList();
+        _db.TerritoryStates.AddRange(states);
+        await _db.SaveChangesAsync(ct);
+
+        var stateByCode = await _db.TerritoryStates
+            .Where(s => s.IdCountry == country.Id)
+            .ToDictionaryAsync(s => s.Code, ct);
+
+        // ── Provincias ────────────────────────────────────────────────────────
+        // (stateCode, provinceCode, provinceName)
+        var provinceDefs = new (string StateCode, string Code, string Name)[]
+        {
+            ("MD", "28", "Madrid"),
+            ("CT", "08", "Barcelona"),
+            ("AN", "41", "Sevilla"),
+            ("VC", "46", "Valencia"),
+            ("PV", "48", "Bizkaia"),
+            ("AN", "29", "Málaga"),
+            ("MC", "30", "Murcia"),
+            ("CL", "47", "Valladolid"),
+            ("IB", "07", "Illes Balears"),
+            ("VC", "03", "Alicante"),
+            ("AN", "14", "Córdoba"),
+            ("AN", "18", "Granada"),
+            ("CB", "39", "Cantabria"),
+            ("NC", "31", "Navarra"),
+            ("RI", "26", "La Rioja"),
+            ("AS", "33", "Asturias"),
+            ("GA", "15", "A Coruña"),
+            ("CM", "45", "Toledo"),
+            ("EX", "06", "Badajoz"),
+            ("AR", "50", "Zaragoza"),
+        };
+
+        var existingProvCodes = await _db.Provinces.Select(p => p.Code).ToHashSetAsync(ct);
+        var provinces = provinceDefs
+            .Where(d => !existingProvCodes.Contains(d.Code) && stateByCode.ContainsKey(d.StateCode))
+            .Select(d => new Province
+            {
+                IdState = stateByCode[d.StateCode].Id,
+                Ref     = d.Name,
+                Code    = d.Code,
+                Name    = d.Name
+            })
+            .ToList();
+        _db.Provinces.AddRange(provinces);
+        await _db.SaveChangesAsync(ct);
+
+        var provById = await _db.Provinces
+            .Where(p => provinceDefs.Select(d => d.Code).Contains(p.Code))
+            .ToDictionaryAsync(p => p.Code, ct);
+
+        // ── Municipios ────────────────────────────────────────────────────────
+        var municipalityDefs = new (string ProvCode, string Code, string Name)[]
+        {
+            ("28", "28079", "Madrid"),
+            ("08", "08019", "Barcelona"),
+            ("41", "41091", "Sevilla"),
+            ("46", "46250", "Valencia"),
+            ("48", "48020", "Bilbao"),
+            ("29", "29067", "Málaga"),
+            ("30", "30030", "Murcia"),
+            ("47", "47186", "Valladolid"),
+            ("07", "07040", "Palma"),
+            ("03", "03014", "Alicante"),
+            ("14", "14021", "Córdoba"),
+            ("18", "18087", "Granada"),
+            ("39", "39075", "Santander"),
+            ("31", "31201", "Pamplona"),
+            ("26", "26089", "Logroño"),
+            ("33", "33044", "Oviedo"),
+            ("15", "15030", "A Coruña"),
+            ("45", "45168", "Toledo"),
+            ("06", "06015", "Badajoz"),
+            ("50", "50297", "Zaragoza"),
+        };
+
+        var existingMunCodes = await _db.Municipalities.Select(m => m.Code).ToHashSetAsync(ct);
+        var municipalities = municipalityDefs
+            .Where(d => !existingMunCodes.Contains(d.Code) && provById.ContainsKey(d.ProvCode))
+            .Select(d => new Municipality
+            {
+                IdProvince = provById[d.ProvCode].Id,
+                Code       = d.Code,
+                Name       = d.Name
+            })
+            .ToList();
+        _db.Municipalities.AddRange(municipalities);
+        await _db.SaveChangesAsync(ct);
+
+        _log.LogInformation("    Geography sandbox: {N} municipios insertados", municipalities.Count);
     }
 
     private async Task SeedTreatmentOperationsAsync(CancellationToken ct)

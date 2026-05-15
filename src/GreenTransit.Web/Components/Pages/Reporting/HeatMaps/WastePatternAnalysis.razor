@@ -1,0 +1,318 @@
+@page "/reporting/heat-maps/pattern-analysis"
+@attribute [Authorize(Policy = PolicyConstants.CanViewHeatMapPatternAnalysis)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Geography.DTOs
+@using GreenTransit.Application.Features.Geography.Queries
+@using GreenTransit.Application.Features.Reporting.HeatMaps.DTOs
+@using GreenTransit.Application.Features.Reporting.HeatMaps.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
+@inject ILogger<WastePatternAnalysis> Logger
+
+<PageTitle>Mapa de Calor — Patrones y Estacionalidad — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-calendar3 me-2"></i>Mapa de Calor — Patrones y Estacionalidad
+        </h1>
+        <p class="text-muted mb-0">Dashboard HM-B · SCRAP · @_filterYear</p>
+        <p class="text-muted small mt-1">
+            Análisis temporal de los patrones de generación de residuos: estacionalidad,
+            tendencias, picos y valles para optimizar la planificación de recogidas.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Provincia</label>
+        <select class="form-select form-select-sm" @bind="_filterProvinceCode" @bind:after="RefreshAsync">
+            <option value="">Todas las provincias</option>
+            @foreach (var p in _provinces)
+            {
+                <option value="@p.Code">@p.Name</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Código LER</label>
+        <input class="form-control form-control-sm" @bind="_filterLerCode" @bind:after="RefreshAsync"
+               placeholder="ej. 16" />
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_data is null)
+{
+    <div class="alert alert-warning">No se han podido cargar los datos.</div>
+}
+else
+{
+    @* ── KPIs: Índice de concentración y alertas ─────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-md-4">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label">Índice de concentración geográfica (Gini)</div>
+                    <div class="kpi-value">@_data.ConcentrationIndex.ToString("F4")</div>
+                    @if (_data.ConcentrationIndexVariationPct != 0)
+                    {
+                        <div class="kpi-variation @(_data.ConcentrationIndexVariationPct > 0 ? "text-danger" : "text-success")">
+                            @(_data.ConcentrationIndexVariationPct > 0 ? "▲" : "▼")
+                            @Math.Abs(_data.ConcentrationIndexVariationPct).ToString("F1")% vs año anterior
+                        </div>
+                    }
+                    <small class="text-muted">
+                        Valor alto = residuos concentrados en pocos puntos (mayor riesgo de acumulación).
+                    </small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-md-4">
+            <div class="card kpi-card h-100 @(_data.Alerts.Any() ? "border-warning" : "")">
+                <div class="card-body">
+                    <div class="kpi-label">Alertas de acumulación activas</div>
+                    <div class="kpi-value @(_data.Alerts.Any() ? "text-warning" : "text-success")">
+                        @_data.Alerts.Count
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Panel de alertas ─────────────────────────────────────────────────────── *@
+    @if (_data.Alerts.Any())
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <div class="card border-warning">
+                    <div class="card-header text-warning fw-semibold">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>Alertas de acumulación
+                    </div>
+                    <div class="card-body p-0">
+                        <ul class="list-group list-group-flush">
+                            @foreach (var alert in _data.Alerts)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <span class="badge @AlertSeverityClass(alert.Severity) me-2">@SeverityLabel(alert.Severity)</span>
+                                        @alert.Message
+                                    </div>
+                                    <small class="text-muted text-nowrap ms-3">@alert.GeneratedAt.ToString("dd/MM/yyyy HH:mm")</small>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Heatmap temporal 12 meses × capítulo LER ────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-grid-3x3 me-1"></i>
+                    Heatmap de generación de residuos (12 meses × tipología LER)
+                </div>
+                <div class="card-body">
+                    @if (!_data.TemporalHeatMap.Any())
+                    {
+                        <p class="text-muted text-center py-4">Sin datos para el periodo seleccionado.</p>
+                    }
+                    else
+                    {
+                        <div id="chart-temporal-heatmap-hmb" style="min-height:320px;"></div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Tendencia de volumen mensual ─────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-graph-up-arrow me-1"></i>
+                    Tendencia de volumen mensual — Top 5 tipologías (con media móvil 3 meses)
+                </div>
+                <div class="card-body">
+                    @if (!_data.MonthlyTrends.Any())
+                    {
+                        <p class="text-muted text-center py-4">Sin datos de tendencia para el año seleccionado.</p>
+                    }
+                    else
+                    {
+                        <div id="chart-monthly-trend-hmb" style="min-height:280px;"></div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Heatmap semanal 7×24 ────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-calendar-week me-1"></i>
+                    Heatmap semanal de frecuencia de recogidas (día × franja horaria)
+                </div>
+                <div class="card-body">
+                    @if (!_data.WeeklyFrequency.Any())
+                    {
+                        <p class="text-muted text-center py-4">Sin datos de frecuencia horaria para el año seleccionado.</p>
+                    }
+                    else
+                    {
+                        <div id="chart-weekly-heatmap-hmb" style="min-height:320px;"></div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private WastePatternAnalysisDto? _data;
+    private bool    _loading       = true;
+    private bool    _chartsRendered = false;
+    private int     _filterYear    = DateTime.Now.Year;
+    private string? _filterProvinceCode;
+    private string? _filterLerCode;
+    private IReadOnlyList<ProvinceDto> _provinces = [];
+
+    private DotNetObjectReference<WastePatternAnalysis>? _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dotNetRef = DotNetObjectReference.Create(this);
+        _provinces = (await Mediator.Send(new GetAllProvincesQuery())).ToList();
+        await RefreshAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_data is not null && !_loading && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _loading        = true;
+        _chartsRendered = false;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetWastePatternAnalysisQuery(
+                Year         : _filterYear,
+                ProvinceCode : _filterProvinceCode,
+                LerCodeFilter: _filterLerCode));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar datos de patrones de residuos");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            // Heatmap temporal: matriz mes × capítulo LER
+            if (_data.TemporalHeatMap.Any())
+            {
+                var tempData = _data.TemporalHeatMap
+                    .Select(c => new { month = c.Month, chapter = c.LerChapter, kg = (double)c.TotalKg })
+                    .ToArray();
+                await JS.InvokeVoidAsync("heatMapCharts.renderTemporalHeatMap",
+                    "chart-temporal-heatmap-hmb", tempData);
+            }
+
+            // Tendencia mensual multi-serie con media móvil
+            if (_data.MonthlyTrends.Any())
+            {
+                var seriesData = _data.MonthlyTrends.Select(t => new
+                {
+                    name    = t.LerCode,
+                    data    = t.MonthlyKg.Select(v => (double)v).ToArray(),
+                    movAvg  = t.MovingAvg3M.Select(v => (double)v).ToArray()
+                }).ToArray();
+                await JS.InvokeVoidAsync("heatMapCharts.renderMultiLineChart",
+                    "chart-monthly-trend-hmb", seriesData);
+            }
+
+            // Heatmap semanal día × hora
+            if (_data.WeeklyFrequency.Any())
+            {
+                var weeklyData = _data.WeeklyFrequency
+                    .Select(c => new { day = c.DayOfWeek, hour = c.Hour, count = c.PickupCount })
+                    .ToArray();
+                await JS.InvokeVoidAsync("heatMapCharts.renderWeeklyHeatMap",
+                    "chart-weekly-heatmap-hmb", weeklyData);
+            }
+        }
+        catch (Exception ex)
+        {
+            _chartsRendered = false;   // permitir reintento en el circuito interactivo
+            Logger.LogWarning(ex, "Error al renderizar gráficos de patrones de residuos");
+        }
+    }
+
+    private static string AlertSeverityClass(string severity) => severity switch
+    {
+        "High"   => "bg-danger",
+        "Medium" => "bg-warning text-dark",
+        _        => "bg-info text-dark"
+    };
+
+    private static string SeverityLabel(string severity) => severity switch
+    {
+        "High"   => "Alta",
+        "Medium" => "Media",
+        _        => "Baja"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        await Task.CompletedTask;
+    }
+}

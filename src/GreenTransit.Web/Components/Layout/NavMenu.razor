@@ -550,6 +550,57 @@
         </ProfileAuthorizeView>
         }
         }
+        @* -- Dashboards Mapas de Calor (HM): SCRAP, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN *@
+        @if (AllowAny("/reporting/heat-maps/waste-density",
+                      "/reporting/heat-maps/pattern-analysis",
+                      "/reporting/heat-maps/public-view"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesAnyHeatMap">
+            <Authorized>
+                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-hm")'>
+                    <i class="bi bi-geo-alt-fill nav-icon"></i>
+                    <span class="nav-label">Mapas de Calor</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-hm") ? "rotated" : "")"></i>
+                </div>
+            </Authorized>
+        </ProfileAuthorizeView>
+        @if (!NavMenuState.IsCollapsed("reporting-hm"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesHeatMapDensity">
+            <Authorized>
+                @if (Allow("/reporting/heat-maps/waste-density"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/heat-maps/waste-density">
+                    <i class="bi bi-geo-alt nav-icon"></i>
+                    <span class="nav-label">Densidad de Residuos</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesHeatMapPattern">
+            <Authorized>
+                @if (Allow("/reporting/heat-maps/pattern-analysis"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/heat-maps/pattern-analysis">
+                    <i class="bi bi-calendar3 nav-icon"></i>
+                    <span class="nav-label">Patrones y Estacionalidad</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesHeatMapPublic">
+            <Authorized>
+                @if (Allow("/reporting/heat-maps/public-view"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/heat-maps/public-view">
+                    <i class="bi bi-building-check nav-icon"></i>
+                    <span class="nav-label">Vista Entidad Pública</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        }
+        }
         @if (Allow("/documents"))
         {
         <NavLink class="nav-item nav-item--child" href="/documents">
@@ -887,5 +938,30 @@
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator,
         ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // HM-A — Densidad de Residuos: SCRAP, DISPATCH_OFFICE y ADMIN
+    private static readonly string[] _profilesHeatMapDensity =
+    [
+        ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // HM-B — Patrones y Estacionalidad: SCRAP, DISPATCH_OFFICE y ADMIN
+    private static readonly string[] _profilesHeatMapPattern =
+    [
+        ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // HM-C — Vista Entidad Pública: PUBLIC_ENT, DISPATCH_OFFICE y ADMIN
+    private static readonly string[] _profilesHeatMapPublic =
+    [
+        ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Sub-título Mapas de Calor: cualquiera con acceso a algún dashboard HM
+    private static readonly string[] _profilesAnyHeatMap =
+    [
+        ProfileConstants.Scrap, ProfileConstants.PublicEnt,
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 }
