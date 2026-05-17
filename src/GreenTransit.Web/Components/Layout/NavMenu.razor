@@ -601,6 +601,83 @@
         </ProfileAuthorizeView>
         }
         }
+
+        @* -- Dashboards Huella de Carbono (HC): SCRAP, PUBLIC_ENT, PLANT_OP, PRODUCER, COORDINATOR, DISPATCH_OFFICE, CARRIER, ADMIN *@
+        @if (AllowAny("/reporting/carbon-footprint/overview",
+                      "/reporting/carbon-footprint/transport-emissions",
+                      "/reporting/carbon-footprint/plant-energy",
+                      "/reporting/carbon-footprint/producer-report",
+                      "/reporting/carbon-footprint/public-view"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesAnyCarbonDashboard">
+            <Authorized>
+                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-carbon")'>
+                    <i class="bi bi-cloud-haze2-fill nav-icon"></i>
+                    <span class="nav-label">Huella de Carbono</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-carbon") ? "rotated" : "")"></i>
+                </div>
+            </Authorized>
+        </ProfileAuthorizeView>
+        @if (!NavMenuState.IsCollapsed("reporting-carbon"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesCarbonOverview">
+            <Authorized>
+                @if (Allow("/reporting/carbon-footprint/overview"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/overview">
+                    <i class="bi bi-cloud-haze2-fill nav-icon"></i>
+                    <span class="nav-label">Visi&oacute;n Consolidada</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesCarbonTransport">
+            <Authorized>
+                @if (Allow("/reporting/carbon-footprint/transport-emissions"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/transport-emissions">
+                    <i class="bi bi-truck-front-fill nav-icon"></i>
+                    <span class="nav-label">Emisiones Transporte</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesCarbonPlantEnergy">
+            <Authorized>
+                @if (Allow("/reporting/carbon-footprint/plant-energy"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/plant-energy">
+                    <i class="bi bi-lightning-charge-fill nav-icon"></i>
+                    <span class="nav-label">Huella Energ&eacute;tica Plantas</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesCarbonProducer">
+            <Authorized>
+                @if (Allow("/reporting/carbon-footprint/producer-report"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/producer-report">
+                    <i class="bi bi-person-fill-gear nav-icon"></i>
+                    <span class="nav-label">Reporte Productor</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesCarbonPublic">
+            <Authorized>
+                @if (Allow("/reporting/carbon-footprint/public-view"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/public-view">
+                    <i class="bi bi-building-check nav-icon"></i>
+                    <span class="nav-label">Vista Entidad P&uacute;blica</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        }
+        }
+
         @if (Allow("/documents"))
         {
         <NavLink class="nav-item nav-item--child" href="/documents">
@@ -962,6 +1039,47 @@
     private static readonly string[] _profilesAnyHeatMap =
     [
         ProfileConstants.Scrap, ProfileConstants.PublicEnt,
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // HC-A — Visión Consolidada: SCRAP, COORDINATOR, DISPATCH_OFFICE, ADMIN
+    private static readonly string[] _profilesCarbonOverview =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Coordinator,
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // HC-B — Emisiones Transporte: SCRAP, COORDINATOR, DISPATCH_OFFICE, CARRIER, ADMIN
+    private static readonly string[] _profilesCarbonTransport =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Coordinator,
+        ProfileConstants.DispatchOffice, ProfileConstants.Carrier, ProfileConstants.Admin
+    ];
+
+    // HC-C — Huella Energética Plantas: PLANT_OP, SCRAP, DISPATCH_OFFICE, ADMIN
+    private static readonly string[] _profilesCarbonPlantEnergy =
+    [
+        ProfileConstants.PlantOp, ProfileConstants.Scrap,
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // HC-D — Reporte Productor: PRODUCER, ADMIN
+    private static readonly string[] _profilesCarbonProducer =
+    [
+        ProfileConstants.Producer, ProfileConstants.Admin
+    ];
+
+    // HC-E — Vista Entidad Pública: PUBLIC_ENT, DISPATCH_OFFICE, ADMIN
+    private static readonly string[] _profilesCarbonPublic =
+    [
+        ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Sub-título Huella de Carbono: cualquiera con acceso a algún dashboard HC
+    private static readonly string[] _profilesAnyCarbonDashboard =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.PublicEnt,
+        ProfileConstants.PlantOp, ProfileConstants.Producer, ProfileConstants.Carrier,
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 }

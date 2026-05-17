@@ -79,6 +79,23 @@ public static class PolicyConstants
     /// <summary>Lectura de KPIs regulatorios: SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN.</summary>
     public const string CanViewKPIs = "CanViewKPIs";
 
+    // ─── Huella de Carbono (HC) ───────────────────────────────────────────────
+
+    /// <summary>Dashboard HC-A — Visión Consolidada de Huella de Carbono: SCRAP, COORDINATOR, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewCarbonFootprintOverview = "CanViewCarbonFootprintOverview";
+
+    /// <summary>Dashboard HC-B — Análisis de Emisiones del Transporte: SCRAP, COORDINATOR, DISPATCH_OFFICE, CARRIER, ADMIN.</summary>
+    public const string CanViewCarbonTransportAnalysis = "CanViewCarbonTransportAnalysis";
+
+    /// <summary>Dashboard HC-C — Huella Energética de Plantas: PLANT_OP, SCRAP, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewCarbonPlantEnergy = "CanViewCarbonPlantEnergy";
+
+    /// <summary>Dashboard HC-D — Reporte de Huella para Productores: PRODUCER, ADMIN.</summary>
+    public const string CanViewCarbonProducerReport = "CanViewCarbonProducerReport";
+
+    /// <summary>Dashboard HC-E — Vista de Emisiones para Entidades Públicas: PUBLIC_ENT, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewCarbonPublicView = "CanViewCarbonPublicView";
+
     // ─── Mapas de Calor ───────────────────────────────────────────────────────
 
     /// <summary>Dashboard HM-A — Mapa de Calor de Densidad de Residuos: SCRAP, DISPATCH_OFFICE, ADMIN.</summary>

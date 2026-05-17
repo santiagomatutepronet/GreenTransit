@@ -241,7 +241,12 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["DppReadiness"]              = "Preparación DPP — Ecomodulación",
             ["WasteDensityHeatMap"]        = "Mapa de Calor — Densidad de Residuos",
             ["WastePatternAnalysis"]       = "Mapa de Calor — Patrones y Estacionalidad",
-            ["PublicEntityHeatMapView"]    = "Mapa de Calor — Vista Entidad Pública"
+            ["PublicEntityHeatMapView"]    = "Mapa de Calor — Vista Entidad Pública",
+            ["CarbonFootprintOverview"]    = "Huella de Carbono — Visión Consolidada",
+            ["TransportEmissionsAnalysis"] = "Huella de Carbono — Emisiones del Transporte",
+            ["PlantEnergyFootprint"]       = "Huella de Carbono — Huella Energética de Plantas",
+            ["ProducerCarbonReport"]       = "Huella de Carbono — Reporte Productor",
+            ["PublicEntityCarbonView"]     = "Huella de Carbono — Vista Entidad Pública",
         };
 
         if (map.TryGetValue(componentName, out var name)) return name;

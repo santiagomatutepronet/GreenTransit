@@ -551,6 +551,38 @@ try
 
         // ── MAPAS DE CALOR (HM) ───────────────────────────────────────────────
 
+        // ── HUELLA DE CARBONO (HC) ────────────────────────────────────────────
+
+        // Dashboard HC-A — Visión Consolidada: SCRAP, COORDINATOR, DISPATCH_OFFICE, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewCarbonFootprintOverview, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.Coordinator,
+                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard HC-B — Análisis de Emisiones del Transporte: SCRAP, COORDINATOR, DISPATCH_OFFICE, CARRIER, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewCarbonTransportAnalysis, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.Coordinator,
+                ProfileConstants.DispatchOffice, ProfileConstants.Carrier, ProfileConstants.Admin)));
+
+        // Dashboard HC-C — Huella Energética de Plantas: PLANT_OP, SCRAP, DISPATCH_OFFICE, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewCarbonPlantEnergy, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.PlantOp, ProfileConstants.Scrap,
+                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard HC-D — Reporte Huella Productores: PRODUCER, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewCarbonProducerReport, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Producer, ProfileConstants.Admin)));
+
+        // Dashboard HC-E — Vista Entidades Públicas: PUBLIC_ENT, DISPATCH_OFFICE, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewCarbonPublicView, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // ── MAPAS DE CALOR (HM) ───────────────────────────────────────────────
+
         // Dashboard HM-A — Mapa de Calor de Densidad de Residuos: SCRAP, DISPATCH_OFFICE y ADMIN.
         options.AddPolicy(PolicyConstants.CanViewHeatMapWasteDensity, policy =>
             policy.AddRequirements(new ProfileRequirement(

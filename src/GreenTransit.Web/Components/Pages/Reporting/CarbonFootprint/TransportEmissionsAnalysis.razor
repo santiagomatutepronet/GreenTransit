@@ -1,0 +1,265 @@
+@page "/reporting/carbon-footprint/transport-emissions"
+@attribute [Authorize(Policy = PolicyConstants.CanViewCarbonTransportAnalysis)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Reporting.CarbonFootprint.DTOs
+@using GreenTransit.Application.Features.Reporting.CarbonFootprint.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+@using System.Globalization
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
+@inject ILogger<TransportEmissionsAnalysis> Logger
+
+<PageTitle>Emisiones del Transporte — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-truck-front-fill me-2 text-success"></i>Análisis de Emisiones del Transporte
+        </h1>
+        <p class="text-muted mb-0">Dashboard HC-B · Scope 1 — Transporte · @_dateFrom.ToString("dd/MM/yyyy") – @_dateTo.ToString("dd/MM/yyyy")</p>
+        <p class="text-muted small mt-1">
+            Análisis detallado de emisiones generadas por el transporte de residuos.
+            Identifica oportunidades de optimización por tipo de vehículo, combustible y ruta.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="LoadAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Desde</label>
+        <input type="date" class="form-control form-control-sm"
+               value="@_dateFrom.ToString("yyyy-MM-dd")"
+               @onchange="e => { _dateFrom = DateTime.Parse(e.Value!.ToString()!); _ = LoadAsync(); }" />
+    </div>
+    <div class="filter-group">
+        <label>Hasta</label>
+        <input type="date" class="form-control form-control-sm"
+               value="@_dateTo.ToString("yyyy-MM-dd")"
+               @onchange="e => { _dateTo = DateTime.Parse(e.Value!.ToString()!); _ = LoadAsync(); }" />
+    </div>
+    <div class="filter-group">
+        <label>Tipo vehículo</label>
+        <input class="form-control form-control-sm" @bind="_filterVehicleType" @bind:after="LoadAsync" placeholder="Todos" />
+    </div>
+    <div class="filter-group">
+        <label>Combustible</label>
+        <input class="form-control form-control-sm" @bind="_filterFuelType" @bind:after="LoadAsync" placeholder="Todos" />
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_data is null)
+{
+    <div class="alert alert-warning">No se han podido cargar los datos.</div>
+}
+else
+{
+    @* ── KPIs ─────────────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100 border-success">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-cloud-fill text-success me-1"></i>CO₂e transporte</div>
+                    <div class="kpi-value">@_data.TransportCO2eTonnes.ToString("N2") <small class="text-muted">t CO₂e</small></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-speedometer2 me-1 text-warning"></i>Intensidad</div>
+                    <div class="kpi-value">@_data.IntensityGCO2ePerKm.ToString("N1") <small class="text-muted">gCO₂e/km</small></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-boxes me-1 text-primary"></i>Intensidad t·km</div>
+                    <div class="kpi-value">@_data.IntensityGCO2ePerTonneKm.ToString("N1") <small class="text-muted">gCO₂e/t·km</small></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-lightning-charge-fill me-1 text-info"></i>% km baja emisión</div>
+                    <div class="kpi-value">@_data.LowEmissionKmPct.ToString("N1") <small class="text-muted">%</small></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Gráficos mensuales + por SCRAP ──────────────────────────────────────── *@
+    <div class="row g-4 mb-4">
+        <div class="col-lg-7">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-bar-chart-fill me-2"></i>Emisiones mensuales por combustible</div>
+                <div class="card-body">
+                    @if (_data.MonthlyByFuel.Any())
+                    {
+                        <div id="chart-hcb-monthly" style="min-height:280px"></div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center pt-4">Sin datos en el periodo.</p>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-building-fill me-2"></i>Emisiones por gestor (SCRAP)</div>
+                <div class="card-body">
+                    @if (_data.ByScrap.Any())
+                    {
+                        <div id="chart-hcb-scrap" style="min-height:280px"></div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center pt-4">Sin datos de gestores.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Tabla de detalle ─────────────────────────────────────────────────── *@
+    <div class="card">
+        <div class="card-header"><i class="bi bi-table me-2"></i>Detalle de operaciones</div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Referencia</th><th>Fecha</th><th>Origen</th><th>Destino</th>
+                            <th class="text-end">km</th><th>Vehículo</th><th>Comb.</th>
+                            <th class="text-end">Peso (kg)</th><th class="text-end">CO₂e (kg)</th><th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in _data.OperationDetails.Take(200))
+                        {
+                            <tr>
+                                <td><code>@d.WasteMoveReference</code></td>
+                                <td>@d.Date?.ToString("dd/MM/yyyy")</td>
+                                <td>@(d.OriginMunicipality ?? "—"), @(d.OriginProvince ?? "—")</td>
+                                <td>@(d.DestinationMunicipality ?? "—"), @(d.DestinationProvince ?? "—")</td>
+                                <td class="text-end">@d.DistanceKm.ToString("N0")</td>
+                                <td>@(d.VehicleType ?? "—")</td>
+                                <td>@(d.FuelType ?? "—")</td>
+                                <td class="text-end">@d.WeightKg.ToString("N0")</td>
+                                <td class="text-end">@(d.CO2eKg?.ToString("N1") ?? "—")</td>
+                                <td>
+                                    @if (d.MissingFactor)
+                                    {
+                                        <span class="badge bg-warning text-dark">Sin factor</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">OK</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private CarbonTransportDto? _data;
+    private bool   _loading;
+    private bool   _chartsRendered;
+    private DateTime _dateFrom = new(DateTime.Now.Year, 1, 1);
+    private DateTime _dateTo   = DateTime.Now;
+    private string?  _filterVehicleType;
+    private string?  _filterFuelType;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_loading && _data is not null && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading        = true;
+        _chartsRendered = false;
+        try
+        {
+            _data = await Mediator.Send(new GetCarbonTransportQuery(
+                _dateFrom, _dateTo,
+                VehicleType: string.IsNullOrEmpty(_filterVehicleType) ? null : _filterVehicleType,
+                FuelType:    string.IsNullOrEmpty(_filterFuelType)    ? null : _filterFuelType));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando HC-B");
+            _data = null;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            if (_data.MonthlyByFuel.Any())
+            {
+                var rows = _data.MonthlyByFuel
+                    .Select(m => new { year = m.Year, month = m.Month,
+                                       fuelType = m.FuelType, co2eTonnes = (double)m.CO2eTonnes })
+                    .ToList();
+                await JS.InvokeVoidAsync("carbonCharts.renderMonthlyFuelStacked", "chart-hcb-monthly", rows);
+            }
+            if (_data.ByScrap.Any())
+            {
+                var scraps = _data.ByScrap
+                    .Select(s => new { scrapName = s.ScrapName, co2eTonnes = (double)s.CO2eTonnes,
+                                       co2ePerTonne = (double)s.CO2ePerTonne })
+                    .ToList();
+                await JS.InvokeVoidAsync("carbonCharts.renderScrapBars", "chart-hcb-scrap", scraps);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráficos HC-B");
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _ = JS.InvokeVoidAsync("carbonCharts.clear", "chart-hcb-monthly");
+        _ = JS.InvokeVoidAsync("carbonCharts.clear", "chart-hcb-scrap");
+        return ValueTask.CompletedTask;
+    }
+
+    private static string MonthName(int m) =>
+        CultureInfo.GetCultureInfo("es-ES").DateTimeFormat.GetMonthName(m);
+}

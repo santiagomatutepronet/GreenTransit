@@ -11,7 +11,7 @@ public sealed class NavMenuStateService
     [
         "config", "operaciones", "economia", "declaraciones",
         "sostenibilidad", "reporting", "reporting-logistics", "reporting-mobility",
-        "reporting-tr", "reporting-eco", "reporting-hm", "seguridad"
+        "reporting-tr", "reporting-eco", "reporting-hm", "reporting-carbon", "seguridad"
     ];
 
     public bool IsCollapsed(string key) => _collapsed.Contains(key);

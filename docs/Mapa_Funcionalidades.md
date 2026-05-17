@@ -4,7 +4,7 @@
 >
 > Basado en el modelo de datos técnico **v4.1** (SQL Server Azure). Cada funcionalidad detalla **entidades implicadas**, **campos clave** y **transiciones de estado** del traslado.
 >
-> **Documento unificado** que integra: Mapa de Funcionalidades, Mapa de Autenticación y Autorización, Modelo de Datos, Patrón de Autorización en Páginas, Dashboard UC2 (Optimización RAEE), Dashboard UC3 (Movilidad Urbana) y Dashboard Mapas de Calor (Densidad y Patrones de Residuos).
+> **Documento unificado** que integra: Mapa de Funcionalidades, Mapa de Autenticación y Autorización, Modelo de Datos, Patrón de Autorización en Páginas, Dashboard UC2 (Optimización RAEE), Dashboard UC3 (Movilidad Urbana), Dashboard Mapas de Calor (Densidad y Patrones de Residuos) y Dashboard Huella de Carbono (Emisiones CO₂ en Gestión de Residuos Industriales).
 
 ---
 
@@ -1328,6 +1328,286 @@ Una recogida se considera **en hora punta** si `hora_decimal ∈ [Start1, End1) 
 **Filtros disponibles**: `Year` (obligatorio), `Month?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`.
 
 **Exportación**: botón "Exportar XLSX" → `ExportMobilityDataToExcelQuery` genera el `ExportDataset` como hoja Excel.
+
+---
+
+### 5.7. Módulo de Huella de Carbono — Emisiones CO₂ en la Gestión de Residuos Industriales (UC-HC)
+
+> Agrupa las vistas orientadas a medir, analizar y reportar la **huella de carbono** generada por la gestión integral de residuos industriales. Cubre Scope 1 (transporte) y Scope 2 (energía de plantas). Se alinea con el **«Objetivo 55» de la Ley Europea del Clima** y posibilita que los participantes del ecosistema evalúen y minimicen el impacto ambiental de sus operaciones.
+>
+> Los datos explotados incluyen: datos operativos de residuos (tipos, métodos de tratamiento, destinos finales), datos de uso de combustibles (`FuelType`, `EuroClass`), datos logísticos (`VehicleType`, km recorridos, duración), eficiencia energética de las instalaciones de reciclaje (`PlantEnergies`) y emisiones calculadas (`TransportInfo_TransportCarbonEmissions`).
+>
+> **No se crean nuevas entidades de dominio.** Todo se implementa con las entidades del modelo v4.1 existente.
+
+#### 5.7.1. HC-A — Panel de Visión Consolidada de Huella de Carbono
+
+- **Ruta**: `/reporting/carbon-footprint/overview`
+- **Perfil objetivo**: `SCRAP`, `COORDINATOR`, `DISPATCH_OFFICE`, `ADMIN`.
+- **Policy**: `CanViewCarbonFootprintOverview`.
+- **Lógica**: visión estratégica consolidada de la huella de carbono total (Scope 1 + Scope 2) generada por la gestión de residuos, con desglose por múltiples dimensiones.
+
+**Archivos a crear**:
+- `Application/Features/Reporting/CarbonFootprint/Queries/GetCarbonFootprintOverviewQuery.cs` — handler principal con filtros: `Year`, `Month?`/`Quarter?`, `IdScrap?`, `ProvinceCode?`, `MunicipalityCode?`, `VehicleType?`, `FuelType?`, `WasteStream?`, `LERCode?`.
+- `Application/Features/Reporting/CarbonFootprint/DTOs/CarbonFootprintOverviewDto.cs` — DTOs: `CarbonFootprintOverviewDto`, `EmissionsTrendDto`, `EmissionsByVehicleTypeDto`, `EmissionsByFuelTypeDto`, `EmissionsByGeographyDto`, `EmissionsByScrapDto`, `EmissionsByEuroClassDto`, `CarbonFootprintExportRowDto`.
+- `Application/Features/Reporting/CarbonFootprint/Queries/ExportCarbonFootprintToExcelQuery.cs` — genera XLSX en memoria (ClosedXML).
+- `Application/Features/Reporting/CarbonFootprint/Services/CarbonFootprintCalculationService.cs` — servicio de agregación: cálculo de Scope 2 (kWh × factor mix eléctrico), intensidades derivadas, motor de recomendaciones.
+- `Web/Components/Pages/Reporting/CarbonFootprint/CarbonFootprintOverview.razor` — página `/reporting/carbon-footprint/overview`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Resumen ejecutivo (cards KPI) | `WasteMoveResidues` + `PlantEnergies` | Scope 1 total (kgCO₂e), Scope 2 total, huella combinada, intensidad (kgCO₂e/t), toneladas gestionadas, variación % vs periodo anterior |
+| Evolución temporal (line chart dual axis) | `WasteMoveResidues` agrupado mes/trimestre | Series: Scope 1, Scope 2, intensidad. Línea de referencia «Objetivo 55» configurable |
+| Desglose por tipo de vehículo (bar chart / donut) | `WasteMoveResidues.VehicleType` | Emisiones, nº traslados, distancia, intensidad por kgCO₂e/km |
+| Desglose por tipo de combustible (pie chart) | `WasteMoveResidues.FuelType` | % del total y kgCO₂e absolutos por combustible |
+| Ranking por zona geográfica (tabla + mapa) | `WasteMoveResidues` + `Entities` + `Province` + `Municipality` | Emisiones, traslados, intensidad por **nombre** de provincia/municipio (nunca código). Mapa con gradiente |
+| Ranking por SCRAP (tabla + sparklines) | `WasteMoves.IdScrap` + `WasteMoveResidues` | Emisiones, toneladas, intensidad, variación %. Sparkline de evolución mensual |
+| Distribución por clase Euro (stacked bar) | `WasteMoveResidues.EuroClass` | Evidenciar impacto de renovación de flota |
+| Tabla exportable (XLSX) | Join completo operativo | Dataset plano con todos los campos relevantes para análisis externo y justificación regulatoria |
+
+**Cálculo de Scope 2**: `PlantEnergies.KwhTotal` × factor de mix eléctrico configurable en `appsettings.json` → sección `CarbonFootprint.Scope2.DefaultGridMixFactor_kgCO2e_per_kWh` (por defecto 0.22 kgCO₂e/kWh, factor REE España).
+
+---
+
+#### 5.7.2. HC-B — Panel de Análisis de Emisiones del Transporte
+
+- **Ruta**: `/reporting/carbon-footprint/transport-emissions`
+- **Perfil objetivo**: `SCRAP`, `COORDINATOR`, `DISPATCH_OFFICE`, `CARRIER`, `ADMIN`.
+- **Policy**: `CanViewTransportEmissionsAnalysis`.
+- **Lógica**: análisis detallado de las emisiones Scope 1, con herramientas de comparación para identificar oportunidades de optimización de flota y rutas.
+
+**Archivos a crear**:
+- `Application/Features/Reporting/CarbonFootprint/Queries/GetTransportEmissionsAnalysisQuery.cs` — filtros: `Year`, `Month?`, `IdScrap?`, `IdCarrier?`, `VehicleType?`, `FuelType?`, `EuroClass?`, `ProvinceCode?`, `MunicipalityCode?`.
+- `Application/Features/Reporting/CarbonFootprint/DTOs/TransportEmissionsAnalysisDto.cs` — DTOs: `FleetEfficiencyDto`, `PeriodComparisonDto`, `TransporterRankingDto`, `EmissionsHeatmapCellDto`, `EmissionFactorDetailDto`, `CarbonRecommendationDto`.
+- `Web/Components/Pages/Reporting/CarbonFootprint/TransportEmissionsAnalysis.razor` — página `/reporting/carbon-footprint/transport-emissions`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Eficiencia de flota (cards KPI) | `WasteMoveResidues` | kgCO₂e/recogida, km/recogida, kgCO₂e/km, kgCO₂e/t·km, % Euro 6+, variación % |
+| Comparativa pre/post (bar chart) | `WasteMoveResidues` (dos periodos) | km/recogida, kgCO₂e/recogida, kgCO₂e/t, % Euro 6+ — selección de mes/trimestre A vs B |
+| Mapa de rutas con emisiones | `Entities` (origen + destino) + `WasteMoveResidues` | Líneas origen-destino con grosor proporcional a emisiones. Popup con detalle |
+| Ranking por transportista (tabla) | `WasteMoveResidues.IdCarrier` → `Entities.Name` | Distancia, emisiones, intensidad/km, intensidad/t, clase Euro predominante. Semáforo vs media |
+| Heatmap horario de emisiones (7×24) | `WasteMoves.ActualPickupStart` × `WasteMoveResidues.TransportInfo_TransportCarbonEmissions` | Identificar franjas de alta emisión para redistribución |
+| Detalle factores de emisión (tabla) | `EmissionFactorSets` + `EmissionFactors` (Active) | Transparencia sobre factores aplicados. Solo lectura |
+| Recomendaciones automáticas (panel) | Calculado en `CarbonFootprintCalculationService.cs` | Motor de reglas: % flota antigua > 30%, intensidad > 110% media, transportista > 150% media, distancia +15% |
+
+---
+
+#### 5.7.3. HC-C — Panel de Huella Energética de Plantas de Tratamiento
+
+- **Ruta**: `/reporting/carbon-footprint/plant-energy`
+- **Perfil objetivo**: `PLANT_OP`, `SCRAP`, `DISPATCH_OFFICE`, `ADMIN`.
+- **Policy**: `CanViewPlantEnergyFootprint`.
+- **Lógica**: análisis de emisiones Scope 2 derivadas del consumo energético de las instalaciones de reciclaje y tratamiento.
+
+**Archivos a crear**:
+- `Application/Features/Reporting/CarbonFootprint/Queries/GetPlantEnergyFootprintQuery.cs` — filtros: `Year`, `Month?`, `PlantName?`, `Source?`, `ProvinceCode?`.
+- `Application/Features/Reporting/CarbonFootprint/DTOs/PlantEnergyFootprintDto.cs` — DTOs: `PlantEnergySummaryDto`, `PlantComparisonDto`, `EnergyBySourceDto`, `TreatmentEfficiencyDto`.
+- `Web/Components/Pages/Reporting/CarbonFootprint/PlantEnergyFootprint.razor` — página `/reporting/carbon-footprint/plant-energy`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Resumen consumo (cards KPI) | `PlantEnergies` + `EntryPlants` | kWh totales, kgCO₂e Scope 2, kgCO₂e/t tratada, variación % |
+| Comparativa entre plantas (bar chart) | `PlantEnergies` por `PlantName` | kWh y kgCO₂e/t por planta. Línea de intensidad superpuesta |
+| Evolución mensual (area chart) | `PlantEnergies` por `Year`/`Month` | Series por planta, eje derecho opcional con toneladas tratadas |
+| Desglose por fuente energética (pie/donut) | `PlantEnergies.Source` | Mix energético: red, solar, eólica, gas, etc. |
+| Eficiencia por operación (tabla) | `TreatmentPlants` + `TreatmentOperations` + `PlantEnergies` | Prorrateo por volumen si `AllocationMethod` no disponible |
+| Exportación XLSX | Dataset consolidado | Planta, año, mes, kWh, fuente, mix, método, toneladas, kgCO₂e, intensidad |
+
+---
+
+#### 5.7.4. HC-D — Reporte de Huella de Carbono para Productores
+
+- **Ruta**: `/reporting/carbon-footprint/producer-report`
+- **Perfil objetivo**: `PRODUCER`, `ADMIN`.
+- **Policy**: `CanViewProducerCarbonReport`.
+- **Lógica**: permite que los fabricantes de residuos industriales evalúen el impacto ambiental de la gestión de sus residuos, en línea con el «Objetivo 55».
+
+**Archivos a crear**:
+- `Application/Features/Reporting/CarbonFootprint/Queries/GetProducerCarbonReportQuery.cs` — filtros: `Year`, `Month?`/`Quarter?`, `LERCode?`, `WasteStream?`.
+- `Application/Features/Reporting/CarbonFootprint/DTOs/ProducerCarbonReportDto.cs` — DTOs: `ProducerEmissionsSummaryDto`, `EmissionsByResidueTypeDto`, `EmissionsByDestinationDto`, `ProducerVsEcosystemDto`.
+- `Web/Components/Pages/Reporting/CarbonFootprint/ProducerCarbonReport.razor` — página `/reporting/carbon-footprint/producer-report`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Resumen huella productor (cards KPI) | `WasteMoveResidues` WHERE `ServiceOrders.IdIssuedBy = LinkedEntityId` | Emisiones totales, toneladas, intensidad, nº traslados, variación % |
+| Evolución mensual (line chart) | Mismo filtro, agrupado mes | Emisiones y intensidad: tendencia interanual para auditorías |
+| Desglose por tipo de residuo (bar chart) | `WasteMoveResidues` + `Residues` + `LERCodes` | Emisiones, peso, intensidad, nº traslados por código LER + descripción |
+| Desglose por destino (tabla) | `WasteMoves.IdDestination` → `Entities.Name` | Planta, distancia promedio, emisiones, intensidad — evaluar cambio de planta |
+| Comparativa vs media ecosistema (gauge) | Intensidad productor vs media del tenant | Zonas: verde (< media), amarillo (= media), rojo (> media) |
+| Certificado descargable (XLSX) | Resumen del periodo con KPIs | Documento para memorias de sostenibilidad y declaraciones ambientales |
+
+---
+
+#### 5.7.5. HC-E — Panel de Emisiones para Entidades Públicas
+
+- **Ruta**: `/reporting/carbon-footprint/public-view`
+- **Perfil objetivo**: `PUBLIC_ENT`, `ADMIN`.
+- **Policy**: `CanViewPublicEntityCarbonView`.
+- **Lógica**: los ayuntamientos monitorizan las emisiones de CO₂ generadas por la gestión de residuos en su ámbito territorial.
+
+**Archivos a crear**:
+- `Application/Features/Reporting/CarbonFootprint/Queries/GetPublicEntityCarbonViewQuery.cs` — filtros: `Year`, `Month?`, `IdScrap?`, `WasteStream?`, `LERCode?`.
+- `Application/Features/Reporting/CarbonFootprint/DTOs/PublicEntityCarbonViewDto.cs` — DTOs: `MunicipalEmissionsSummaryDto`, `EmissionsByScrapInMunicipalityDto`, `FuelMixEvolutionDto`, `EmissionAlertDto`.
+- `Web/Components/Pages/Reporting/CarbonFootprint/PublicEntityCarbonView.razor` — página `/reporting/carbon-footprint/public-view`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Resumen emisiones municipio (cards KPI) | `WasteMoveResidues` filtrado por `MunicipalityCode` del punto de recogida o `IdIssuedBy` | Emisiones totales, toneladas, intensidad, nº traslados, variación % |
+| Evolución mensual (line chart) | Mismo filtro, agrupado mes | Análogo a HC-D pero para ámbito territorial |
+| Desglose por SCRAP (tabla) | `WasteMoves.IdScrap` → `Entities.Name`, filtrado municipio | Emisiones, toneladas, intensidad, distancia promedio. Semáforo por intensidad |
+| Comparativa mensual por combustible (stacked bar) | `WasteMoveResidues.FuelType` agrupado mes, filtrado municipio | Evolución del mix de combustibles en el territorio |
+| Notificaciones de umbrales (inbox) | Calculado en backend | Alertas: intensidad > media tenant, emisiones mensuales +Y% vs anterior |
+
+---
+
+#### Estructura de archivos del módulo
+
+**Capa Web (Blazor)**:
+
+```
+Web/Components/Pages/Reporting/CarbonFootprint/
+├── CarbonFootprintOverview.razor            → /reporting/carbon-footprint/overview
+├── TransportEmissionsAnalysis.razor         → /reporting/carbon-footprint/transport-emissions
+├── PlantEnergyFootprint.razor               → /reporting/carbon-footprint/plant-energy
+├── ProducerCarbonReport.razor               → /reporting/carbon-footprint/producer-report
+└── PublicEntityCarbonView.razor             → /reporting/carbon-footprint/public-view
+```
+
+**Capa Application (CQRS)**:
+
+```
+Application/Features/Reporting/CarbonFootprint/
+├── Queries/
+│   ├── GetCarbonFootprintOverviewQuery.cs
+│   ├── GetTransportEmissionsAnalysisQuery.cs
+│   ├── GetPlantEnergyFootprintQuery.cs
+│   ├── GetProducerCarbonReportQuery.cs
+│   ├── GetPublicEntityCarbonViewQuery.cs
+│   ├── GetEmissionsTrendQuery.cs                    → Widget compartido: evolución temporal
+│   ├── GetEmissionsByVehicleTypeQuery.cs            → Widget compartido: desglose por vehículo
+│   └── ExportCarbonFootprintToExcelQuery.cs         → Exportación XLSX (patrón ClosedXML)
+├── DTOs/
+│   ├── CarbonFootprintOverviewDto.cs
+│   ├── TransportEmissionsAnalysisDto.cs
+│   ├── PlantEnergyFootprintDto.cs
+│   ├── ProducerCarbonReportDto.cs
+│   ├── PublicEntityCarbonViewDto.cs
+│   ├── EmissionsTrendDto.cs
+│   ├── EmissionsByVehicleTypeDto.cs
+│   └── CarbonFootprintExportDto.cs
+└── Services/
+    └── CarbonFootprintCalculationService.cs         → Agregación Scope 2, recomendaciones, umbrales
+```
+
+**Componentes reutilizables**:
+
+```
+Web/Components/Shared/CarbonFootprint/
+├── EmissionsSummaryCards.razor               → Cards KPI de emisiones reutilizables
+├── EmissionsTrendChart.razor                 → Gráfico de evolución temporal
+├── VehicleTypeEmissionsDonut.razor           → Donut por tipo de vehículo
+├── FuelTypePieChart.razor                    → Pie por tipo de combustible
+├── CarbonIntensityGauge.razor               → Gauge de intensidad CO₂
+└── PlantEnergyComparisonBar.razor           → Bar chart comparativa de consumo entre plantas
+```
+
+> **Reutilizar** de los dashboards existentes: `EmissionsCard.razor`, `WasteVolumeMap.razor` (para mapa con capa de emisiones).
+
+---
+
+#### Modelo de datos — Tablas y campos clave
+
+> **No se crean tablas nuevas.** Todo el módulo de Huella de Carbono se alimenta de las tablas existentes del modelo v4.1.
+
+| Tabla | Campos principales para este módulo |
+|-------|--------------------------------------|
+| `WasteMoveResidues` | `IdWasteMove`, `IdResidue`, `IdCarrier`, `Weight`, `VehicleType`, `FuelType`, `EuroClass`, `TransportInfo_TransportDistance`, `TransportInfo_TransportDuration`, `TransportInfo_TransportCarbonEmissions`, `EmissionFactorSetId`, `EmissionFactorVersion`, `TransportInfo_vehicleRegistration` |
+| `WasteMoves` | `Id`, `IdSource`, `IdDestination`, `IdScrap`, `IdScrap2`, `ServiceOrderId`, `ServiceStatus`, `ActualPickupStart`, `ActualPickupEnd`, `PlannedPickupStart`, `OwnerId` |
+| `ServiceOrders` | `Id`, `Status`, `IdPickupPoint`, `IdIssuedBy`, `PlannedPickupStart`, `WasteStream`, `IdLERCode`, `OwnerId` |
+| `Entities` | `Id`, `Name`, `EntityRole`, `Latitude`, `Longitude`, `ProvinceCode`, `MunicipalityCode`, `CenterCode` |
+| `EmissionFactorSets` | `Id`, `FactorSetName`, `Version`, `Status`, `ValidFrom`, `ValidTo` |
+| `EmissionFactors` | `Id`, `FactorSetId`, `VehicleType`, `FuelType`, `EuroClass`, `Unit`, `Value` |
+| `PlantEnergies` | `Id`, `PlantName`, `PlantCenterCode`, `Year`, `Month`, `KwhTotal`, `Source`, `GridMixRef`, `AllocationMethod` |
+| `EntryPlants` | `Id`, `IdWasteMove`, `PlantEntryDate`, `NetWeight`, `ServiceOrderId`, `OwnerId` |
+| `TreatmentPlants` | `Id`, `IdWasteMove`, `IdTreatmentOperation`, `PlantTreatmentDate`, `ServiceOrderId` |
+| `TreatmentOperations` | `Id`, `Code`, `OperationType`, `Description`, `ShortDescription`, `IsRecycling`, `IsEnergyRecovery` |
+| `Residues` | `Id`, `Name`, `Reference`, `ResidueType`, `IdLERCode`, `IdProducer` |
+| `LERCodes` | `Id`, `Code`, `Description`, `IsDangerous`, `ChapterCode`, `SubChapterCode` |
+| `Province` | `id`, `idState`, `Ref`, `Code`, **`Name`** |
+| `Municipality` | `Id`, `Id_Province`, `Code`, **`Name`** |
+| `TerritoryState` | `id`, `idCountry`, `Ref`, `Code`, **`Name`** |
+
+---
+
+#### Reglas de autorización y filtrado de datos
+
+> **IMPORTANTE**: El acceso a estos dashboards se gestiona mediante el **sistema de autorización por pantalla configurable desde la interfaz de administración** (`/security/page-permissions`) utilizando las tablas `PageDefinitions` y `PagePermissions`. **No se hardcodea el acceso en código.** Las policies en código actúan como mínimo de seguridad estático; el control fino se delega al sistema dinámico de BD.
+
+| Perfil | Dashboard(s) accesible(s) | Filtrado de datos |
+|--------|---------------------------|-------------------|
+| `SCRAP` | HC-A, HC-B | Solo ve datos donde `WasteMoves.IdScrap = LinkedEntityId` OR `WasteMoves.IdScrap2 = LinkedEntityId`. |
+| `PRODUCER` | HC-D | Solo ve traslados cuya SO fue emitida por su entidad (`ServiceOrders.IdIssuedBy = LinkedEntityId`). |
+| `CARRIER` | HC-B | Solo ve traslados donde está asignado (`WasteMoveResidues.IdCarrier = LinkedEntityId`). |
+| `PLANT_OP` | HC-C | Solo ve `PlantEnergies` de su planta y `EntryPlants` de su planta. |
+| `PUBLIC_ENT` | HC-E | Solo ve traslados cuyo punto de recogida pertenece a su municipio (`Entities.MunicipalityCode`), o cuya SO fue emitida por su entidad. |
+| `COORDINATOR` | HC-A | Ve transversalmente los SCRAPs vinculados a sus acuerdos (`Agreements.IdCoordinator = LinkedEntityId`). |
+| `DISPATCH_OFFICE` | HC-A, HC-B, HC-C | Ve todos los datos del tenant (`OwnerId`). Visión completa equivalente a ADMIN. |
+| `ADMIN` | HC-A, HC-B, HC-C, HC-D, HC-E | Sin restricciones dentro del tenant. |
+
+**Patrón de filtrado**: usar `ICurrentUserService.LinkedEntityId` + `ICurrentUserService.IsInAnyProfile(...)` + `IDataScopeService.ApplyScope()` (ya implementado).
+
+---
+
+#### Regla obligatoria: Datos geográficos siempre como nombre
+
+En **todas** las pantallas, tablas, filtros y exportaciones de este módulo:
+- `ProvinceCode` → resolver siempre a `Province.Name` (JOIN con tabla `Province`).
+- `MunicipalityCode` → resolver siempre a `Municipality.Name` (JOIN con tabla `Municipality`).
+- `StateCode` → resolver siempre a `TerritoryState.Name`.
+- En selectores/filtros: mostrar `Name` como label, `Code` como value interno.
+- En exportaciones XLSX: columnas con **nombre**, no código.
+
+---
+
+#### Criterios de aceptación
+
+1. Cada dashboard respeta el filtrado multi-tenant (`OwnerId`) y por perfil (`LinkedEntityId`).
+2. El acceso a cada dashboard **no está hardcodeado en código**. Se gestiona mediante el sistema de autorización por pantalla (`PageDefinitions`/`PagePermissions`) configurable desde `/security/page-permissions`.
+3. Los filtros globales persisten en la URL (query string) para permitir compartir enlaces.
+4. Los gráficos usan **ApexCharts** (consistente con el módulo de KPIs existente).
+5. Las consultas SQL usan índices existentes y no generan table scans sobre tablas operativas.
+6. Exportación a XLSX disponible en HC-A y HC-C como mínimo (patrón ClosedXML).
+7. Responsive mobile-first.
+8. Modo oscuro/claro (consistente con `MainLayout.razor`).
+9. El **factor de conversión kWh → kgCO₂e** para Scope 2 es configurable (en `appsettings.json`), no hardcodeado.
+10. Los **umbrales de recomendaciones y alertas** son configurables (en `appsettings.json`).
+11. Las recomendaciones se generan en el backend (`CarbonFootprintCalculationService.cs`), no en el cliente.
+12. **No se crean nuevas entidades de dominio.** Todo se implementa con las entidades del modelo v4.1.
+13. Cada usuario solo ve datos de las entidades asignadas a él o creadas por él, **a excepción de `ADMIN` y `DISPATCH_OFFICE`** que ven todos los datos del tenant.
+14. Datos geográficos (provincia, municipio) se muestran siempre como **nombre**, nunca como código.
+
+---
+
+#### Integración con módulos existentes
+
+- **Dashboard principal (§0.1)**: los widgets de emisiones totales e intensidad pueden integrarse como cards adicionales en la home, condicionados al perfil.
+- **Trazabilidad (§5.1)**: desde cualquier traslado en los dashboards HC, enlace directo a `/traceability?term={WasteMoveReference}`.
+- **KPIs regulatorios (§5.2)**: el KPI de "intensidad CO₂ por tonelada" ya existe en `/kpis`; aquí se desglosa por vehículo, combustible, ruta, zona, SCRAP, transportista.
+- **Dashboard Optimización Logística (§5.4.1)**: comparte fuentes de datos. `EmissionsCard.razor` reutilizable.
+- **Módulo de Movilidad Urbana (§5.6)**: enlace cruzado desde HC-A al UC3-A para correlacionar emisiones con impacto en movilidad.
+- **Mapas de Calor (§5.7 HeatMaps)**: enlace cruzado desde HC-A para correlacionar zonas de alta densidad con alta emisión.
+- **Incidencias (§4.3)**: averías de vehículos y retrasos se correlacionan con picos de emisiones.
+- **Consumo energético de plantas (§4.2)**: HC-C extiende la vista existente de `PlantEnergies` añadiendo la perspectiva Scope 2.
 
 ---
 
@@ -2813,6 +3093,11 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 | **Dash. Mapa Calor Densidad** | `WasteMoveResidues`, `Entities`, `LERCodes` | — | — | R | — | — | — | — | R | R |
 | **Dash. Mapa Calor Patrones** | `WasteMoveResidues`, `ServiceOrders`, `LERCodes` | — | — | R | — | — | — | — | R | R |
 | **Dash. Mapa Calor Público** | `WasteMoveResidues`, `Entities`, `LERCodes` | — | — | — | R | — | — | — | R | R |
+| **Dash. Huella Carbono Consolidada** | `WasteMoveResidues`, `PlantEnergies`, `Entities` | — | — | R | — | — | — | R | R | R |
+| **Dash. Huella Carbono Transporte** | `WasteMoveResidues`, `EmissionFactors`, `Entities` | — | R | R | — | — | — | R | R | R |
+| **Dash. Huella Carbono Plantas** | `PlantEnergies`, `EntryPlants`, `TreatmentPlants` | — | — | R | — | — | R | — | R | R |
+| **Dash. Huella Carbono Productor** | `WasteMoveResidues`, `ServiceOrders`, `LERCodes` | R | — | — | — | — | — | — | — | R |
+| **Dash. Huella Carbono Ent. Pública** | `WasteMoveResidues`, `Entities`, `ServiceOrders` | — | — | — | R | — | — | — | R | R |
 
 **Justificación:**
 - **Trazabilidad y Vista 360°**: Todos los perfiles acceden pero ven solo los traslados en los que participan. `SCRAP`, `PUBLIC_ENT`, `COORDINATOR`, `DISPATCH_OFFICE` y `ADMIN` ven transversalmente.
@@ -2824,6 +3109,11 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 - **Dashboard Mapa Calor Densidad** (`/reporting/heat-maps/waste-density`): Policy `CanViewHeatMapWasteDensity`. Orientado a SCRAP para visualizar la distribución geográfica de densidad de residuos. `SCRAP` ve solo recogidas de sus traslados (`IdScrap`/`IdScrap2`). `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
 - **Dashboard Mapa Calor Patrones** (`/reporting/heat-maps/pattern-analysis`): Policy `CanViewHeatMapPatternAnalysis`. Análisis temporal de estacionalidad y patrones para SCRAP. Mismas reglas de filtrado que Mapa Calor Densidad.
 - **Dashboard Mapa Calor Público** (`/reporting/heat-maps/public-view`): Policy `CanViewHeatMapPublicView`. Los entes públicos ven mapas de calor de su municipio (`Entities.MunicipalityCode` del punto de recogida = municipio de su entidad, o `ServiceOrders.IdIssuedBy = LinkedEntityId`). `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
+- **Dashboard Huella Carbono Visión Consolidada** (`/reporting/carbon-footprint/overview`): Policy `CanViewCarbonFootprintOverview`. Visión estratégica Scope 1 + Scope 2. `SCRAP` ve solo sus traslados (`IdScrap`/`IdScrap2`). `COORDINATOR` ve transversalmente vía `Agreements.IdCoordinator`. `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
+- **Dashboard Huella Carbono Emisiones Transporte** (`/reporting/carbon-footprint/transport-emissions`): Policy `CanViewTransportEmissionsAnalysis`. Análisis detallado Scope 1 con comparativas y recomendaciones. `CARRIER` ve solo traslados donde es transportista (`WasteMoveResidues.IdCarrier = LinkedEntityId`). Mismo filtrado SCRAP/COORDINATOR/DISPATCH_OFFICE que HC-A.
+- **Dashboard Huella Carbono Plantas** (`/reporting/carbon-footprint/plant-energy`): Policy `CanViewPlantEnergyFootprint`. Scope 2 y eficiencia energética. `PLANT_OP` ve solo datos de su planta. `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
+- **Dashboard Huella Carbono Productor** (`/reporting/carbon-footprint/producer-report`): Policy `CanViewProducerCarbonReport`. `PRODUCER` ve solo traslados cuya SO fue emitida por su entidad (`ServiceOrders.IdIssuedBy = LinkedEntityId`).
+- **Dashboard Huella Carbono Entidad Pública** (`/reporting/carbon-footprint/public-view`): Policy `CanViewPublicEntityCarbonView`. `PUBLIC_ENT` ve solo traslados cuyo punto de recogida pertenece a su municipio o cuya SO fue emitida por su entidad. `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
 
 ---
 
@@ -2872,6 +3162,11 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 | **Dash. Mapa Calor Densidad** | — | — | **R** | — | — | — | — | **R** | R |
 | **Dash. Mapa Calor Patrones** | — | — | **R** | — | — | — | — | **R** | R |
 | **Dash. Mapa Calor Público** | — | — | — | **R** | — | — | — | **R** | R |
+| **Dash. Huella Carbono Consolidada** | — | — | **R** | — | — | — | **R** | **R** | R |
+| **Dash. Huella Carbono Transporte** | — | **R** | **R** | — | — | — | **R** | **R** | R |
+| **Dash. Huella Carbono Plantas** | — | — | **R** | — | — | **R** | — | **R** | R |
+| **Dash. Huella Carbono Productor** | **R** | — | — | — | — | — | — | — | R |
+| **Dash. Huella Carbono Ent. Pública** | — | — | — | **R** | — | — | — | **R** | R |
 | Usuarios | — | — | R-P | — | — | — | — | — | **CRUD** |
 | Perfiles | — | — | R | — | — | — | — | — | **CRUD** |
 
@@ -3011,7 +3306,7 @@ El servicio `PageDiscoveryService.InferModuleName()` clasifica cada página en u
 | Namespace / Ruta | Módulo asignado |
 |---|---|
 | `Security` · `/users` · `/profiles` · `/security` | Seguridad |
-| `Reporting` · `/traceability` · `/kpis` · `/documents` · `/reporting/heat-maps/` | Reporting |
+| `Reporting` · `/traceability` · `/kpis` · `/documents` · `/reporting/heat-maps/` · `/reporting/carbon-footprint/` | Reporting |
 | `Logistics` · `/logistics/` | Dashboards Logísticos |
 | `Sustainability` · `/incidents` · `/dum-zones` · `/emissions` · `/plant-energies` | Sostenibilidad |
 | `/entities` · `/ler-codes` · `/residues` · `/treatment-operations` | Configuración |
@@ -3032,6 +3327,16 @@ Nombres legibles recomendados para las pantallas de Mapas de Calor:
 | `WasteDensityHeatMap` | `Mapa de Calor — Densidad de Residuos` |
 | `WastePatternAnalysis` | `Mapa de Calor — Patrones y Estacionalidad` |
 | `PublicEntityHeatMapView` | `Mapa de Calor — Vista Entidad Pública` |
+
+Nombres legibles recomendados para las pantallas de Huella de Carbono:
+
+| Componente | Nombre legible |
+|---|---|
+| `CarbonFootprintOverview` | `Huella de Carbono — Visión Consolidada` |
+| `TransportEmissionsAnalysis` | `Huella de Carbono — Emisiones del Transporte` |
+| `PlantEnergyFootprint` | `Huella de Carbono — Huella Energética Plantas` |
+| `ProducerCarbonReport` | `Huella de Carbono — Reporte Productor` |
+| `PublicEntityCarbonView` | `Huella de Carbono — Vista Entidad Pública` |
 
 ---
 
@@ -3162,6 +3467,30 @@ Se añaden los siguientes ítems:
 - [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
 
 
+### Checklist adicional — Módulo de Huella de Carbono
+
+Se añaden los siguientes ítems:
+
+- [ ] Policies registradas en `PolicyConstants.cs`: `CanViewCarbonFootprintOverview`, `CanViewTransportEmissionsAnalysis`, `CanViewPlantEnergyFootprint`, `CanViewProducerCarbonReport`, `CanViewPublicEntityCarbonView`.
+- [ ] Policies registradas en `Program.cs` con los perfiles indicados en §5.7.
+- [ ] Páginas Blazor creadas en `Web/Components/Pages/Reporting/CarbonFootprint/` con `@attribute [Authorize(Policy = ...)]`.
+- [ ] Queries CQRS creadas en `Application/Features/Reporting/CarbonFootprint/Queries/`.
+- [ ] DTOs creados en `Application/Features/Reporting/CarbonFootprint/DTOs/`.
+- [ ] `CarbonFootprintCalculationService.cs` implementado con cálculo Scope 2, motor de recomendaciones y umbrales.
+- [ ] Componentes reutilizables creados en `Web/Components/Shared/CarbonFootprint/`.
+- [ ] Entradas en `NavMenu.razor` en sección Reporting como subcarpeta colapsable "Huella de Carbono" con consulta a `IPagePermissionService`.
+- [ ] `InferModuleName()` actualizado para reconocer `/reporting/carbon-footprint/` → Reporting (si no se infiere automáticamente).
+- [ ] `HumanizeName()` actualizado con nombres legibles en español para los 5 componentes.
+- [ ] Configuración `CarbonFootprint` añadida en `appsettings.json` (Scope2 factor, umbrales, referencia Objetivo 55).
+- [ ] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
+- [ ] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PRODUCER (IdIssuedBy), CARRIER (IdCarrier), PLANT_OP (PlantCenterCode), PUBLIC_ENT (MunicipalityCode/IdIssuedBy), COORDINATOR (Agreements.IdCoordinator).
+- [ ] Todos los JOINs geográficos resuelven `ProvinceCode` → `Province.Name` y `MunicipalityCode` → `Municipality.Name`.
+- [ ] Exportación XLSX implementada en HC-A y HC-C (patrón ClosedXML).
+- [ ] Gráficos con ApexCharts, responsive, modo oscuro/claro.
+- [ ] Filtros persistidos en query string.
+- [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
+
+
 ---
 
-*Documento unificado generado a partir de: Mapa_Funcionalidades_GreenTransit.md, Mapa_Autorizacion_GreenTransit.md, Modelo_de_Datos.md, PATRON_AUTORIZACION_PAGINAS.md, Dashboard_UC2_Optimizacion_RAEE.md, Dashboard_UC3_Movilidad_Urbana.md, Dashboard_Mapas_de_Calor.md.*
+*Documento unificado generado a partir de: Mapa_Funcionalidades_GreenTransit.md, Mapa_Autorizacion_GreenTransit.md, Modelo_de_Datos.md, PATRON_AUTORIZACION_PAGINAS.md, Dashboard_UC2_Optimizacion_RAEE.md, Dashboard_UC3_Movilidad_Urbana.md, Dashboard_Mapas_de_Calor.md, Dashboard_Huella_de_Carbono.md.*

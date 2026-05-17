@@ -1,0 +1,253 @@
+﻿@page "/reporting/carbon-footprint/public-view"
+@attribute [Authorize(Policy = PolicyConstants.CanViewCarbonPublicView)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Reporting.CarbonFootprint.DTOs
+@using GreenTransit.Application.Features.Reporting.CarbonFootprint.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+
+@using Microsoft.JSInterop
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject ILogger<PublicEntityCarbonView> Logger
+
+<PageTitle>Emisiones CO₂ en mi Municipio — GreenTransit</PageTitle>
+@inject IJSRuntime          JS
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-building-check me-2 text-info"></i>Emisiones CO₂ en mi Municipio
+        </h1>
+        <p class="text-muted mb-0">
+            Dashboard HC-E · @(_data?.MunicipalityName ?? "—") · @_dateFrom.ToString("dd/MM/yyyy") – @_dateTo.ToString("dd/MM/yyyy")
+        </p>
+        <p class="text-muted small mt-1">
+            Monitorización de las emisiones de CO₂ generadas por la gestión de residuos en el ámbito territorial de la entidad.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="LoadAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Desde</label>
+        <input type="date" class="form-control form-control-sm"
+               value="@_dateFrom.ToString("yyyy-MM-dd")"
+               @onchange="e => { _dateFrom = DateTime.Parse(e.Value!.ToString()!); _ = LoadAsync(); }" />
+    </div>
+    <div class="filter-group">
+        <label>Hasta</label>
+        <input type="date" class="form-control form-control-sm"
+               value="@_dateTo.ToString("yyyy-MM-dd")"
+               @onchange="e => { _dateTo = DateTime.Parse(e.Value!.ToString()!); _ = LoadAsync(); }" />
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_data is null)
+{
+    <div class="alert alert-warning">No se han podido cargar los datos.</div>
+}
+else
+{
+    @* ── Alertas ──────────────────────────────────────────────────────────── *@
+    @foreach (var alert in _data.Alerts)
+    {
+        <div class="alert alert-@(alert.Level == "danger" ? "danger" : "warning") d-flex align-items-center mb-3">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            @alert.Message
+        </div>
+    }
+
+    @* ── KPIs ─────────────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100 border-info">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-cloud-fill text-success me-1"></i>Emisiones totales</div>
+                    <div class="kpi-value">@(_data.TotalCO2eKg / 1000m).ToString("N2") <small class="text-muted">t CO₂e</small></div>
+                    @if (_data.VariationVsPreviousPct != 0)
+                    {
+                        <div class="kpi-badge @(_data.VariationVsPreviousPct > 0 ? "badge-danger" : "badge-success")">
+                            <i class="bi bi-@(_data.VariationVsPreviousPct > 0 ? "arrow-up" : "arrow-down") me-1"></i>
+                            @Math.Abs(_data.VariationVsPreviousPct).ToString("N1")% vs periodo anterior
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-recycle me-1 text-success"></i>Toneladas gestionadas</div>
+                    <div class="kpi-value">@_data.TotalTonnesManaged.ToString("N1") <small class="text-muted">t</small></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-speedometer2 me-1 text-warning"></i>Intensidad</div>
+                    <div class="kpi-value">@_data.IntensityCO2ePerTonne.ToString("N1") <small class="text-muted">kg/t</small></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-clipboard2-check me-1 text-primary"></i>Traslados</div>
+                    <div class="kpi-value">@_data.TotalServices</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Desglose por SCRAP y mix combustible ─────────────────────────────── *@
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-building me-2"></i>Emisiones por gestor (SCRAP)</div>
+                <div class="card-body">
+                    @if (_data.ByScrap.Any())
+                    {
+                        <div id="chart-hce-scrap" style="min-height:280px"></div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center pt-4">Sin datos de gestores.</p>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-bar-chart-fill me-2"></i>Emisiones por combustible y mes</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr><th>Año</th><th>Mes</th><th>Combustible</th><th class="text-end">CO₂e (kg)</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var f in _data.MonthlyByFuel)
+                                {
+                                    <tr>
+                                        <td>@f.Year</td>
+                                        <td>@MonthName(f.Month)</td>
+                                        <td>@f.FuelType</td>
+                                        <td class="text-end">@f.CO2eKg.ToString("N1")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    @* -- Evolucion mensual *@
+    <div class="card">
+        <div class="card-header"><i class="bi bi-graph-up me-2"></i>Evolucion mensual</div>
+        <div class="card-body">
+            @if (_data.MonthlyEvolution.Any())
+            {
+                <div id="chart-hce-monthly" style="min-height:280px"></div>
+            }
+            else
+            {
+                <p class="text-muted text-center pt-4">Sin datos mensuales en el periodo.</p>
+            }
+        </div>
+    </div>
+}
+
+
+@code {
+    private CarbonPublicViewDto? _data;
+    private bool    _loading;
+    private bool    _chartsRendered;
+    private DateTime _dateFrom = new(DateTime.Now.Year, 1, 1);
+    private DateTime _dateTo   = DateTime.Now;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_loading && _data is not null && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading        = true;
+        _chartsRendered = false;
+        try
+        {
+            _data = await Mediator.Send(new GetPublicEntityCarbonViewQuery(_dateFrom, _dateTo));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando HC-E");
+            _data = null;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            if (_data.MonthlyEvolution.Any())
+            {
+                var months = _data.MonthlyEvolution
+                    .Select(m => new { year = m.Year, month = m.Month,
+                                       co2eTonnes = (double)(m.CO2eKg / 1000m) })
+                    .ToList();
+                await JS.InvokeVoidAsync("carbonCharts.renderMonthlyEvolution", "chart-hce-monthly", months);
+            }
+            if (_data.ByScrap.Any())
+            {
+                var scraps = _data.ByScrap
+                    .Select(s => new { scrapName = s.ScrapName,
+                                       co2eTonnes = (double)(s.CO2eKg / 1000m),
+                                       co2ePerTonne = (double)s.IntensityCO2ePerTonne })
+                    .ToList();
+                await JS.InvokeVoidAsync("carbonCharts.renderScrapBars", "chart-hce-scrap", scraps);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando graficos HC-E");
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _ = JS.InvokeVoidAsync("carbonCharts.clear", "chart-hce-monthly");
+        _ = JS.InvokeVoidAsync("carbonCharts.clear", "chart-hce-scrap");
+        return ValueTask.CompletedTask;
+    }
+
+    private static string MonthName(int m) =>
+        CultureInfo.GetCultureInfo("es-ES").DateTimeFormat.GetMonthName(m);
+}

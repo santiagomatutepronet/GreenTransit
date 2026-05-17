@@ -1,0 +1,264 @@
+@page "/reporting/carbon-footprint/plant-energy"
+@attribute [Authorize(Policy = PolicyConstants.CanViewCarbonPlantEnergy)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Reporting.CarbonFootprint.DTOs
+@using GreenTransit.Application.Features.Reporting.CarbonFootprint.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+@using System.Globalization
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
+@inject ILogger<PlantEnergyFootprint> Logger
+
+<PageTitle>Huella Energética de Plantas — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-lightning-charge-fill me-2 text-warning"></i>Huella Energética de Plantas
+        </h1>
+        <p class="text-muted mb-0">Dashboard HC-C · Scope 2 — Energía de instalaciones · @_dateFrom.ToString("dd/MM/yyyy") – @_dateTo.ToString("dd/MM/yyyy")</p>
+        <p class="text-muted small mt-1">
+            Análisis de las emisiones Scope 2 derivadas del consumo energético de las instalaciones de reciclaje y tratamiento.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="LoadAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Desde</label>
+        <input type="date" class="form-control form-control-sm"
+               value="@_dateFrom.ToString("yyyy-MM-dd")"
+               @onchange="e => { _dateFrom = DateTime.Parse(e.Value!.ToString()!); _ = LoadAsync(); }" />
+    </div>
+    <div class="filter-group">
+        <label>Hasta</label>
+        <input type="date" class="form-control form-control-sm"
+               value="@_dateTo.ToString("yyyy-MM-dd")"
+               @onchange="e => { _dateTo = DateTime.Parse(e.Value!.ToString()!); _ = LoadAsync(); }" />
+    </div>
+    <div class="filter-group">
+        <label>Planta</label>
+        <input class="form-control form-control-sm" @bind="_filterPlantName" @bind:after="LoadAsync" placeholder="Todas" />
+    </div>
+    <div class="filter-group">
+        <label>Fuente energética</label>
+        <input class="form-control form-control-sm" @bind="_filterSource" @bind:after="LoadAsync" placeholder="Todas" />
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_data is null)
+{
+    <div class="alert alert-warning">No se han podido cargar los datos.</div>
+}
+else
+{
+    @* ── KPIs ─────────────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100 border-warning">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-lightning-charge-fill text-warning me-1"></i>kWh totales</div>
+                    <div class="kpi-value">@_data.TotalKwhPeriod.ToString("N0") <small class="text-muted">kWh</small></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-cloud-fill text-danger me-1"></i>CO₂e Scope 2</div>
+                    <div class="kpi-value">@_data.Scope2CO2eTonnes.ToString("N2") <small class="text-muted">t CO₂e</small></div>
+                    @if (_data.VariationVsPreviousPct != 0)
+                    {
+                        <div class="kpi-badge @(_data.VariationVsPreviousPct > 0 ? "badge-danger" : "badge-success")">
+                            <i class="bi bi-@(_data.VariationVsPreviousPct > 0 ? "arrow-up" : "arrow-down") me-1"></i>
+                            @Math.Abs(_data.VariationVsPreviousPct).ToString("N1")% vs periodo anterior
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-speedometer2 me-1 text-warning"></i>Intensidad Scope 2</div>
+                    <div class="kpi-value">@_data.Scope2CO2ePerTonneKg.ToString("N1") <small class="text-muted">kg/t</small></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-building-fill me-1 text-primary"></i>Plantas analizadas</div>
+                    <div class="kpi-value">@_data.PlantComparison.Count</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Gráficos comparativa plantas + donut fuentes ────────────────────── *@
+    <div class="row g-4 mb-4">
+        <div class="col-lg-7">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-bar-chart-steps me-2"></i>Comparativa de consumo entre plantas</div>
+                <div class="card-body">
+                    @if (_data.PlantComparison.Any())
+                    {
+                        <div id="chart-hcc-plants" style="min-height:280px"></div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center pt-4">Sin datos de plantas.</p>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-pie-chart-fill me-2"></i>Distribución por fuente energética</div>
+                <div class="card-body">
+                    @if (_data.BySource.Any())
+                    {
+                        <div id="chart-hcc-source" style="min-height:280px"></div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center pt-4">Sin datos de fuente energética.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Tabla detalle ────────────────────────────────────────────────────── *@
+    <div class="card">
+        <div class="card-header"><i class="bi bi-table me-2"></i>Detalle por planta y periodo</div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Planta</th><th>Código</th><th>Año</th><th>Mes</th>
+                            <th class="text-end">kWh</th><th>Fuente</th><th>Mix red</th>
+                            <th>Imputación</th><th class="text-end">t tratadas</th>
+                            <th class="text-end">CO₂e Scope 2 (kg)</th><th class="text-end">kg/t</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in _data.Details)
+                        {
+                            <tr>
+                                <td class="text-truncate" style="max-width:140px">@d.PlantName</td>
+                                <td>@(d.PlantCenterCode ?? "—")</td>
+                                <td>@d.Year</td>
+                                <td>@(d.Month > 0 ? MonthName(d.Month) : "Anual")</td>
+                                <td class="text-end">@d.KwhTotal.ToString("N0")</td>
+                                <td>@(d.Source ?? "—")</td>
+                                <td>@(d.GridMixRef ?? "—")</td>
+                                <td>@(d.AllocationMethod ?? "Prorrateo por volumen")</td>
+                                <td class="text-end">@((d.TreatmentWeightKg / 1000m).ToString("N1"))</td>
+                                <td class="text-end">@d.Scope2CO2eKg.ToString("N1")</td>
+                                <td class="text-end">@d.CO2ePerTonneKg.ToString("N1")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private CarbonPlantEnergyDto? _data;
+    private bool    _loading;
+    private bool    _chartsRendered;
+    private DateTime _dateFrom = new(DateTime.Now.Year, 1, 1);
+    private DateTime _dateTo   = DateTime.Now;
+    private string?  _filterPlantName;
+    private string?  _filterSource;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_loading && _data is not null && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading        = true;
+        _chartsRendered = false;
+        try
+        {
+            _data = await Mediator.Send(new GetPlantEnergyFootprintQuery(
+                _dateFrom, _dateTo,
+                PlantName: string.IsNullOrEmpty(_filterPlantName) ? null : _filterPlantName,
+                Source:    string.IsNullOrEmpty(_filterSource)    ? null : _filterSource));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando HC-C");
+            _data = null;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            if (_data.PlantComparison.Any())
+            {
+                var plants = _data.PlantComparison
+                    .Select(p => new { plantName = p.PlantName, kwhTotal = (double)p.KwhTotal,
+                                       scope2CO2eKg = (double)p.Scope2CO2eKg,
+                                       co2ePerTonneKg = (double)p.CO2ePerTonneKg })
+                    .ToList();
+                await JS.InvokeVoidAsync("carbonCharts.renderPlantComparison", "chart-hcc-plants", plants);
+            }
+            if (_data.BySource.Any())
+            {
+                var sources = _data.BySource
+                    .Select(s => new { source = s.Source, kwhTotal = (double)s.KwhTotal, pct = (double)s.Pct })
+                    .ToList();
+                await JS.InvokeVoidAsync("carbonCharts.renderSourceDonut", "chart-hcc-source", sources);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráficos HC-C");
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _ = JS.InvokeVoidAsync("carbonCharts.clear", "chart-hcc-plants");
+        _ = JS.InvokeVoidAsync("carbonCharts.clear", "chart-hcc-source");
+        return ValueTask.CompletedTask;
+    }
+
+    private static string MonthName(int m) =>
+        CultureInfo.GetCultureInfo("es-ES").DateTimeFormat.GetMonthName(m);
+}
