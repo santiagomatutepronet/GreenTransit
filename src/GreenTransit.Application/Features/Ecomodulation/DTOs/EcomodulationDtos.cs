@@ -194,3 +194,157 @@ public sealed record ScrapDppScoreDto(
     double  AvgDppScore,
     int     ProductCount
 );
+
+// ── EC-A: ScrapEcoModulationPanel ─────────────────────────────────────────────
+
+/// <summary>DTO raíz del dashboard EC-A — Panel SCRAP de Ecomodulación (impacto económico).</summary>
+public sealed record ScrapEcoModulationPanelDto(
+    int     Year,
+    int?    Quarter,
+    int?    Month,
+    // KPIs económicos
+    decimal TotalAdjustmentsAmount,
+    decimal PreviousPeriodAmount,
+    double  VariationPct,
+    int     TotalSettlements,
+    // Desglose por período
+    IReadOnlyList<EcomodSettlementPeriodDto>  ByPeriod,
+    // Top productores bonificados/penalizados
+    IReadOnlyList<EcomodProducerImpactDto>    TopProducers,
+    // Reglas activas y % cumplimiento
+    IReadOnlyList<EcomodActiveRuleDto>        ActiveRules,
+    // Detalle de liquidaciones
+    IReadOnlyList<EcomodSettlementDetailDto>  Settlements
+);
+
+public sealed record EcomodSettlementPeriodDto(
+    string  Period,
+    decimal AdjustmentsAmount,
+    int     SettlementCount
+);
+
+public sealed record EcomodProducerImpactDto(
+    Guid    ProducerId,
+    string  ProducerName,
+    decimal TotalAdjustment,
+    /// <summary>Positive = bonificación, Negative = penalización.</summary>
+    string  ImpactDirection
+);
+
+public sealed record EcomodActiveRuleDto(
+    string  RuleCode,
+    string  FeeImpactType,
+    decimal FeeImpactValue,
+    int?    ProductCategory,
+    int     SettlementLinesAffected,
+    decimal TotalEconomicImpact
+);
+
+public sealed record EcomodSettlementDetailDto(
+    Guid    SettlementId,
+    string  SettlementNumber,
+    int     Year,
+    int?    Month,
+    decimal BaseAmount,
+    decimal AdjustmentsAmount,
+    decimal TotalAmount,
+    string  Status
+);
+
+// ── EC-B: EcoModulationRegulatoryEconomicView ─────────────────────────────────
+
+/// <summary>DTO raíz del dashboard EC-B — Vista Regulatoria de Ecomodulación (impacto económico supervisión).</summary>
+public sealed record EcoModulationRegulatoryEconomicViewDto(
+    int     Year,
+    // KPIs globales
+    decimal TotalAdjustmentsEcosystem,
+    int     TotalScrapsWithSettlements,
+    int     TotalActiveRules,
+    // Comparativa por SCRAP
+    IReadOnlyList<EcomodScrapSettlementSummaryDto> ScrapComparison,
+    // Reglas del catálogo y su aplicación
+    IReadOnlyList<EcomodRuleEcosystemImpactDto>    RulesEcosystemImpact,
+    // Evolución por período
+    IReadOnlyList<EcomodSettlementPeriodDto>       EcosystemTrend
+);
+
+public sealed record EcomodScrapSettlementSummaryDto(
+    Guid    ScrapId,
+    string  ScrapName,
+    decimal TotalBaseAmount,
+    decimal TotalAdjustmentsAmount,
+    decimal TotalAmount,
+    int     SettlementCount,
+    double  AdjustmentRatePct
+);
+
+public sealed record EcomodRuleEcosystemImpactDto(
+    string  RuleCode,
+    string  FeeImpactType,
+    decimal FeeImpactValue,
+    int?    ProductCategory,
+    int     TotalLinesAffected,
+    decimal TotalEconomicImpact,
+    int     ScrapsApplyingRule
+);
+
+// ── EC-C: DPPPreparation ──────────────────────────────────────────────────────
+
+/// <summary>DTO raíz del dashboard EC-C — Preparación DPP por productor.</summary>
+public sealed record DPPPreparationDto(
+    // KPIs resumen
+    int    TotalProducts,
+    int    ProductsWithFullSpec,
+    int    ProductsDppReady,
+    double PctFullSpec,
+    double PctDppReady,
+    // Vista del perfil activo
+    string ActiveProfile,
+    // Por producto: completitud y criterios DPP
+    IReadOnlyList<DPPProductReadinessDto>     Products,
+    // Productores adheridos (vista SCRAP)
+    IReadOnlyList<DPPProducerAdherenceSummaryDto> ProducerAdherence,
+    // Reglas eco-modulación aplicables
+    IReadOnlyList<DPPEcomodRuleApplicabilityDto>  ApplicableRules
+);
+
+public sealed record DPPProductReadinessDto(
+    Guid    ProductSpecId,
+    string  ProductRef,
+    string? ProductName,
+    string? ProductCategory,
+    string? ProducerName,
+    // Campos DPP obligatorios
+    bool    HasName,
+    bool    HasReference,
+    bool    HasLerCode,
+    bool    HasReparabilityIndex,
+    bool    HasDisassemblyEase,
+    bool    HasRecycledContent,
+    bool    HasComposition,
+    bool    HasHazardousInfo,
+    bool    HasPotentialLerCodes,
+    bool    HasProducer,
+    double  DppCompletionPct,
+    bool    IsDppReady,
+    IReadOnlyList<string> MissingFields,
+    // Reglas eco-modulación que aplican a este producto
+    IReadOnlyList<string> ApplicableEcomodRules
+);
+
+public sealed record DPPProducerAdherenceSummaryDto(
+    Guid    ProducerId,
+    string  ProducerName,
+    int     TotalProducts,
+    int     DppReadyProducts,
+    double  DppReadyPct,
+    string  TrafficLight
+);
+
+public sealed record DPPEcomodRuleApplicabilityDto(
+    string  RuleCode,
+    string  FeeImpactType,
+    decimal FeeImpactValue,
+    int?    ProductCategory,
+    int     ProductsAffected
+);

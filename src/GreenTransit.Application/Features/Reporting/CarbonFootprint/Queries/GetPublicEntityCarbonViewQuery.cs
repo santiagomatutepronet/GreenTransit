@@ -89,18 +89,19 @@ public sealed class GetPublicEntityCarbonViewQueryHandler
             }
 
             restrictedSoIds = await _context.ServiceOrders.AsNoTracking()
-                .Where(so => so.IdIssuedBy == linkedEntityId.Value
-                          || (so.IdPickupPoint.HasValue && pickupPointIds.Contains(so.IdPickupPoint.Value)))
+                .Where(so => so.OwnerId == ownerId
+                          && (so.IdIssuedBy == linkedEntityId.Value
+                          || (so.IdPickupPoint.HasValue && pickupPointIds.Contains(so.IdPickupPoint.Value))))
                 .Select(so => so.Id)
                 .ToListAsync(ct);
         }
 
         // ── WasteMoves ───────────────────────────────────────────────────────
         var wmQuery = _context.WasteMoves.AsNoTracking()
-            .Where(wm => wm.ActualPickupStart >= request.DateFrom
+            .Where(wm => wm.OwnerId == ownerId
+                      && wm.ActualPickupStart >= request.DateFrom
                       && wm.ActualPickupStart <  request.DateTo.AddDays(1));
 
-        if (!seeAll) wmQuery = wmQuery.Where(wm => wm.OwnerId == ownerId);
         if (restrictedSoIds is not null)
             wmQuery = wmQuery.Where(wm => wm.ServiceOrderId.HasValue
                                        && restrictedSoIds.Contains(wm.ServiceOrderId.Value));
@@ -190,9 +191,9 @@ public sealed class GetPublicEntityCarbonViewQueryHandler
         var prevTo     = request.DateFrom.AddDays(-1);
 
         var prevQuery = _context.WasteMoves.AsNoTracking()
-            .Where(wm => wm.ActualPickupStart >= prevFrom
+            .Where(wm => wm.OwnerId == ownerId
+                      && wm.ActualPickupStart >= prevFrom
                       && wm.ActualPickupStart <  prevTo.AddDays(1));
-        if (!seeAll) prevQuery = prevQuery.Where(wm => wm.OwnerId == ownerId);
         if (restrictedSoIds is not null)
             prevQuery = prevQuery.Where(wm => wm.ServiceOrderId.HasValue
                                            && restrictedSoIds.Contains(wm.ServiceOrderId.Value));

@@ -41,29 +41,57 @@ public sealed class GetCarbonTransportQueryHandler
         GetCarbonTransportQuery request, CancellationToken ct)
     {
         var ownerId    = _currentUser.OwnerId;
-        var seeAll     = _currentUser.IsInProfile(ProfileConstants.Admin)
-                      || _currentUser.IsInProfile(ProfileConstants.DispatchOffice);
+        var isScrap    = _currentUser.IsInProfile(ProfileConstants.Scrap);
+        var isCarrier  = _currentUser.IsInProfile(ProfileConstants.Carrier);
+        var isCoord    = _currentUser.IsInProfile(ProfileConstants.Coordinator);
+
+        // ── SCRAPs visibles para COORDINATOR ──────────────────────────────────
+        List<Guid>? coordinatorScrapIds = null;
+        if (isCoord)
+        {
+            coordinatorScrapIds = await _context.Agreements
+                .AsNoTracking()
+                .Where(a => a.IdCoordinator == _currentUser.LinkedEntityId
+                         && a.OwnerId == ownerId
+                         && a.IdScrap.HasValue)
+                .Select(a => a.IdScrap!.Value)
+                .Distinct()
+                .ToListAsync(ct);
+        }
 
         // ── Set activo de factores ────────────────────────────────────────────
         var factorLookup = await BuildFactorLookupAsync(ct);
 
         // ── WasteMoves base ───────────────────────────────────────────────────
         var wmQuery = _context.WasteMoves.AsNoTracking()
-            .Where(wm => wm.ActualPickupStart >= request.DateFrom
+            .Where(wm => wm.OwnerId == ownerId
+                      && wm.ActualPickupStart >= request.DateFrom
                       && wm.ActualPickupStart <  request.DateTo.AddDays(1));
-        if (!seeAll) wmQuery = wmQuery.Where(wm => wm.OwnerId == ownerId);
+
+        // Filtrado por perfil
+        if (isScrap)
+            wmQuery = wmQuery.Where(wm => wm.IdScrap == _currentUser.LinkedEntityId
+                                       || wm.IdScrap2 == _currentUser.LinkedEntityId);
+        else if (isCarrier)
+            wmQuery = wmQuery.Where(wm =>
+                wm.WasteMoveResidues.Any(r => r.IdCarrier == _currentUser.LinkedEntityId));
+        else if (isCoord && coordinatorScrapIds is not null)
+            wmQuery = wmQuery.Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value));
+
         if (request.IdScrap.HasValue) wmQuery = wmQuery.Where(wm => wm.IdScrap == request.IdScrap.Value);
 
         var wmRaw = await wmQuery.Select(wm => new
         {
             wm.Id, wm.WasteMoveReference, wm.IdScrap, wm.IdSource, wm.IdDestination,
             wm.ActualPickupStart,
-            Residues = wm.WasteMoveResidues.Select(r => new
-            {
-                r.Weight, r.VehicleType, r.FuelType, r.EuroClass,
-                r.TransportInfo_TransportDistance,
-                r.TransportInfo_TransportCarbonEmissions
-            }).ToList()
+            Residues = wm.WasteMoveResidues
+                .Where(r => !isCarrier || r.IdCarrier == _currentUser.LinkedEntityId)
+                .Select(r => new
+                {
+                    r.Weight, r.VehicleType, r.FuelType, r.EuroClass,
+                    r.TransportInfo_TransportDistance,
+                    r.TransportInfo_TransportCarbonEmissions
+                }).ToList()
         }).ToListAsync(ct);
 
         // ── Lookup geográfico ─────────────────────────────────────────────────

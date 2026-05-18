@@ -4,11 +4,14 @@
 @implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
 @using GreenTransit.Application.Features.Geography.DTOs
 @using GreenTransit.Application.Features.Geography.Queries
 @using GreenTransit.Application.Features.Mobility.DTOs
 @using GreenTransit.Application.Features.Mobility.Queries
 @using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.JSInterop
@@ -60,6 +63,17 @@
             { <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", _es))</option> }
         </select>
     </div>
+    @if (_scraps.Count > 0)
+    {
+        <div class="filter-group">
+            <label>SCRAP</label>
+            <select class="form-select form-select-sm" @bind="_filterScrapId" @bind:after="RefreshAsync">
+                <option value="">Todos</option>
+                @foreach (var s in _scraps)
+                { <option value="@s.Id">@s.Name</option> }
+            </select>
+        </div>
+    }
     <div class="filter-group">
         <label>Provincia</label>
         <select class="form-select form-select-sm" @bind="_filterProvinceId" @bind:after="OnProvinceChangedAsync">
@@ -238,6 +252,9 @@ else if (_data is not null)
     private bool   _exporting            = false;
     private int    _filterYear           = DateTime.Now.Year;
     private int?   _filterMonth          = DateTime.Now.Month;
+    private Guid?  _filterScrapId;
+
+    private IReadOnlyList<EntitySelectorDto> _scraps = [];
 
     // Filtros geográficos en cascada
     private int    _filterProvinceId       = 0;    // 0 = Todas
@@ -255,6 +272,7 @@ else if (_data is not null)
     {
         var provList = await Mediator.Send(new GetAllProvincesQuery());
         _provinces = provList.ToList();
+        _scraps    = await Mediator.Send(new GetEntitiesForSelectorQuery([EntityRoles.SCRAP]));
         await RefreshAsync();
     }
 
@@ -297,6 +315,7 @@ else if (_data is not null)
             _data = await Mediator.Send(new GetMobilityDispatchDataQuery(
                 Year:             _filterYear,
                 Month:            _filterMonth,
+                IdScrap:          _filterScrapId,
                 ProvinceCode:     string.IsNullOrEmpty(_filterProvinceCode)     ? null : _filterProvinceCode,
                 MunicipalityCode: string.IsNullOrEmpty(_filterMunicipalityCode) ? null : _filterMunicipalityCode));
         }
@@ -341,6 +360,7 @@ else if (_data is not null)
             var result = await Mediator.Send(new ExportMobilityDataToExcelQuery(
                 Year:             _filterYear,
                 Month:            _filterMonth,
+                IdScrap:          _filterScrapId,
                 ProvinceCode:     string.IsNullOrEmpty(_filterProvinceCode)     ? null : _filterProvinceCode,
                 MunicipalityCode: string.IsNullOrEmpty(_filterMunicipalityCode) ? null : _filterMunicipalityCode));
 

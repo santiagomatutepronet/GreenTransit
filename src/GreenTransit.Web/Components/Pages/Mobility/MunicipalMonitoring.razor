@@ -4,9 +4,12 @@
 @implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
 @using GreenTransit.Application.Features.Mobility.DTOs
 @using GreenTransit.Application.Features.Mobility.Queries
 @using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.JSInterop
@@ -67,6 +70,17 @@
             <option value="OIL">Aceite</option>
         </select>
     </div>
+    @if (_scraps.Count > 0)
+    {
+        <div class="filter-group">
+            <label>SCRAP</label>
+            <select class="form-select form-select-sm" @bind="_filterScrapId" @bind:after="RefreshAsync">
+                <option value="">Todos</option>
+                @foreach (var s in _scraps)
+                { <option value="@s.Id">@s.Name</option> }
+            </select>
+        </div>
+    }
 </div>
 
 @if (_loading)
@@ -238,13 +252,27 @@ else if (_data is not null)
     private int     _filterYear        = DateTime.Now.Year;
     private int?    _filterMonth       = DateTime.Now.Month;
     private string  _filterWasteStream = string.Empty;
+    private Guid?   _filterScrapId;
+
+    private IReadOnlyList<EntitySelectorDto> _scraps = [];
 
     private static readonly CultureInfo _es = new("es-ES");
     private bool _jsReady = false;
     private DotNetObjectReference<MunicipalMonitoring>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
-        => await RefreshAsync();
+    {
+        await LoadScrapsAsync();
+        await RefreshAsync();
+    }
+
+    private async Task LoadScrapsAsync()
+    {
+        // PUBLIC_ENT y ADMIN: carga todos los SCRAPs del tenant para el selector.
+        // El handler del dashboard aplica la restricción al municipio de la entidad pública
+        // cuando IdScrap se combina con el filtro de municipio en el backend.
+        _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery([EntityRoles.SCRAP]));
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -267,6 +295,7 @@ else if (_data is not null)
             _data = await Mediator.Send(new GetMobilityMunicipalMonitoringQuery(
                 Year:        _filterYear,
                 Month:       _filterMonth,
+                IdScrap:     _filterScrapId,
                 WasteStream: string.IsNullOrEmpty(_filterWasteStream) ? null : _filterWasteStream));
         }
         catch (Exception ex)

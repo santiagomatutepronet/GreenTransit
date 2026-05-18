@@ -372,10 +372,27 @@ public sealed class GetOperationalDashboardQueryHandler
         List<OpenIncidentRowDto> plantOpenIncidents = [];
         if (isPlantOp || isAdmin)
         {
-            var pIncRaw = await _context.Incidents
+            var pIncQuery = _context.Incidents
                 .AsNoTracking()
                 .Where(i => (scopeOwnerId == Guid.Empty || i.OwnerId == scopeOwnerId)
-                         && i.ClosedAt == null)
+                         && i.ClosedAt == null);
+
+            // PLANT_OP: solo incidencias cuya SO tiene WasteMoves con IdDestination = planta
+            if ((isPlantOp && !isAdmin) && scopeEntityId.HasValue)
+            {
+                var eid = scopeEntityId.Value;
+                var soIdsAtPlant = _context.WasteMoves
+                    .Where(wm => wm.IdDestination == eid
+                              && (scopeOwnerId == Guid.Empty || wm.OwnerId == scopeOwnerId)
+                              && wm.ServiceOrderId != null)
+                    .Select(wm => wm.ServiceOrderId);
+
+                pIncQuery = pIncQuery.Where(i =>
+                    i.ServiceOrderId != null &&
+                    soIdsAtPlant.Contains(i.ServiceOrderId));
+            }
+
+            var pIncRaw = await pIncQuery
                 .OrderByDescending(i => i.OpenedAt)
                 .Take(20)
                 .Select(i => new

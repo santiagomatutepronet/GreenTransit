@@ -40,17 +40,52 @@ public sealed class GetPlantEnergyFootprintQueryHandler
     public async Task<CarbonPlantEnergyDto> Handle(
         GetPlantEnergyFootprintQuery request, CancellationToken ct)
     {
-        var ownerId  = _currentUser.OwnerId;
-        var isAdmin  = _currentUser.IsInProfile(ProfileConstants.Admin);
-        var isDispatch = _currentUser.IsInProfile(ProfileConstants.DispatchOffice);
-        var isScrap  = _currentUser.IsInProfile(ProfileConstants.Scrap);
-        var seeAll   = isAdmin || isDispatch || isScrap;
+        var ownerId    = _currentUser.OwnerId;
+        var isPlantOp  = _currentUser.IsInProfile(ProfileConstants.PlantOp);
+        var isScrap    = _currentUser.IsInProfile(ProfileConstants.Scrap);
+
+        // ── Restricción por perfil: PLANT_OP → solo su planta ─────────────────
+        string? plantOpCenterCode = null;
+        if (isPlantOp)
+        {
+            plantOpCenterCode = await _context.BusinessEntities.AsNoTracking()
+                .Where(e => e.Id == _currentUser.LinkedEntityId)
+                .Select(e => e.CenterCode)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        // ── Restricción por perfil: SCRAP → plantas destino de sus traslados ──
+        List<string>? scrapPlantCenterCodes = null;
+        List<Guid>?   scrapPlantEntityIds   = null;
+        if (isScrap)
+        {
+            scrapPlantEntityIds = await _context.WasteMoves.AsNoTracking()
+                .Where(wm => (wm.IdScrap == _currentUser.LinkedEntityId
+                           || wm.IdScrap2 == _currentUser.LinkedEntityId)
+                          && wm.OwnerId == ownerId
+                          && wm.IdDestination.HasValue)
+                .Select(wm => wm.IdDestination!.Value)
+                .Distinct()
+                .ToListAsync(ct);
+
+            scrapPlantCenterCodes = await _context.BusinessEntities.AsNoTracking()
+                .Where(e => scrapPlantEntityIds.Contains(e.Id) && e.CenterCode != null)
+                .Select(e => e.CenterCode!)
+                .Distinct()
+                .ToListAsync(ct);
+        }
 
         // ── Energía de plantas ────────────────────────────────────────────────
         var energyQuery = _context.PlantEnergies.AsNoTracking()
-            .Where(pe => pe.Year >= request.DateFrom.Year && pe.Year <= request.DateTo.Year);
+            .Where(pe => pe.OwnerId == ownerId
+                      && pe.Year >= request.DateFrom.Year
+                      && pe.Year <= request.DateTo.Year);
 
-        if (!seeAll) energyQuery = energyQuery.Where(pe => pe.OwnerId == ownerId);
+        if (isPlantOp && plantOpCenterCode is not null)
+            energyQuery = energyQuery.Where(pe => pe.PlantCenterCode == plantOpCenterCode);
+        else if (isScrap && scrapPlantCenterCodes is not null)
+            energyQuery = energyQuery.Where(pe => scrapPlantCenterCodes.Contains(pe.PlantCenterCode));
+
         if (!string.IsNullOrEmpty(request.PlantName))
             energyQuery = energyQuery.Where(pe => pe.PlantName == request.PlantName);
         if (!string.IsNullOrEmpty(request.PlantCenterCode))
@@ -75,9 +110,30 @@ public sealed class GetPlantEnergyFootprintQueryHandler
 
         // ── EntryPlants: toneladas tratadas por planta/mes ────────────────────
         var epQuery = _context.EntryPlants.AsNoTracking()
-            .Where(ep => ep.PlantEntryDate >= request.DateFrom
+            .Where(ep => ep.OwnerId == ownerId
+                      && ep.PlantEntryDate >= request.DateFrom
                       && ep.PlantEntryDate <  request.DateTo.AddDays(1));
-        if (!seeAll) epQuery = epQuery.Where(ep => ep.OwnerId == ownerId);
+
+        // Aplicar restricción de planta/traslados al query de entradas
+        if (isPlantOp && _currentUser.LinkedEntityId.HasValue)
+        {
+            var plantId = _currentUser.LinkedEntityId.Value;
+            var plantWmIds = await _context.WasteMoves.AsNoTracking()
+                .Where(wm => wm.IdDestination == plantId && wm.OwnerId == ownerId)
+                .Select(wm => wm.Id)
+                .ToListAsync(ct);
+            epQuery = epQuery.Where(ep => plantWmIds.Contains(ep.IdWasteMove));
+        }
+        else if (isScrap && scrapPlantEntityIds is not null)
+        {
+            var scrapWmIds = await _context.WasteMoves.AsNoTracking()
+                .Where(wm => (wm.IdScrap == _currentUser.LinkedEntityId
+                           || wm.IdScrap2 == _currentUser.LinkedEntityId)
+                          && wm.OwnerId == ownerId)
+                .Select(wm => wm.Id)
+                .ToListAsync(ct);
+            epQuery = epQuery.Where(ep => scrapWmIds.Contains(ep.IdWasteMove));
+        }
 
         var entryData = await epQuery
             .Join(_context.WasteMoves.AsNoTracking(),
@@ -106,10 +162,17 @@ public sealed class GetPlantEnergyFootprintQueryHandler
         var prevFrom   = request.DateFrom.AddDays(-periodDays);
         var prevTo     = request.DateFrom.AddDays(-1);
 
-        var prevEnergy = await _context.PlantEnergies.AsNoTracking()
-            .Where(pe => (!seeAll ? pe.OwnerId == ownerId : true)
-                      && pe.Year >= prevFrom.Year && pe.Year <= prevTo.Year)
-            .SumAsync(pe => pe.KwhTotal, ct);
+        var prevEnergyQuery = _context.PlantEnergies.AsNoTracking()
+            .Where(pe => pe.OwnerId == ownerId
+                      && pe.Year >= prevFrom.Year
+                      && pe.Year <= prevTo.Year);
+
+        if (isPlantOp && plantOpCenterCode is not null)
+            prevEnergyQuery = prevEnergyQuery.Where(pe => pe.PlantCenterCode == plantOpCenterCode);
+        else if (isScrap && scrapPlantCenterCodes is not null)
+            prevEnergyQuery = prevEnergyQuery.Where(pe => scrapPlantCenterCodes.Contains(pe.PlantCenterCode));
+
+        var prevEnergy = await prevEnergyQuery.SumAsync(pe => pe.KwhTotal, ct);
 
         var currentKwh = energyData.Sum(pe => pe.KwhTotal);
         var prevCO2    = prevEnergy * _gridEmissionFactor;

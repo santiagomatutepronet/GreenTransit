@@ -66,6 +66,15 @@
             <option value="Neumáticos">Neumáticos</option>
         </select>
     </div>
+    @if (_isAdmin)
+    {
+        <div class="filter-group">
+            <label>SCRAP</label>
+            <input type="text" class="form-control form-control-sm"
+                   placeholder="ID SCRAP…"
+                   @bind="_filterScrapIdText" @bind:after="OnScrapFilterChanged" />
+        </div>
+    }
 </div>
 
 @* ── Estado ───────────────────────────────────────────────────────────────── *@
@@ -410,12 +419,24 @@ else if (_data is not null)
     private bool    _loading;
     private string? _error;
 
-    private int  _filterYear        = DateTime.Now.Year;
-    private int? _filterMonth       = DateTime.Now.Month;
+    private int    _filterYear        = DateTime.Now.Year;
+    private int?   _filterMonth       = DateTime.Now.Month;
     private string _filterWasteStream = string.Empty;
+    private string _filterScrapIdText = string.Empty;
+    private Guid?  _filterScrapId;
+    private bool   _isAdmin;
 
     protected override async Task OnInitializedAsync()
-        => await LoadDataAsync();
+    {
+        _isAdmin = CurrentUser.IsInProfile(ProfileConstants.Admin);
+        await LoadDataAsync();
+    }
+
+    private async Task OnScrapFilterChanged()
+    {
+        _filterScrapId = Guid.TryParse(_filterScrapIdText, out var g) ? g : null;
+        await LoadDataAsync();
+    }
 
     private async Task LoadDataAsync()
     {
@@ -427,6 +448,7 @@ else if (_data is not null)
             _data = await Mediator.Send(new GetPublicMonitoringQuery(
                 Year:        _filterYear,
                 Month:       _filterMonth == 0 ? null : _filterMonth,
+                IdScrap:     _filterScrapId,
                 WasteStream: string.IsNullOrEmpty(_filterWasteStream) ? null : _filterWasteStream));
         }
         catch (Exception ex)

@@ -1,0 +1,288 @@
+@page "/reporting/ecomodulation/dpp-preparation"
+@attribute [Authorize(Policy = PolicyConstants.CanViewDPPPreparation)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Ecomodulation.DTOs
+@using GreenTransit.Application.Features.Ecomodulation.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+
+@inject IMediator            Mediator
+@inject ICurrentUserService  CurrentUser
+@inject ILogger<DPPPreparation> Logger
+
+<PageTitle>Preparación DPP — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-file-earmark-check me-2"></i>Preparación del Pasaporte Digital de Producto (DPP)
+        </h1>
+        <p class="text-muted mb-0">
+            Ecomodulación · DPP · Reglamento UE
+        </p>
+        <p class="text-muted small mt-1">
+            Estado de completitud de fichas técnicas y criterios de ecomodulación aplicables para la generación del DPP europeo.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Categoría</label>
+        <select class="form-select form-select-sm" @bind="_filterCategory" @bind:after="RefreshAsync">
+            <option value="">Todas</option>
+            @if (_data is not null)
+            {
+                @foreach (var cat in _data.Products
+                    .Where(p => !string.IsNullOrEmpty(p.ProductCategory))
+                    .Select(p => p.ProductCategory!)
+                    .Distinct()
+                    .OrderBy(c => c))
+                { <option value="@cat">@cat</option> }
+            }
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Evaluando completitud DPP…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── KPIs ───────────────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Productos declarados</p>
+                    <p class="kpi-value">@_data.TotalProducts</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Con ficha completa</p>
+                    <p class="kpi-value">@_data.ProductsWithFullSpec</p>
+                    <p class="kpi-sub">@_data.PctFullSpec.ToString("F1")%</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">DPP-ready (≥80%)</p>
+                    <p class="kpi-value @(_data.PctDppReady >= 80 ? "text-success" : _data.PctDppReady >= 50 ? "text-warning" : "text-danger")">
+                        @_data.ProductsDppReady
+                    </p>
+                    <p class="kpi-sub">@_data.PctDppReady.ToString("F1")%</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Reglas eco-mod aplicables</p>
+                    <p class="kpi-value">@_data.ApplicableRules.Count</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Tabla de productos con semáforo de completitud ──────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-table me-1"></i>Productos — estado de completitud DPP
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Referencia</th>
+                            <th>Nombre</th>
+                            <th>Categoría</th>
+                            <th>Productor</th>
+                            <th class="text-end">% completitud</th>
+                            <th>DPP-ready</th>
+                            <th>Campos faltantes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _data.Products)
+                        {
+                            <tr>
+                                <td><code>@p.ProductRef</code></td>
+                                <td>@(p.ProductName ?? "—")</td>
+                                <td>@(p.ProductCategory ?? "—")</td>
+                                <td>@(p.ProducerName ?? "—")</td>
+                                <td class="text-end">
+                                    <span class="badge @DppBadge(p.DppCompletionPct)">
+                                        @p.DppCompletionPct.ToString("F0")%
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (p.IsDppReady)
+                                    { <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Sí</span> }
+                                    else
+                                    { <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>No</span> }
+                                </td>
+                                <td>
+                                    @if (p.MissingFields.Any())
+                                    {
+                                        <span class="text-danger small">@string.Join(", ", p.MissingFields)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-success small">Completo</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        @if (!_data.Products.Any())
+                        { <tr><td colspan="7" class="text-muted text-center py-3">Sin productos</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Adherencia por productor (SCRAP / ADMIN) ────────────────────────────── *@
+    @if (_data.ProducerAdherence.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-people-fill me-1"></i>Adherencia DPP por productor
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Productor</th>
+                                <th class="text-end">Productos totales</th>
+                                <th class="text-end">DPP-ready</th>
+                                <th class="text-end">% DPP-ready</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in _data.ProducerAdherence)
+                            {
+                                <tr>
+                                    <td>@p.ProducerName</td>
+                                    <td class="text-end">@p.TotalProducts</td>
+                                    <td class="text-end">@p.DppReadyProducts</td>
+                                    <td class="text-end">
+                                        <span class="badge @TrafficLightBadge(p.TrafficLight)">
+                                            @p.DppReadyPct.ToString("F1")%
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Reglas de eco-modulación aplicables ────────────────────────────────── *@
+    @if (_data.ApplicableRules.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-list-check me-1"></i>Reglas de eco-modulación aplicables a este catálogo
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Código regla</th>
+                                <th>Tipo impacto</th>
+                                <th class="text-end">Valor</th>
+                                <th class="text-end">Productos afectados</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in _data.ApplicableRules)
+                            {
+                                <tr>
+                                    <td><code>@r.RuleCode</code></td>
+                                    <td>
+                                        <span class="badge @ImpactTypeBadge(r.FeeImpactType)">@r.FeeImpactType</span>
+                                    </td>
+                                    <td class="text-end">@r.FeeImpactValue.ToString("F2")%</td>
+                                    <td class="text-end">@r.ProductsAffected</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private DPPPreparationDto? _data;
+    private bool   _loading        = true;
+    private string _filterCategory = "";
+
+    private static readonly CultureInfo _es = new("es-ES");
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetDPPPreparationQuery(
+                Category: string.IsNullOrEmpty(_filterCategory) ? null : _filterCategory));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando preparación DPP");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string DppBadge(double pct) =>
+        pct >= 80 ? "bg-success" : pct >= 50 ? "bg-warning text-dark" : "bg-danger";
+
+    private static string TrafficLightBadge(string tl) => tl switch
+    {
+        "Green"  => "bg-success",
+        "Orange" => "bg-warning text-dark",
+        _        => "bg-danger"
+    };
+
+    private static string ImpactTypeBadge(string type) => type switch
+    {
+        "Bonus"   => "bg-success",
+        "Penalty" => "bg-danger",
+        _         => "bg-secondary"
+    };
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

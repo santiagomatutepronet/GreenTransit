@@ -4,9 +4,12 @@
 @implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
 @using GreenTransit.Application.Features.Reporting.RegulatoryCompliance.DTOs
 @using GreenTransit.Application.Features.Reporting.RegulatoryCompliance.Queries
 @using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.JSInterop
@@ -72,6 +75,16 @@
             @foreach (var cat in _filterOptions.Categories)
             {
                 <option value="@cat">@cat</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>SCRAP</label>
+        <select class="form-select form-select-sm" style="width:200px" @bind="_filterIdScrap" @bind:after="LoadAsync">
+            <option value="">Todos los SCRAPs</option>
+            @foreach (var s in _scraps)
+            {
+                <option value="@s.Id">@s.Name</option>
             }
         </select>
     </div>
@@ -287,6 +300,7 @@ else
     private const int PageSize = 15;
     private DispatchOfficeComplianceDataDto? _data;
     private ComplianceFilterOptionsDto  _filterOptions = new([], [], [], []);
+    private IReadOnlyList<EntitySelectorDto> _scraps = [];
     private bool    _loading = true;
     private bool    _initialized;
     private bool    _chartsRendered;
@@ -294,6 +308,7 @@ else
     private string? _autonomousCommunity;
     private string? _flowType;
     private string? _category;
+    private string? _filterIdScrap;
     private int     _pgRanking    = 1;
     private int     _pgRegChanges = 1;
 
@@ -303,6 +318,8 @@ else
         _initialized = true;
         try { _filterOptions = await Mediator.Send(new GetComplianceFilterOptionsQuery()); }
         catch (Exception ex) { Logger.LogWarning(ex, "Error cargando opciones de filtro CN-E"); }
+        try { _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery(new[] { EntityRoles.SCRAP })); }
+        catch (Exception ex) { Logger.LogWarning(ex, "Error cargando SCRAPs CN-E"); }
         await LoadAsync();
     }
 
@@ -324,7 +341,8 @@ else
         try
         {
             _data = await Mediator.Send(new GetDispatchOfficeComplianceDataQuery(
-                _year, null,
+                _year,
+                Guid.TryParse(_filterIdScrap, out var sid) ? sid : null,
                 string.IsNullOrEmpty(_autonomousCommunity) ? null : _autonomousCommunity,
                 string.IsNullOrEmpty(_flowType)            ? null : _flowType,
                 string.IsNullOrEmpty(_category)            ? null : _category));

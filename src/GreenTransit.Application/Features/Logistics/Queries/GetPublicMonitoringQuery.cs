@@ -305,15 +305,19 @@ public sealed class GetPublicMonitoringQueryHandler
             CO2ePerTonne:    currKg > 0 ? Math.Round(currCO2e / (currKg / 1000m), 2) : 0m);
 
         // ── 5. Cumplimiento de objetivos municipales ──────────────────────────
-        // Obtener comunidad autónoma (StateCode) de la entidad pública
-        string? autonomousCommunity = null;
+        // Para PUBLIC_ENT: derivar los SCRAPs desde Agreements WHERE IdPublicEntity = @LinkedEntityId
+        // (más preciso que filtrar por AutonomousCommunity).
+        List<Guid>? publicEntScrapIds = null;
         if (scopeIsPublicEnt && scopeLinkedEntityId.HasValue)
         {
-            autonomousCommunity = await _context.BusinessEntities
+            publicEntScrapIds = await _context.Agreements
                 .AsNoTracking()
-                .Where(e => e.Id == scopeLinkedEntityId.Value)
-                .Select(e => e.StateCode)
-                .FirstOrDefaultAsync(ct);
+                .Where(a => a.IdPublicEntity == scopeLinkedEntityId.Value
+                         && (scopeOwnerId == Guid.Empty || a.OwnerId == scopeOwnerId)
+                         && a.IdScrap != null)
+                .Select(a => a.IdScrap!.Value)
+                .Distinct()
+                .ToListAsync(ct);
         }
 
         var marketShareQuery = _context.MarketShares
@@ -321,8 +325,8 @@ public sealed class GetPublicMonitoringQueryHandler
             .Where(ms => (scopeOwnerId == Guid.Empty || ms.OwnerId == scopeOwnerId)
                       && ms.Year == request.Year);
 
-        if (!string.IsNullOrEmpty(autonomousCommunity))
-            marketShareQuery = marketShareQuery.Where(ms => ms.AutonomousCommunity == autonomousCommunity);
+        if (publicEntScrapIds != null)
+            marketShareQuery = marketShareQuery.Where(ms => publicEntScrapIds.Contains(ms.IdScrap ?? Guid.Empty));
 
         if (scopeFilterScrapId.HasValue)
             marketShareQuery = marketShareQuery.Where(ms => ms.IdScrap == scopeFilterScrapId.Value);

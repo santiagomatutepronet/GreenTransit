@@ -1,5 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Reporting.TratamientoReciclaje.DTOs;
+using GreenTransit.Domain.Authorization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -47,16 +48,35 @@ public sealed class GetTRScrapAnalysisQueryHandler
         var wmQuery = _context.WasteMoves.AsNoTracking()
             .Where(wm => (ownerId == Guid.Empty || wm.OwnerId == ownerId));
 
-        // SCRAP ve solo sus propios traslados
-        if (!_currentUser.IsInAnyProfile("ADMIN", "DISPATCH_OFFICE"))
+        if (_currentUser.IsInProfile(ProfileConstants.Scrap))
         {
+            // SCRAP: solo sus propios traslados
             var linkedId = _currentUser.LinkedEntityId;
             wmQuery = wmQuery.Where(wm => wm.IdScrap == linkedId || wm.IdScrap2 == linkedId);
         }
-        else if (request.IdScrap.HasValue)
+        else if (_currentUser.IsInProfile(ProfileConstants.Coordinator))
         {
-            wmQuery = wmQuery.Where(wm => wm.IdScrap == request.IdScrap.Value
-                                       || wm.IdScrap2 == request.IdScrap.Value);
+            // COORDINATOR: traslados de sus SCRAPs vía Agreements
+            var linkedId = _currentUser.LinkedEntityId;
+            var scrapIdsForCoord = await _context.Agreements
+                .AsNoTracking()
+                .Where(a => a.IdCoordinator == linkedId)
+                .Select(a => a.IdScrap)
+                .Distinct()
+                .ToListAsync(ct);
+            wmQuery = wmQuery.Where(wm => scrapIdsForCoord.Contains(wm.IdScrap!.Value));
+
+            // Filtro opcional de UI: solo si el SCRAP está en el subconjunto del coordinador
+            if (request.IdScrap.HasValue && scrapIdsForCoord.Contains(request.IdScrap.Value))
+                wmQuery = wmQuery.Where(wm => wm.IdScrap == request.IdScrap.Value
+                                           || wm.IdScrap2 == request.IdScrap.Value);
+        }
+        else
+        {
+            // ADMIN / DISPATCH_OFFICE: todos los traslados del tenant
+            if (request.IdScrap.HasValue)
+                wmQuery = wmQuery.Where(wm => wm.IdScrap == request.IdScrap.Value
+                                           || wm.IdScrap2 == request.IdScrap.Value);
         }
 
         var moveIds = await wmQuery.Select(wm => wm.Id).ToListAsync(ct);

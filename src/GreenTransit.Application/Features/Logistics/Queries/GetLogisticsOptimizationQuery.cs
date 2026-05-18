@@ -41,6 +41,7 @@ public sealed class GetLogisticsOptimizationQueryHandler
         var linkedEntityId = _currentUser.LinkedEntityId;
         var isAdmin        = _currentUser.IsInProfile(ProfileConstants.Admin);
         var isScrap        = !isAdmin && _currentUser.IsInProfile(ProfileConstants.Scrap);
+        var isCoordinator  = !isAdmin && _currentUser.IsInProfile(ProfileConstants.Coordinator);
 
         // ── Rango temporal ────────────────────────────────────────────────────
         DateTime dateFrom, dateTo;
@@ -59,11 +60,28 @@ public sealed class GetLogisticsOptimizationQueryHandler
         var prevTo   = dateFrom;
         var now      = DateTime.UtcNow;
 
+        // ── Scope COORDINATOR: obtener SCRAPs de sus acuerdos ─────────────────
+        List<Guid>? coordinatorScrapIds = null;
+        if (isCoordinator && linkedEntityId.HasValue)
+        {
+            coordinatorScrapIds = await _context.Agreements
+                .AsNoTracking()
+                .Where(a => a.IdCoordinator == linkedEntityId.Value
+                         && (ownerId == Guid.Empty || a.OwnerId == ownerId))
+                .Select(a => a.IdScrap)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .Distinct()
+                .ToListAsync(ct);
+        }
+
         // ── Parámetros de scope para uso en lambdas ───────────────────────────
         // Se capturan como variables locales para que EF Core los trate como parámetros SQL.
         var scopeOwnerId        = ownerId;
         var scopeLinkedEntityId = linkedEntityId;
         var scopeIsScrap        = isScrap;
+        var scopeIsCoordinator  = isCoordinator;
+        var scopeCoordScrapIds  = coordinatorScrapIds;
         var scopeFilterScrapId  = request.IdScrap;
 
         // ── 1. Eficiencia de rutas — proyección anónima → mapeo en memoria ────
@@ -73,7 +91,11 @@ public sealed class GetLogisticsOptimizationQueryHandler
                      && (!scopeIsScrap || !scopeLinkedEntityId.HasValue
                          || r.WasteMove.IdScrap  == scopeLinkedEntityId.Value
                          || r.WasteMove.IdScrap2 == scopeLinkedEntityId.Value)
-                     && (scopeIsScrap || !scopeFilterScrapId.HasValue
+                     && (!scopeIsCoordinator || scopeCoordScrapIds == null
+                         || scopeCoordScrapIds.Contains(r.WasteMove.IdScrap ?? Guid.Empty))
+                     && (!scopeIsScrap && !scopeIsCoordinator && !scopeFilterScrapId.HasValue
+                         || scopeIsScrap || scopeIsCoordinator
+                         || !scopeFilterScrapId.HasValue
                          || r.WasteMove.IdScrap  == scopeFilterScrapId.Value
                          || r.WasteMove.IdScrap2 == scopeFilterScrapId.Value)
                      && r.WasteMove.GatheredDate >= dateFrom
@@ -102,6 +124,8 @@ public sealed class GetLogisticsOptimizationQueryHandler
                      && (!scopeIsScrap || !scopeLinkedEntityId.HasValue
                          || r.WasteMove.IdScrap  == scopeLinkedEntityId.Value
                          || r.WasteMove.IdScrap2 == scopeLinkedEntityId.Value)
+                     && (!scopeIsCoordinator || scopeCoordScrapIds == null
+                         || scopeCoordScrapIds.Contains(r.WasteMove.IdScrap ?? Guid.Empty))
                      && r.WasteMove.GatheredDate >= prevFrom
                      && r.WasteMove.GatheredDate <  prevTo
                      && r.TransportInfo_TransportCarbonEmissions != null)
@@ -125,12 +149,25 @@ public sealed class GetLogisticsOptimizationQueryHandler
             CO2eTrendPercent:       trendPct);
 
         // ── 2. Volumen por zona ───────────────────────────────────────────────
+        // Obtener IDs de WasteMoves en scope para filtrar ServiceOrders
+        IQueryable<Guid?> scopedWasteMoveServiceOrderIds = _context.WasteMoves
+            .AsNoTracking()
+            .Where(wm => (scopeOwnerId == Guid.Empty || wm.OwnerId == scopeOwnerId)
+                      && (!scopeIsScrap || !scopeLinkedEntityId.HasValue
+                          || wm.IdScrap == scopeLinkedEntityId.Value
+                          || wm.IdScrap2 == scopeLinkedEntityId.Value)
+                      && (!scopeIsCoordinator || scopeCoordScrapIds == null
+                          || scopeCoordScrapIds.Contains(wm.IdScrap ?? Guid.Empty)))
+            .Select(wm => wm.ServiceOrderId);
+
         var soQuery = _context.ServiceOrders
             .AsNoTracking()
             .Where(so => (scopeOwnerId == Guid.Empty || so.OwnerId == scopeOwnerId)
                       && so.PlannedPickupStart >= dateFrom
                       && so.PlannedPickupStart <  dateTo
-                      && so.IdPickupPoint != null);
+                      && so.IdPickupPoint != null
+                      && (!scopeIsScrap && !scopeIsCoordinator
+                          || scopedWasteMoveServiceOrderIds.Contains(so.Id)));
 
         if (!string.IsNullOrEmpty(request.WasteStream))
             soQuery = soQuery.Where(so => so.WasteStream == request.WasteStream);
@@ -282,7 +319,9 @@ public sealed class GetLogisticsOptimizationQueryHandler
             .AsNoTracking()
             .Where(so => (scopeOwnerId == Guid.Empty || so.OwnerId == scopeOwnerId)
                       && so.PlannedPickupStart >= dateFrom
-                      && so.PlannedPickupStart <  dateTo)
+                      && so.PlannedPickupStart <  dateTo
+                      && (!scopeIsScrap && !scopeIsCoordinator
+                          || scopedWasteMoveServiceOrderIds.Contains(so.Id)))
             .CountAsync(ct);
 
         var dumCompliance = new DumComplianceDto(
@@ -295,7 +334,14 @@ public sealed class GetLogisticsOptimizationQueryHandler
             .AsNoTracking()
             .Where(ep => (scopeOwnerId == Guid.Empty || ep.OwnerId == scopeOwnerId)
                       && ep.PlantEntryDate >= dateFrom
-                      && ep.PlantEntryDate <  dateTo)
+                      && ep.PlantEntryDate <  dateTo
+                      && (!scopeIsScrap && !scopeIsCoordinator
+                          || (scopeIsScrap
+                              ? (!scopeLinkedEntityId.HasValue
+                                 || ep.WasteMove.IdScrap == scopeLinkedEntityId.Value
+                                 || ep.WasteMove.IdScrap2 == scopeLinkedEntityId.Value)
+                              : (scopeCoordScrapIds == null
+                                 || scopeCoordScrapIds.Contains(ep.WasteMove.IdScrap ?? Guid.Empty)))))
             .Select(ep => ep.PlantEntryDate)
             .ToListAsync(ct);
 
@@ -336,7 +382,11 @@ public sealed class GetLogisticsOptimizationQueryHandler
                      && (!scopeIsScrap || !scopeLinkedEntityId.HasValue
                          || r.WasteMove.IdScrap  == scopeLinkedEntityId.Value
                          || r.WasteMove.IdScrap2 == scopeLinkedEntityId.Value)
-                     && (scopeIsScrap || !scopeFilterScrapId.HasValue
+                     && (!scopeIsCoordinator || scopeCoordScrapIds == null
+                         || scopeCoordScrapIds.Contains(r.WasteMove.IdScrap ?? Guid.Empty))
+                     && (!scopeIsScrap && !scopeIsCoordinator && !scopeFilterScrapId.HasValue
+                         || scopeIsScrap || scopeIsCoordinator
+                         || !scopeFilterScrapId.HasValue
                          || r.WasteMove.IdScrap  == scopeFilterScrapId.Value
                          || r.WasteMove.IdScrap2 == scopeFilterScrapId.Value)
                      && r.WasteMove.GatheredDate >= dateFrom

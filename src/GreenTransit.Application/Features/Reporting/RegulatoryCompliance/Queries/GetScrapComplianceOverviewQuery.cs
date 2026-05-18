@@ -13,11 +13,12 @@ namespace GreenTransit.Application.Features.Reporting.RegulatoryCompliance.Queri
 /// </summary>
 public sealed record GetScrapComplianceOverviewQuery(
     int     Year,
-    int?    Quarter          = null,
-    int?    Month            = null,
+    int?    Quarter             = null,
+    int?    Month               = null,
     string? AutonomousCommunity = null,
-    string? Category         = null,
-    string? FlowType         = null
+    string? Category            = null,
+    string? FlowType            = null,
+    Guid?   IdScrap             = null
 ) : IRequest<ScrapComplianceOverviewDto>;
 
 public sealed class GetScrapComplianceOverviewQueryHandler
@@ -44,8 +45,11 @@ public sealed class GetScrapComplianceOverviewQueryHandler
         GetScrapComplianceOverviewQuery request, CancellationToken ct)
     {
         var ownerId  = _currentUser.OwnerId;
-        var scrapId  = _currentUser.LinkedEntityId;
         var isAdmin  = _currentUser.IsInProfile(ProfileConstants.Admin);
+        // ADMIN puede filtrar por SCRAP desde UI; SCRAP ve siempre su propia entidad
+        var scrapId  = isAdmin && request.IdScrap.HasValue
+            ? request.IdScrap
+            : _currentUser.LinkedEntityId;
 
         // ── Objetivos regulatorios del año ────────────────────────────────────
         var targets = await _db.RegulatoryTargets.AsNoTracking()
@@ -152,11 +156,27 @@ public sealed class GetScrapComplianceOverviewQueryHandler
                 a.Id, a.AgreementNumber, a.Status,
                 a.EffectiveFrom, a.EffectiveTo, a.WasteStream,
                 a.AutonomousCommunity, a.ProvinceCode, a.MunicipalityCode,
-                PublicEntityName = a.PublicEntity!.Name,
-                ProvinceName     = _db.Provinces.Where(p => p.Code == a.ProvinceCode).Select(p => p.Name).FirstOrDefault() ?? a.ProvinceCode,
-                MunicipalityName = _db.Municipalities.Where(m => m.Code == a.MunicipalityCode).Select(m => m.Name).FirstOrDefault() ?? a.MunicipalityCode
+                PublicEntityName = a.PublicEntity!.Name
             })
             .ToListAsync(ct);
+
+        // Resolver nombres de provincia y municipio en una sola consulta por lote
+        var provinceCodes    = agreementsRaw.Where(a => a.ProvinceCode    != null).Select(a => a.ProvinceCode!).Distinct().ToList();
+        var municipalityCodes = agreementsRaw.Where(a => a.MunicipalityCode != null).Select(a => a.MunicipalityCode!).Distinct().ToList();
+
+        var provinceNames = provinceCodes.Count > 0
+            ? await _db.Provinces.AsNoTracking()
+                .Where(p => provinceCodes.Contains(p.Code))
+                .Select(p => new { p.Code, p.Name })
+                .ToDictionaryAsync(p => p.Code, p => p.Name, ct)
+            : new Dictionary<string, string>();
+
+        var municipalityNames = municipalityCodes.Count > 0
+            ? await _db.Municipalities.AsNoTracking()
+                .Where(m => municipalityCodes.Contains(m.Code))
+                .Select(m => new { m.Code, m.Name })
+                .ToDictionaryAsync(m => m.Code, m => m.Name, ct)
+            : new Dictionary<string, string>();
 
         var activeAgreements = agreementsRaw.Count(a => a.Status == "Active");
 
@@ -165,8 +185,8 @@ public sealed class GetScrapComplianceOverviewQueryHandler
             a.AgreementNumber ?? "",
             a.PublicEntityName ?? "",
             a.AutonomousCommunity ?? "",
-            a.ProvinceName ?? "",
-            a.MunicipalityName ?? "",
+            (a.ProvinceCode != null && provinceNames.TryGetValue(a.ProvinceCode, out var pn) ? pn : a.ProvinceCode) ?? "",
+            (a.MunicipalityCode != null && municipalityNames.TryGetValue(a.MunicipalityCode, out var mn) ? mn : a.MunicipalityCode) ?? "",
             a.WasteStream ?? "",
             a.Status ?? "",
             a.EffectiveFrom,
@@ -205,60 +225,53 @@ public sealed class GetScrapComplianceOverviewQueryHandler
             s.ValidationStatus ?? "", s.ValidatedAt)).ToList();
 
         // ── Evolución trimestral ──────────────────────────────────────────────
-        // Datos simplificados: agrupamos por trimestre del año actual
-        var quarterlyTrend = new List<QuarterlyComplianceTrendDto>();
-        for (var q = 1; q <= 4; q++)
+        // Cargamos los datos del año completo una sola vez y agrupamos en memoria
+
+        var allEntryByMonth = await _db.EntryPlants.AsNoTracking()
+            .Where(ep => ep.WasteMove.OwnerId == ownerId
+                      && (isAdmin || ep.WasteMove.IdScrap == scrapId || ep.WasteMove.IdScrap2 == scrapId)
+                      && ep.WasteMove.ActualPickupStart.HasValue
+                      && ep.WasteMove.ActualPickupStart.Value.Year == request.Year)
+            .SelectMany(ep => ep.EntryPlantResidues)
+            .Select(epr => new { Month = epr.EntryPlant.WasteMove.ActualPickupStart!.Value.Month, Weight = (decimal?)epr.Weight ?? 0m })
+            .ToListAsync(ct);
+
+        var allTreatmentByMonth = await _db.TreatmentPlants.AsNoTracking()
+            .Where(tp => tp.WasteMove!.OwnerId == ownerId
+                      && (isAdmin || tp.WasteMove.IdScrap == scrapId || tp.WasteMove.IdScrap2 == scrapId)
+                      && tp.WasteMove.ActualPickupStart.HasValue
+                      && tp.WasteMove.ActualPickupStart.Value.Year == request.Year)
+            .Select(tp => new
+            {
+                Month        = tp.WasteMove!.ActualPickupStart!.Value.Month,
+                IsRecycling  = tp.TreatmentOperation!.IsRecycling,
+                IsEnergy     = tp.TreatmentOperation.IsEnergyRecovery,
+                IsReuse      = tp.TreatmentOperation.IsPreparationForReuse,
+                Weight       = tp.TreatmentPlantResidues.Sum(r => (decimal?)r.WeightTotal ?? 0m)
+            })
+            .ToListAsync(ct);
+
+        var quarterlyTrend = Enumerable.Range(1, 4).Select(q =>
         {
-            var qFrom = new DateTime(request.Year, (q - 1) * 3 + 1, 1);
-            var qTo   = qFrom.AddMonths(3);
-            var qEntry = await _db.EntryPlants.AsNoTracking()
-                .Where(ep => ep.WasteMove.OwnerId == ownerId
-                          && (isAdmin || ep.WasteMove.IdScrap == scrapId || ep.WasteMove.IdScrap2 == scrapId)
-                          && ep.WasteMove.ActualPickupStart >= qFrom
-                          && ep.WasteMove.ActualPickupStart <  qTo)
-                .SelectMany(ep => ep.EntryPlantResidues)
-                .SumAsync(epr => (decimal?)epr.Weight ?? 0m, ct);
-
-            var qRecycling = await _db.TreatmentPlants.AsNoTracking()
-                .Where(tp => tp.WasteMove!.OwnerId == ownerId
-                          && (isAdmin || tp.WasteMove.IdScrap == scrapId || tp.WasteMove.IdScrap2 == scrapId)
-                          && tp.WasteMove.ActualPickupStart >= qFrom
-                          && tp.WasteMove.ActualPickupStart <  qTo
-                          && tp.TreatmentOperation!.IsRecycling)
-                .SelectMany(tp => tp.TreatmentPlantResidues)
-                .SumAsync(r => (decimal?)r.WeightTotal ?? 0m, ct);
-
-            var qValorization = await _db.TreatmentPlants.AsNoTracking()
-                .Where(tp => tp.WasteMove!.OwnerId == ownerId
-                          && (isAdmin || tp.WasteMove.IdScrap == scrapId || tp.WasteMove.IdScrap2 == scrapId)
-                          && tp.WasteMove.ActualPickupStart >= qFrom
-                          && tp.WasteMove.ActualPickupStart <  qTo
-                          && tp.TreatmentOperation!.IsEnergyRecovery)
-                .SelectMany(tp => tp.TreatmentPlantResidues)
-                .SumAsync(r => (decimal?)r.WeightTotal ?? 0m, ct);
-
-            var qReuse = await _db.TreatmentPlants.AsNoTracking()
-                .Where(tp => tp.WasteMove!.OwnerId == ownerId
-                          && (isAdmin || tp.WasteMove.IdScrap == scrapId || tp.WasteMove.IdScrap2 == scrapId)
-                          && tp.WasteMove.ActualPickupStart >= qFrom
-                          && tp.WasteMove.ActualPickupStart <  qTo
-                          && tp.TreatmentOperation!.IsPreparationForReuse)
-                .SelectMany(tp => tp.TreatmentPlantResidues)
-                .SumAsync(r => (decimal?)r.WeightTotal ?? 0m, ct);
-
-            quarterlyTrend.Add(new QuarterlyComplianceTrendDto(
+            var months     = Enumerable.Range((q - 1) * 3 + 1, 3).ToHashSet();
+            var qEntry     = allEntryByMonth.Where(x => months.Contains(x.Month)).Sum(x => x.Weight);
+            var qRecycling = allTreatmentByMonth.Where(x => months.Contains(x.Month) && x.IsRecycling).Sum(x => x.Weight);
+            var qVal       = allTreatmentByMonth.Where(x => months.Contains(x.Month) && x.IsEnergy).Sum(x => x.Weight);
+            var qReuse     = allTreatmentByMonth.Where(x => months.Contains(x.Month) && x.IsReuse).Sum(x => x.Weight);
+            return new QuarterlyComplianceTrendDto(
                 request.Year, q,
-                qEntry > 0 ? qRecycling    / qEntry * 100m : 0m,
-                qEntry > 0 ? qValorization / qEntry * 100m : 0m,
-                qEntry > 0 ? qReuse        / qEntry * 100m : 0m,
-                targetRecycling));
-        }
+                qEntry > 0 ? qRecycling / qEntry * 100m : 0m,
+                qEntry > 0 ? qVal       / qEntry * 100m : 0m,
+                qEntry > 0 ? qReuse     / qEntry * 100m : 0m,
+                targetRecycling);
+        }).ToList();
 
         // ── Alertas ───────────────────────────────────────────────────────────
         var alerts = isAdmin
             ? new List<ComplianceAlertDto>()
             : scrapId.HasValue
-                ? (await _monitor.GetScrapAlertsAsync(scrapId.Value, ownerId, request.Year, ct)).ToList()
+                ? (await _monitor.GetScrapAlertsAsync(scrapId.Value, ownerId, request.Year, ct,
+                    realWeightByCategory.ToDictionary(kv => kv.Key, kv => kv.Value ?? 0m))).ToList()
                 : [];
 
         // ── Variaciones vs periodo anterior ───────────────────────────────────

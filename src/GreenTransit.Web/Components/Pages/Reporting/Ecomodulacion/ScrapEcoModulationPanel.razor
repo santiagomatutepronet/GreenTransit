@@ -1,0 +1,312 @@
+@page "/reporting/ecomodulation/scrap-panel"
+@attribute [Authorize(Policy = PolicyConstants.CanViewScrapEcoModulationPanel)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Ecomodulation.DTOs
+@using GreenTransit.Application.Features.Ecomodulation.Queries
+@using GreenTransit.Application.Features.Ecomodulation.DTOs
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+
+@inject IMediator            Mediator
+@inject ICurrentUserService  CurrentUser
+@inject ILogger<ScrapEcoModulationPanel> Logger
+
+<PageTitle>Panel SCRAP de Ecomodulación — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-cash-coin me-2"></i>Panel de Ecomodulación — Impacto Económico
+        </h1>
+        <p class="text-muted mb-0">
+            SCRAP · Ecomodulación ·
+            @(_filterMonth.HasValue
+                ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", _es)
+                : _filterQuarter.HasValue
+                    ? $"T{_filterQuarter.Value} {_filterYear}"
+                    : _filterYear.ToString())
+        </p>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Trimestre</label>
+        <select class="form-select form-select-sm" @bind="_filterQuarter" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            @for (int q = 1; q <= 4; q++)
+            { <option value="@q">T@q</option> }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Mes</label>
+        <select class="form-select form-select-sm" @bind="_filterMonth" @bind:after="RefreshAsync">
+            <option value="">Todos</option>
+            @for (int m = 1; m <= 12; m++)
+            { <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", _es))</option> }
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Cargando panel de ecomodulación…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── KPIs económicos ────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Ajuste ecomodulación total</p>
+                    <p class="kpi-value">@_data.TotalAdjustmentsAmount.ToString("C", _es)</p>
+                    <p class="kpi-sub @VariationClass(_data.VariationPct)">
+                        @(_data.VariationPct >= 0 ? "+" : "")@_data.VariationPct.ToString("F1")% vs año anterior
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Año anterior</p>
+                    <p class="kpi-value">@_data.PreviousPeriodAmount.ToString("C", _es)</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Liquidaciones</p>
+                    <p class="kpi-value">@_data.TotalSettlements</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Reglas activas</p>
+                    <p class="kpi-value">@_data.ActiveRules.Count</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Desglose por período ────────────────────────────────────────────────── *@
+    @if (_data.ByPeriod.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-bar-chart-fill me-1"></i>Ajuste por período
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Período</th>
+                                <th class="text-end">Ajuste ecomodulación</th>
+                                <th class="text-end">Nº liquidaciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in _data.ByPeriod)
+                            {
+                                <tr>
+                                    <td>@p.Period</td>
+                                    <td class="text-end @(p.AdjustmentsAmount >= 0 ? "text-success" : "text-danger") fw-semibold">
+                                        @p.AdjustmentsAmount.ToString("C", _es)
+                                    </td>
+                                    <td class="text-end">@p.SettlementCount</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Reglas activas ──────────────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-list-check me-1"></i>Reglas de ecomodulación activas
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Código regla</th>
+                            <th>Tipo impacto</th>
+                            <th class="text-end">Valor</th>
+                            <th class="text-end">Líneas afectadas</th>
+                            <th class="text-end">Impacto económico</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _data.ActiveRules)
+                        {
+                            <tr>
+                                <td><code>@r.RuleCode</code></td>
+                                <td>
+                                    <span class="badge @ImpactTypeBadge(r.FeeImpactType)">@r.FeeImpactType</span>
+                                </td>
+                                <td class="text-end">@r.FeeImpactValue.ToString("F2")%</td>
+                                <td class="text-end">@r.SettlementLinesAffected</td>
+                                <td class="text-end @(r.TotalEconomicImpact >= 0 ? "text-success" : "text-danger")">
+                                    @r.TotalEconomicImpact.ToString("C", _es)
+                                </td>
+                            </tr>
+                        }
+                        @if (!_data.ActiveRules.Any())
+                        { <tr><td colspan="5" class="text-muted text-center py-3">Sin reglas activas</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Top productores ─────────────────────────────────────────────────────── *@
+    @if (_data.TopProducers.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-people-fill me-1"></i>Top productores adheridos — impacto ecomodulación
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Productor</th>
+                                <th class="text-end">Ajuste total</th>
+                                <th>Tipo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in _data.TopProducers)
+                            {
+                                <tr>
+                                    <td>@p.ProducerName</td>
+                                    <td class="text-end @(p.TotalAdjustment >= 0 ? "text-success" : "text-danger") fw-semibold">
+                                        @p.TotalAdjustment.ToString("C", _es)
+                                    </td>
+                                    <td>
+                                        <span class="badge @(p.ImpactDirection == "Bonificación" ? "bg-success" : "bg-danger")">
+                                            @p.ImpactDirection
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Detalle de liquidaciones ────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-receipt me-1"></i>Detalle de liquidaciones
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Nº liquidación</th>
+                            <th class="text-end">Año</th>
+                            <th class="text-end">Mes</th>
+                            <th class="text-end">Base</th>
+                            <th class="text-end">Ajuste eco.</th>
+                            <th class="text-end">Total</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in _data.Settlements)
+                        {
+                            <tr>
+                                <td>@s.SettlementNumber</td>
+                                <td class="text-end">@s.Year</td>
+                                <td class="text-end">@(s.Month.HasValue ? s.Month.Value.ToString() : "—")</td>
+                                <td class="text-end">@s.BaseAmount.ToString("C", _es)</td>
+                                <td class="text-end @(s.AdjustmentsAmount >= 0 ? "text-success" : "text-danger") fw-semibold">
+                                    @s.AdjustmentsAmount.ToString("C", _es)
+                                </td>
+                                <td class="text-end fw-semibold">@s.TotalAmount.ToString("C", _es)</td>
+                                <td><span class="badge bg-secondary">@s.Status</span></td>
+                            </tr>
+                        }
+                        @if (!_data.Settlements.Any())
+                        { <tr><td colspan="7" class="text-muted text-center py-3">Sin liquidaciones para el período seleccionado</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ScrapEcoModulationPanelDto? _data;
+    private bool  _loading      = true;
+    private int   _filterYear   = DateTime.Now.Year;
+    private int?  _filterQuarter;
+    private int?  _filterMonth;
+
+    private static readonly CultureInfo _es = new("es-ES");
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetScrapEcoModulationPanelQuery(
+                Year    : _filterYear,
+                Quarter : _filterQuarter,
+                Month   : _filterMonth));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando panel SCRAP de ecomodulación");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string VariationClass(double pct) =>
+        pct >= 0 ? "text-success" : "text-danger";
+
+    private static string ImpactTypeBadge(string type) => type switch
+    {
+        "Bonus"    => "bg-success",
+        "Penalty"  => "bg-danger",
+        _          => "bg-secondary"
+    };
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

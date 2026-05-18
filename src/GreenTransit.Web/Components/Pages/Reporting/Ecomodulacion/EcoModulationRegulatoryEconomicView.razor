@@ -1,0 +1,245 @@
+@page "/reporting/ecomodulation/regulatory-view-economic"
+@attribute [Authorize(Policy = PolicyConstants.CanViewEcoModulationRegulatoryEconomicView)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Ecomodulation.DTOs
+@using GreenTransit.Application.Features.Ecomodulation.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+
+@inject IMediator            Mediator
+@inject ICurrentUserService  CurrentUser
+@inject ILogger<EcoModulationRegulatoryEconomicView> Logger
+
+<PageTitle>Vista Regulatoria de Ecomodulación — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-shield-check me-2"></i>Vista Regulatoria de Ecomodulación
+        </h1>
+        <p class="text-muted mb-0">
+            Supervisión económica · Ecomodulación · @_filterYear
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ──────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <select class="form-select form-select-sm" @bind="_filterYear" @bind:after="RefreshAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            { <option value="@y">@y</option> }
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-success" role="status"></div>
+        <p class="mt-2 text-muted">Cargando vista regulatoria…</p>
+    </div>
+}
+else if (_data is not null)
+{
+    @* ── KPIs globales ───────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-sm-6 col-xl-4">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Ajuste total ecosistema</p>
+                    <p class="kpi-value">@_data.TotalAdjustmentsEcosystem.ToString("C", _es)</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-4">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">SCRAPs con liquidaciones</p>
+                    <p class="kpi-value">@_data.TotalScrapsWithSettlements</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-4">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <p class="kpi-label">Reglas activas</p>
+                    <p class="kpi-value">@_data.TotalActiveRules</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Comparativa por SCRAP ───────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-bar-chart-fill me-1"></i>Impacto de ecomodulación por SCRAP
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>SCRAP</th>
+                            <th class="text-end">Base liquidaciones</th>
+                            <th class="text-end">Ajuste ecomodulación</th>
+                            <th class="text-end">Total liquidado</th>
+                            <th class="text-end">% ajuste</th>
+                            <th class="text-end">Nº liquidaciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in _data.ScrapComparison)
+                        {
+                            <tr>
+                                <td>@s.ScrapName</td>
+                                <td class="text-end">@s.TotalBaseAmount.ToString("C", _es)</td>
+                                <td class="text-end @(s.TotalAdjustmentsAmount >= 0 ? "text-success" : "text-danger") fw-semibold">
+                                    @s.TotalAdjustmentsAmount.ToString("C", _es)
+                                </td>
+                                <td class="text-end fw-semibold">@s.TotalAmount.ToString("C", _es)</td>
+                                <td class="text-end">
+                                    <span class="badge @AdjustmentBadge(s.AdjustmentRatePct)">
+                                        @s.AdjustmentRatePct.ToString("F1")%
+                                    </span>
+                                </td>
+                                <td class="text-end">@s.SettlementCount</td>
+                            </tr>
+                        }
+                        @if (!_data.ScrapComparison.Any())
+                        { <tr><td colspan="6" class="text-muted text-center py-3">Sin datos</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Reglas activas y su impacto en el ecosistema ────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-list-check me-1"></i>Reglas de ecomodulación — impacto en el ecosistema
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Código regla</th>
+                            <th>Tipo impacto</th>
+                            <th class="text-end">Valor</th>
+                            <th class="text-end">Líneas afectadas</th>
+                            <th class="text-end">SCRAPs que aplican</th>
+                            <th class="text-end">Impacto económico total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _data.RulesEcosystemImpact)
+                        {
+                            <tr>
+                                <td><code>@r.RuleCode</code></td>
+                                <td>
+                                    <span class="badge @ImpactTypeBadge(r.FeeImpactType)">@r.FeeImpactType</span>
+                                </td>
+                                <td class="text-end">@r.FeeImpactValue.ToString("F2")%</td>
+                                <td class="text-end">@r.TotalLinesAffected</td>
+                                <td class="text-end">@r.ScrapsApplyingRule</td>
+                                <td class="text-end @(r.TotalEconomicImpact >= 0 ? "text-success" : "text-danger") fw-semibold">
+                                    @r.TotalEconomicImpact.ToString("C", _es)
+                                </td>
+                            </tr>
+                        }
+                        @if (!_data.RulesEcosystemImpact.Any())
+                        { <tr><td colspan="6" class="text-muted text-center py-3">Sin reglas activas</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Tendencia del ecosistema ────────────────────────────────────────────── *@
+    @if (_data.EcosystemTrend.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up me-1"></i>Evolución del ajuste ecomodulación
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Período</th>
+                                <th class="text-end">Ajuste ecomodulación</th>
+                                <th class="text-end">Nº liquidaciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var t in _data.EcosystemTrend)
+                            {
+                                <tr>
+                                    <td>@t.Period</td>
+                                    <td class="text-end @(t.AdjustmentsAmount >= 0 ? "text-success" : "text-danger")">
+                                        @t.AdjustmentsAmount.ToString("C", _es)
+                                    </td>
+                                    <td class="text-end">@t.SettlementCount</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private EcoModulationRegulatoryEconomicViewDto? _data;
+    private bool _loading    = true;
+    private int  _filterYear = DateTime.Now.Year;
+
+    private static readonly CultureInfo _es = new("es-ES");
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _data = await Mediator.Send(new GetEcoModulationRegulatoryEconomicViewQuery(
+                Year: _filterYear));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando vista regulatoria de ecomodulación");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string AdjustmentBadge(double pct) =>
+        Math.Abs(pct) <= 5 ? "bg-success" : Math.Abs(pct) <= 15 ? "bg-warning text-dark" : "bg-danger";
+
+    private static string ImpactTypeBadge(string type) => type switch
+    {
+        "Bonus"   => "bg-success",
+        "Penalty" => "bg-danger",
+        _         => "bg-secondary"
+    };
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

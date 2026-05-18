@@ -6,7 +6,10 @@
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Reporting.HeatMaps.DTOs
 @using GreenTransit.Application.Features.Reporting.HeatMaps.Queries
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
 @using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
@@ -23,7 +26,7 @@
         <h1 class="page-title">
             <i class="bi bi-building-check me-2"></i>Mapa de Calor — Vista Entidad Pública
         </h1>
-        <p class="text-muted mb-0">Dashboard HM-C · Entidad Pública · @_filterYear</p>
+        <p class="text-muted mb-0">Dashboard HM-C · Mapas de Calor · @_filterYear</p>
         <p class="text-muted small mt-1">
             Mapas de calor de su ámbito territorial para identificar zonas de alta densidad
             de residuos y planificar actuaciones preventivas.
@@ -62,6 +65,19 @@
         <input class="form-control form-control-sm" @bind="_filterLerCode" @bind:after="RefreshAsync"
                placeholder="ej. 16" />
     </div>
+    @if (CurrentUser.IsInAnyProfile("ADMIN", "DISPATCH_OFFICE"))
+    {
+        <div class="filter-group">
+            <label>SCRAP</label>
+            <select class="form-select form-select-sm" @bind="_filterIdScrap" @bind:after="RefreshAsync">
+                <option value="">Todos los SCRAPs</option>
+                @foreach (var s in _scraps)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+    }
 </div>
 
 @if (_loading)
@@ -261,19 +277,23 @@ else
 }
 
 @code {
-    private PublicEntityHeatMapDto? _data;
+    private PublicEntityHeatMapDto?       _data;
     private bool    _loading        = true;
     private bool    _exporting      = false;
     private bool    _chartsRendered = false;
     private int     _filterYear     = DateTime.Now.Year;
     private int?    _filterMonth    = null;
     private string? _filterLerCode;
+    private string? _filterIdScrap;
+    private IReadOnlyList<EntitySelectorDto> _scraps = [];
 
     private DotNetObjectReference<PublicEntityHeatMapView>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
         _dotNetRef = DotNetObjectReference.Create(this);
+        if (CurrentUser.IsInAnyProfile("ADMIN", "DISPATCH_OFFICE"))
+            _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery(new[] { EntityRoles.SCRAP }));
         await RefreshAsync();
     }
 
@@ -293,10 +313,12 @@ else
         StateHasChanged();
         try
         {
+            var idScrap = Guid.TryParse(_filterIdScrap, out var sid) ? (Guid?)sid : null;
             _data = await Mediator.Send(new GetPublicEntityHeatMapQuery(
                 Year         : _filterYear,
                 Month        : _filterMonth,
-                LerCodeFilter: _filterLerCode));
+                LerCodeFilter: _filterLerCode,
+                IdScrap      : idScrap));
         }
         catch (Exception ex)
         {

@@ -511,10 +511,10 @@ try
 
         // ── TRATAMIENTO Y RECICLAJE (TR) ──────────────────────────────────────
 
-        // Dashboard TR-A — Análisis de Calidad y Revalorización — SCRAP: SCRAP y ADMIN.
+        // Dashboard TR-A — Análisis de Calidad y Revalorización — SCRAP: SCRAP, COORDINATOR y ADMIN.
         options.AddPolicy(PolicyConstants.CanViewTRScrapAnalysis, policy =>
             policy.AddRequirements(new ProfileRequirement(
-                ProfileConstants.Scrap, ProfileConstants.Admin)));
+                ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.Admin)));
 
         // Dashboard TR-B — Monitorización de Reciclaje — Ayuntamiento: PUBLIC_ENT y ADMIN.
         options.AddPolicy(PolicyConstants.CanViewTRMunicipalMonitoring, policy =>
@@ -548,6 +548,22 @@ try
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Scrap, ProfileConstants.Coordinator,
                 ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard EC-A — Panel SCRAP de Ecomodulación (impacto económico): SCRAP, DISPATCH_OFFICE y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewScrapEcoModulationPanel, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard EC-B — Vista Regulatoria de Ecomodulación (supervisión económica): COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewEcoModulationRegulatoryEconomicView, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Coordinator, ProfileConstants.PublicEnt,
+                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard EC-C — Preparación DPP por productor: PRODUCER, SCRAP y ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewDPPPreparation, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Producer, ProfileConstants.Scrap, ProfileConstants.Admin)));
 
         // ── MAPAS DE CALOR (HM) ───────────────────────────────────────────────
 

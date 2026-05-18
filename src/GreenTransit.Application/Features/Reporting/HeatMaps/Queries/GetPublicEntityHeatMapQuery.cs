@@ -50,12 +50,35 @@ public sealed class GetPublicEntityHeatMapQueryHandler
                 && ((wm.ActualPickupStart  >= dateFrom && wm.ActualPickupStart  < dateTo)
                   || (wm.PlannedPickupStart >= dateFrom && wm.PlannedPickupStart < dateTo)));
 
-        // Filtrado por perfil PUBLIC_ENT: entidad emisora o entidad vinculada al usuario
+        // Filtrado por perfil PUBLIC_ENT: puntos de recogida del municipio + SOs emitidas por la entidad
         if (_currentUser.IsInAnyProfile("PUBLIC_ENT"))
         {
-            var entityId = _currentUser.LinkedEntityId;
+            var linkedEntityId = _currentUser.LinkedEntityId;
+
+            // Obtener el MunicipalityCode de la entidad pública
+            var municipalityCode = await _db.BusinessEntities.AsNoTracking()
+                .Where(e => e.Id == linkedEntityId)
+                .Select(e => e.MunicipalityCode)
+                .FirstOrDefaultAsync(ct);
+
+            // Entidades (puntos de recogida) del mismo municipio
+            var entityIdsInMunicipality = !string.IsNullOrEmpty(municipalityCode)
+                ? await _db.BusinessEntities.AsNoTracking()
+                    .Where(e => e.MunicipalityCode == municipalityCode)
+                    .Select(e => e.Id)
+                    .ToListAsync(ct)
+                : new List<Guid>();
+
+            // SOs emitidas directamente por la entidad pública
+            var soIds = await _db.ServiceOrders.AsNoTracking()
+                .Where(so => so.IdIssuedBy == linkedEntityId
+                          && (ownerId == Guid.Empty || so.OwnerId == ownerId))
+                .Select(so => so.Id)
+                .ToListAsync(ct);
+
             wmQuery = wmQuery.Where(wm =>
-                wm.ServiceOrder != null && wm.ServiceOrder.IdIssuedBy == entityId);
+                (wm.IdSource != null && entityIdsInMunicipality.Contains(wm.IdSource.Value))
+                || (wm.ServiceOrderId != null && soIds.Contains(wm.ServiceOrderId.Value)));
         }
         else if (request.IdScrap.HasValue && _currentUser.IsInAnyProfile("ADMIN", "DISPATCH_OFFICE"))
         {

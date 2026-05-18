@@ -64,6 +64,15 @@
             }
         </select>
     </div>
+    @if (CurrentUser.IsInProfile(ProfileConstants.Admin))
+    {
+        <div class="filter-group">
+            <label>Entidad (ID)</label>
+            <input type="text" class="form-control form-control-sm"
+                   placeholder="GUID entidad…"
+                   @bind="_filterEntityIdText" @bind:after="OnEntityFilterChanged" />
+        </div>
+    }
 </div>
 
 @* ── Estado de carga ──────────────────────────────────────────────────────── *@
@@ -702,11 +711,19 @@ else if (_data is not null)
     private bool    _loading;
     private string? _error;
 
-    private int  _filterYear  = DateTime.Now.Year;
-    private int? _filterMonth = DateTime.Now.Month;
+    private int    _filterYear         = DateTime.Now.Year;
+    private int?   _filterMonth        = DateTime.Now.Month;
+    private string _filterEntityIdText = string.Empty;
+    private Guid?  _filterEntityId;
 
     protected override async Task OnInitializedAsync()
         => await LoadDataAsync();
+
+    private async Task OnEntityFilterChanged()
+    {
+        _filterEntityId = Guid.TryParse(_filterEntityIdText, out var g) ? g : null;
+        await LoadDataAsync();
+    }
 
     private async Task LoadDataAsync()
     {
@@ -716,8 +733,9 @@ else if (_data is not null)
         try
         {
             _data = await Mediator.Send(new GetOperationalDashboardQuery(
-                Year:  _filterYear,
-                Month: _filterMonth == 0 ? null : _filterMonth));
+                Year:     _filterYear,
+                Month:    _filterMonth == 0 ? null : _filterMonth,
+                IdEntity: _filterEntityId));
         }
         catch (Exception ex)
         {

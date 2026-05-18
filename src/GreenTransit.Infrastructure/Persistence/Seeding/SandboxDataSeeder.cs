@@ -686,7 +686,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
 
         if (alreadyExists)
         {
-            _log.LogInformation("  Fase 8 — skip (usuarios seed ya existen)");
+            _log.LogInformation("  Fase 8 — usuarios seed ya existen, verificando sincronización de emails de entidades");
+            await SyncEntityEmailsAsync(ct);
             return;
         }
 
@@ -708,10 +709,9 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             .IgnoreQueryFilters()
             .ToDictionaryAsync(p => p.Reference, p => p.Id, StringComparer.OrdinalIgnoreCase, ct);
 
-        // Cargar entidades seeded
+        // Cargar entidades seeded (completas para poder actualizar su Email)
         var entities = await _db.BusinessEntities
             .Where(e => e.SourceSystem == Seed)
-            .Select(e => new { e.Id, e.Name, e.EntityRole })
             .ToListAsync(ct);
 
         var users = new List<AppUser>();
@@ -723,6 +723,13 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             // Normalizar nombre → slug para email: "Productor Demo 01" → "productor.demo.01"
             var slug = NormalizeSlug(entity.Name ?? $"entity{entity.Id}");
             var email = $"{slug}@greentransit.dev";
+
+            // Sincronizar el Email de la entidad para que FindEntityIdByEmailAsync lo encuentre
+            if (entity.Email != email)
+            {
+                entity.Email     = email;
+                entity.UpdatedAt = _now;
+            }
 
             users.Add(new AppUser
             {
@@ -744,6 +751,34 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
 
         _log.LogInformation("  Fase 8 completada — {N} usuarios demo en {Ms}ms",
             users.Count, sw.ElapsedMilliseconds);
+    }
+
+    /// <summary>
+    /// Sincroniza el Email de cada entidad seeded con el email @greentransit.dev
+    /// derivado de su nombre, para que FindEntityIdByEmailAsync pueda resolverla.
+    /// </summary>
+    private async Task SyncEntityEmailsAsync(CancellationToken ct)
+    {
+        var entities = await _db.BusinessEntities
+            .Where(e => e.SourceSystem == Seed)
+            .ToListAsync(ct);
+
+        int updated = 0;
+        foreach (var entity in entities)
+        {
+            var slug  = NormalizeSlug(entity.Name ?? $"entity{entity.Id}");
+            var email = $"{slug}@greentransit.dev";
+            if (entity.Email == email) continue;
+            entity.Email     = email;
+            entity.UpdatedAt = _now;
+            updated++;
+        }
+
+        if (updated > 0)
+        {
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("  SyncEntityEmails — {N} entidades actualizadas", updated);
+        }
     }
 
     /// <summary>

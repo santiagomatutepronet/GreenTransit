@@ -1,5 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Reporting.TratamientoReciclaje.DTOs;
+using GreenTransit.Domain.Authorization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -52,12 +53,45 @@ public sealed class GetTRMunicipalMonitoringQueryHandler
         var wmQuery = _context.WasteMoves.AsNoTracking()
             .Where(wm => (ownerId == Guid.Empty || wm.OwnerId == ownerId));
 
-        if (!_currentUser.IsInAnyProfile("ADMIN", "DISPATCH_OFFICE"))
+        if (_currentUser.IsInProfile(ProfileConstants.PublicEnt))
         {
             var linkedId = _currentUser.LinkedEntityId;
-            wmQuery = wmQuery.Where(wm =>
-                wm.ServiceOrder != null && wm.ServiceOrder.IdIssuedBy == linkedId);
+
+            // Obtener el MunicipalityCode de la entidad pública vinculada
+            var municipalityCode = await _context.BusinessEntities
+                .AsNoTracking()
+                .Where(e => e.Id == linkedId)
+                .Select(e => e.MunicipalityCode)
+                .FirstOrDefaultAsync(ct);
+
+            if (!string.IsNullOrEmpty(municipalityCode))
+            {
+                // Traslados cuyo origen pertenece al municipio O cuya SO fue emitida por la entidad
+                var sourceIdsInMunicipality = await _context.BusinessEntities
+                    .AsNoTracking()
+                    .Where(e => e.MunicipalityCode == municipalityCode)
+                    .Select(e => e.Id)
+                    .ToListAsync(ct);
+
+                var soIdsIssuedBy = await _context.ServiceOrders
+                    .AsNoTracking()
+                    .Where(so => so.IdIssuedBy == linkedId
+                              && (ownerId == Guid.Empty || so.OwnerId == ownerId))
+                    .Select(so => so.Id)
+                    .ToListAsync(ct);
+
+                wmQuery = wmQuery.Where(wm =>
+                    (wm.IdSource.HasValue && sourceIdsInMunicipality.Contains(wm.IdSource.Value))
+                    || (wm.ServiceOrderId.HasValue && soIdsIssuedBy.Contains(wm.ServiceOrderId.Value)));
+            }
+            else
+            {
+                // Sin municipio configurado: solo traslados de SOs emitidas por la entidad
+                wmQuery = wmQuery.Where(wm =>
+                    wm.ServiceOrder != null && wm.ServiceOrder.IdIssuedBy == linkedId);
+            }
         }
+        // ADMIN y DISPATCH_OFFICE: todos los traslados del tenant sin restricción adicional
 
         if (request.IdScrap.HasValue)
             wmQuery = wmQuery.Where(wm => wm.IdScrap == request.IdScrap.Value);

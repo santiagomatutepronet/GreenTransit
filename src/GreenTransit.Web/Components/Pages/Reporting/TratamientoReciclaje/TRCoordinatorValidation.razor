@@ -4,9 +4,12 @@
 @implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.Entities.Queries
 @using GreenTransit.Application.Features.Reporting.TratamientoReciclaje.DTOs
 @using GreenTransit.Application.Features.Reporting.TratamientoReciclaje.Queries
 @using GreenTransit.Domain.Authorization
+@using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.JSInterop
@@ -55,6 +58,17 @@
             { <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM", _es))</option> }
         </select>
     </div>
+    @if (_scraps.Count > 0)
+    {
+        <div class="filter-group">
+            <label>SCRAP</label>
+            <select class="form-select form-select-sm" @bind="_filterScrapId" @bind:after="RefreshAsync">
+                <option value="">Todos</option>
+                @foreach (var s in _scraps)
+                { <option value="@s.Id">@s.Name</option> }
+            </select>
+        </div>
+    }
 </div>
 
 @if (_loading)
@@ -222,10 +236,24 @@ else if (_data is not null)
     private bool  _exporting = false;
     private int   _filterYear  = DateTime.Now.Year;
     private int?  _filterMonth = null;
+    private Guid? _filterScrapId;
+
+    private IReadOnlyList<EntitySelectorDto> _scraps = [];
 
     private static readonly CultureInfo _es = new("es-ES");
 
-    protected override async Task OnInitializedAsync() => await RefreshAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadScrapsAsync();
+        await RefreshAsync();
+    }
+
+    private async Task LoadScrapsAsync()
+    {
+        // COORDINATOR: carga todos los SCRAPs del tenant; el handler restringe al subconjunto
+        // de sus Agreements. ADMIN/DISPATCH_OFFICE: todos los SCRAPs.
+        _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery([EntityRoles.SCRAP]));
+    }
 
     private async Task RefreshAsync()
     {
@@ -234,8 +262,9 @@ else if (_data is not null)
         try
         {
             _data = await Mediator.Send(new GetTRCoordinatorValidationQuery(
-                Year:  _filterYear,
-                Month: _filterMonth));
+                Year:    _filterYear,
+                Month:   _filterMonth,
+                IdScrap: _filterScrapId));
         }
         catch (Exception ex)
         {

@@ -13,30 +13,40 @@ namespace GreenTransit.Application.Features.Reporting.RegulatoryCompliance.Servi
 public sealed class ComplianceMonitoringService
 {
     private readonly IApplicationDbContext _db;
-    private readonly IConfiguration        _config;
 
-    // Umbrales con valores por defecto
-    private double  ExpiryAlertDays        => double.TryParse(_config["ComplianceThresholds:ExpiryAlertDays"],    out var v1) ? v1 : 90d;
-    private double  ExpiryCriticalDays     => double.TryParse(_config["ComplianceThresholds:ExpiryCriticalDays"], out var v2) ? v2 : 30d;
-    private double  MarketShareAlertPct    => double.TryParse(_config["ComplianceThresholds:MarketShareAlertPct"],out var v3) ? v3 : 80d;
-    private double  DeviationAlertPct      => double.TryParse(_config["ComplianceThresholds:DeviationAlertPct"],  out var v4) ? v4 : 15d;
+    // Umbrales cacheados en el constructor (no parsear IConfiguration en cada acceso)
+    private readonly double _expiryAlertDays;
+    private readonly double _expiryCriticalDays;
+    private readonly double _marketShareAlertPct;
+    private readonly double _deviationAlertPct;
+
+    private double ExpiryAlertDays     => _expiryAlertDays;
+    private double ExpiryCriticalDays  => _expiryCriticalDays;
+    private double MarketShareAlertPct => _marketShareAlertPct;
+    private double DeviationAlertPct   => _deviationAlertPct;
 
     public ComplianceMonitoringService(
         IApplicationDbContext db,
         IConfiguration        config)
     {
-        _db     = db;
-        _config = config;
+        _db                  = db;
+        _expiryAlertDays     = double.TryParse(config["ComplianceThresholds:ExpiryAlertDays"],    out var v1) ? v1 : 90d;
+        _expiryCriticalDays  = double.TryParse(config["ComplianceThresholds:ExpiryCriticalDays"], out var v2) ? v2 : 30d;
+        _marketShareAlertPct = double.TryParse(config["ComplianceThresholds:MarketShareAlertPct"],out var v3) ? v3 : 80d;
+        _deviationAlertPct   = double.TryParse(config["ComplianceThresholds:DeviationAlertPct"],  out var v4) ? v4 : 15d;
     }
 
     /// <summary>
     /// Genera alertas de cumplimiento para un SCRAP concreto en un año.
+    /// <paramref name="realWeightByCategory"/> es el diccionario ya calculado por el caller
+    /// para evitar la doble consulta a EntryPlants.
     /// </summary>
     public async Task<IReadOnlyList<ComplianceAlertDto>> GetScrapAlertsAsync(
         Guid    scrapId,
         Guid    ownerId,
         int     year,
-        CancellationToken ct)
+        CancellationToken ct,
+        Dictionary<string, decimal>? realWeightByCategory = null)
     {
         var alerts = new List<ComplianceAlertDto>();
         var now    = DateTime.UtcNow;
@@ -85,16 +95,19 @@ public sealed class ComplianceMonitoringService
                       && ms.Year    == year)
             .ToListAsync(ct);
 
-        // Pesos reales acumulados para el SCRAP este año
-        var realWeightByCategory = await _db.EntryPlants.AsNoTracking()
-            .Where(ep => ep.WasteMove.OwnerId == ownerId
-                      && (ep.WasteMove.IdScrap == scrapId || ep.WasteMove.IdScrap2 == scrapId)
-                      && ep.WasteMove.ActualPickupStart.HasValue
-                      && ep.WasteMove.ActualPickupStart.Value.Year == year)
-            .SelectMany(ep => ep.EntryPlantResidues)
-            .GroupBy(epr => epr.Residue.ProductCategory ?? "")
-            .Select(g => new { Category = g.Key, WeightKg = g.Sum(r => r.Weight) })
-            .ToDictionaryAsync(x => x.Category, x => x.WeightKg, ct);
+        // Pesos reales acumulados para el SCRAP este año — reutiliza el dict del caller si se pasa
+        if (realWeightByCategory is null)
+        {
+            realWeightByCategory = await _db.EntryPlants.AsNoTracking()
+                .Where(ep => ep.WasteMove.OwnerId == ownerId
+                          && (ep.WasteMove.IdScrap == scrapId || ep.WasteMove.IdScrap2 == scrapId)
+                          && ep.WasteMove.ActualPickupStart.HasValue
+                          && ep.WasteMove.ActualPickupStart.Value.Year == year)
+                .SelectMany(ep => ep.EntryPlantResidues)
+                .GroupBy(epr => epr.Residue.ProductCategory ?? "")
+                .Select(g => new { Category = g.Key, WeightKg = g.Sum(r => r.Weight) })
+                .ToDictionaryAsync(x => x.Category, x => (decimal)(x.WeightKg ?? 0m), ct);
+        }
 
         foreach (var ms in marketShares)
         {

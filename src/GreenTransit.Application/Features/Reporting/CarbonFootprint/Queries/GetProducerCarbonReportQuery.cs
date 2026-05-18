@@ -53,14 +53,16 @@ public sealed class GetProducerCarbonReportQueryHandler
                 return EmptyResult(request);
 
             soIds = _context.ServiceOrders.AsNoTracking()
-                .Where(so => so.IdIssuedBy == linkedEntityId.Value)
+                .Where(so => so.OwnerId == ownerId
+                          && so.IdIssuedBy == linkedEntityId.Value)
                 .Select(so => so.Id);
         }
 
         if (!string.IsNullOrEmpty(request.WasteStream))
         {
             soIds = _context.ServiceOrders.AsNoTracking()
-                .Where(so => (isAdmin ? so.OwnerId == ownerId : so.IdIssuedBy == linkedEntityId!.Value)
+                .Where(so => so.OwnerId == ownerId
+                          && (isAdmin || so.IdIssuedBy == linkedEntityId!.Value)
                           && so.WasteStream == request.WasteStream)
                 .Select(so => so.Id);
         }

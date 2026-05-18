@@ -157,8 +157,9 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
         if (ns?.Contains("Security") == true) return "Seguridad";
         if (ns?.Contains("TratamientoReciclaje") == true) return "Tratamiento y Reciclaje";
         if (ns?.Contains("Ecomodulacion") == true)     return "Ecomodulación";
-        if (ns?.Contains("HeatMaps") == true)           return "Mapas de Calor";
+        if (ns?.Contains("HeatMaps") == true)              return "Mapas de Calor";
         if (ns?.Contains("CarbonFootprint") == true)    return "Huella de Carbono";
+        if (ns?.Contains("RegulatoryCompliance") == true) return "Análisis Cumplimiento";
         if (ns?.Contains("Reporting") == true)          return "Reporting";
         if (ns?.Contains("Logistics") == true) return "Dashboards Logísticos";
         if (ns?.Contains("Mobility") == true)  return "Movilidad Urbana";

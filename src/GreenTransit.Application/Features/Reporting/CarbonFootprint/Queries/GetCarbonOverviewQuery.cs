@@ -42,7 +42,23 @@ public sealed class GetCarbonOverviewQueryHandler
         var ownerId    = _currentUser.OwnerId;
         var isAdmin    = _currentUser.IsInProfile(ProfileConstants.Admin);
         var isDispatch = _currentUser.IsInProfile(ProfileConstants.DispatchOffice);
+        var isScrap    = _currentUser.IsInProfile(ProfileConstants.Scrap);
+        var isCoord    = _currentUser.IsInProfile(ProfileConstants.Coordinator);
         var seeAll     = isAdmin || isDispatch;
+
+        // ── SCRAPs visibles para COORDINATOR ──────────────────────────────────
+        List<Guid>? coordinatorScrapIds = null;
+        if (isCoord)
+        {
+            coordinatorScrapIds = await _context.Agreements
+                .AsNoTracking()
+                .Where(a => a.IdCoordinator == _currentUser.LinkedEntityId
+                         && a.OwnerId == ownerId
+                         && a.IdScrap.HasValue)
+                .Select(a => a.IdScrap!.Value)
+                .Distinct()
+                .ToListAsync(ct);
+        }
 
         // ── Set activo de factores de emisión ─────────────────────────────────
         var activeFactors = await _context.EmissionFactorSets
@@ -65,11 +81,16 @@ public sealed class GetCarbonOverviewQueryHandler
 
         // ── WasteMoves base del periodo ───────────────────────────────────────
         var wmQuery = _context.WasteMoves.AsNoTracking()
-            .Where(wm => wm.ActualPickupStart >= request.DateFrom
+            .Where(wm => wm.OwnerId == ownerId
+                      && wm.ActualPickupStart >= request.DateFrom
                       && wm.ActualPickupStart <  request.DateTo.AddDays(1));
 
-        if (!seeAll)
-            wmQuery = wmQuery.Where(wm => wm.OwnerId == ownerId);
+        // Filtrado por perfil
+        if (isScrap)
+            wmQuery = wmQuery.Where(wm => wm.IdScrap == _currentUser.LinkedEntityId
+                                       || wm.IdScrap2 == _currentUser.LinkedEntityId);
+        else if (isCoord && coordinatorScrapIds is not null)
+            wmQuery = wmQuery.Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value));
 
         if (request.IdScrap.HasValue)
             wmQuery = wmQuery.Where(wm => wm.IdScrap == request.IdScrap.Value);
@@ -226,8 +247,14 @@ public sealed class GetCarbonOverviewQueryHandler
         var prevFrom   = request.DateFrom - span - TimeSpan.FromDays(1);
         var prevTo     = request.DateFrom - TimeSpan.FromDays(1);
         var prevQuery  = _context.WasteMoves.AsNoTracking()
-            .Where(wm => wm.ActualPickupStart >= prevFrom && wm.ActualPickupStart < prevTo);
-        if (!seeAll) prevQuery = prevQuery.Where(wm => wm.OwnerId == ownerId);
+            .Where(wm => wm.OwnerId == ownerId
+                      && wm.ActualPickupStart >= prevFrom
+                      && wm.ActualPickupStart < prevTo);
+        if (isScrap)
+            prevQuery = prevQuery.Where(wm => wm.IdScrap == _currentUser.LinkedEntityId
+                                           || wm.IdScrap2 == _currentUser.LinkedEntityId);
+        else if (isCoord && coordinatorScrapIds is not null)
+            prevQuery = prevQuery.Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value));
         var prevCO2eKg = await prevQuery.SelectMany(wm => wm.WasteMoveResidues)
             .SumAsync(r => r.TransportInfo_TransportCarbonEmissions ?? 0, ct);
 
@@ -239,9 +266,14 @@ public sealed class GetCarbonOverviewQueryHandler
         var allYears = Enumerable.Range(request.DateFrom.Year, request.DateTo.Year - request.DateFrom.Year + 1).ToList();
         if (!allYears.Contains(request.DateFrom.Year - 1)) allYears.Add(request.DateFrom.Year - 1);
         var monthlyQuery = _context.WasteMoves.AsNoTracking()
-            .Where(wm => wm.ActualPickupStart!.Value.Year >= request.DateFrom.Year - 1
+            .Where(wm => wm.OwnerId == ownerId
+                      && wm.ActualPickupStart!.Value.Year >= request.DateFrom.Year - 1
                       && wm.ActualPickupStart!.Value.Year <= request.DateTo.Year);
-        if (!seeAll) monthlyQuery = monthlyQuery.Where(wm => wm.OwnerId == ownerId);
+        if (isScrap)
+            monthlyQuery = monthlyQuery.Where(wm => wm.IdScrap == _currentUser.LinkedEntityId
+                                                 || wm.IdScrap2 == _currentUser.LinkedEntityId);
+        else if (isCoord && coordinatorScrapIds is not null)
+            monthlyQuery = monthlyQuery.Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value));
         var monthlySrc = await monthlyQuery
             .SelectMany(wm => wm.WasteMoveResidues, (wm, r) => new
             {

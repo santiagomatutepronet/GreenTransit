@@ -9,6 +9,7 @@
 @using GreenTransit.Domain.Authorization
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
 @using Microsoft.JSInterop
 @using System.Globalization
 
@@ -16,6 +17,7 @@
 @inject ICurrentUserService CurrentUser
 @inject ILogger<LogisticsOptimization> Logger
 @inject IJSRuntime          JS
+@inject IApplicationDbContext DbContext
 
 <PageTitle>Optimización Logística — GreenTransit</PageTitle>
 
@@ -69,6 +71,19 @@
             <option value="NEUMATICOS">Neumáticos</option>
         </select>
     </div>
+    @if (_isCoordinator && _coordinatorScraps.Count > 0)
+    {
+        <div class="filter-group">
+            <label>SCRAP</label>
+            <select class="form-select form-select-sm" @bind="_filterScrapId" @bind:after="RefreshAsync">
+                <option value="">Todos mis SCRAPs</option>
+                @foreach (var scrap in _coordinatorScraps)
+                {
+                    <option value="@scrap.Id">@scrap.Name</option>
+                }
+            </select>
+        </div>
+    }
 </div>
 
 @if (_loading)
@@ -406,10 +421,35 @@ else if (_error is not null)
     private int    _filterYear        = DateTime.Now.Year;
     private int?   _filterMonth       = DateTime.Now.Month;
     private string _filterWasteStream = string.Empty;
+    private Guid?  _filterScrapId;
+
+    // ── SCRAPs del coordinador (para selector de filtro) ──────────────────────
+    private List<(Guid Id, string Name)> _coordinatorScraps = [];
+    private bool _isCoordinator;
 
     // ── Ciclo de vida ─────────────────────────────────────────────────────────
     protected override async Task OnInitializedAsync()
-        => await LoadDataAsync();
+    {
+        _isCoordinator = CurrentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Coordinator);
+        if (_isCoordinator && CurrentUser.LinkedEntityId.HasValue)
+        {
+            _coordinatorScraps = await DbContext.Agreements
+                .AsNoTracking()
+                .Where(a => a.IdCoordinator == CurrentUser.LinkedEntityId.Value
+                         && (CurrentUser.OwnerId == Guid.Empty || a.OwnerId == CurrentUser.OwnerId)
+                         && a.IdScrap != null)
+                .Join(DbContext.BusinessEntities,
+                    a => a.IdScrap,
+                    e => e.Id,
+                    (a, e) => new { Id = a.IdScrap!.Value, e.Name })
+                .Distinct()
+                .OrderBy(x => x.Name)
+                .Select(x => new { x.Id, x.Name })
+                .ToListAsync()
+                .ContinueWith(t => t.Result.Select(x => (x.Id, x.Name ?? x.Id.ToString())).ToList());
+        }
+        await LoadDataAsync();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -431,6 +471,7 @@ else if (_error is not null)
             _data = await Mediator.Send(new GetLogisticsOptimizationQuery(
                 Year:        _filterYear,
                 Month:       _filterMonth == 0 ? null : _filterMonth,
+                IdScrap:     _filterScrapId,
                 WasteStream: string.IsNullOrEmpty(_filterWasteStream) ? null : _filterWasteStream));
         }
         catch (Exception ex)

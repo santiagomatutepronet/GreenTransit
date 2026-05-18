@@ -187,7 +187,7 @@ public static class PolicyConstants
 
     // ─── Tratamiento y Reciclaje (TR) ────────────────────────────────────────
 
-    /// <summary>Dashboard TR-A — Análisis de Calidad y Revalorización — SCRAP: SCRAP, ADMIN.</summary>
+    /// <summary>Dashboard TR-A — Análisis de Calidad y Revalorización — SCRAP: SCRAP, COORDINATOR, ADMIN.</summary>
     public const string CanViewTRScrapAnalysis = "CanViewTRScrapAnalysis";
 
     /// <summary>Dashboard TR-B — Monitorización de Reciclaje — Ayuntamiento: PUBLIC_ENT, ADMIN.</summary>
@@ -209,6 +209,15 @@ public static class PolicyConstants
 
     /// <summary>Dashboard UC5-C — Preparación DPP: SCRAP, COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN.</summary>
     public const string CanViewEcomodulationDppReadiness = "CanViewEcomodulationDppReadiness";
+
+    /// <summary>Dashboard EC-A — Panel SCRAP de Ecomodulación (impacto económico en liquidaciones): SCRAP, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewScrapEcoModulationPanel = "CanViewScrapEcoModulationPanel";
+
+    /// <summary>Dashboard EC-B — Vista Regulatoria de Ecomodulación (supervisión económica): COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewEcoModulationRegulatoryEconomicView = "CanViewEcoModulationRegulatoryEconomicView";
+
+    /// <summary>Dashboard EC-C — Preparación DPP por productor: PRODUCER, SCRAP, ADMIN.</summary>
+    public const string CanViewDPPPreparation = "CanViewDPPPreparation";
 
     // ─── Administración del sistema ──────────────────────────────────
 
