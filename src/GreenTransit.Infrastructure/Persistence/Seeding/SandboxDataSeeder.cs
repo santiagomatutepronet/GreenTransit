@@ -1535,16 +1535,43 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
 
         var allIssuers = producers.Concat(publicEnts).ToList();
 
+        // Distribuimos los 100 WasteMoves de forma que todos los trimestres del año actual
+        // queden poblados con suficientes registros CLASIFICADOS para que los gráficos
+        // de evolución trimestral muestren datos llamativos.
+        //
+        // Índices 0-9   → SOLICITADO (futuro)
+        // Índices 10-24 → PLANIFICADO/RECOGIDO  (hace 1-3 meses)
+        // Índices 25-39 → EN_CAC/EN_PLANTA       (hace 1-6 meses)
+        // Índices 40-69 → EN_PLANTA              (hace 2-9 meses)
+        // Índices 70-99 → CLASIFICADO, distribuidos 1 por cada 10 días del año actual
+        //                 → asegura registros en Q1, Q2, Q3 y Q4
         for (int i = 0; i < 100; i++)
         {
-            // Primeros 10 (Pending/SOLICITADO): fechas futuras próximas 1-14 días
-            // Resto: distribuidos en los últimos ~18 meses (base -9m + hasta 297 días)
-            // → rango efectivo: ~sep año-1 a ~jun año+0, cubre siempre el mes actual
             DateTime issuedAt;
             if (i < 10)
-                issuedAt = now.AddDays(1 + (i * 13) % 13).Date.AddHours(hours[i % hours.Length]).AddMinutes(minutes[i % minutes.Length]);
+            {
+                // Futuros 1-14 días
+                issuedAt = now.AddDays(1 + (i * 13) % 13).Date
+                    .AddHours(hours[i % hours.Length]).AddMinutes(minutes[i % minutes.Length]);
+            }
+            else if (i < 70)
+            {
+                // Últimos 9 meses, distribuidos para cubrir todo el rango
+                issuedAt = now.AddMonths(-9).AddDays((i - 10) * 4).Date
+                    .AddHours(hours[i % hours.Length]).AddMinutes(minutes[i % minutes.Length]);
+                // Asegurar que no supere hoy
+                if (issuedAt > now) issuedAt = now.AddDays(-1);
+            }
             else
-                issuedAt = now.AddMonths(-9).AddDays((i * 3) % 365).Date.AddHours(hours[i % hours.Length]).AddMinutes(minutes[i % minutes.Length]);
+            {
+                // CLASIFICADOS: distribuidos uniformemente en el año actual (día 1 a día ~330)
+                // para que Q1, Q2, Q3, Q4 tengan datos en EntryPlants y TreatmentPlants
+                var dayOfYear = (i - 70) * (330 / 30) + 1; // 1 registro cada ~11 días
+                issuedAt = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                    .AddDays(dayOfYear - 1)
+                    .AddHours(hours[i % hours.Length]).AddMinutes(minutes[i % minutes.Length]);
+                if (issuedAt > now) issuedAt = now.AddDays(-2);
+            }
 
             var issuedBy = allIssuers[i % allIssuers.Count];
             var carrier  = carriers.Count > 0 ? carriers[i % carriers.Count] : (Guid?)null;
@@ -1819,6 +1846,13 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         var residues = new List<TreatmentPlantResidue>();
         int incIdx   = 0;
 
+        // Distribución de operaciones de tratamiento para obtener tasas visualmente llamativas:
+        // ~65% reciclaje (R3/R4/R5), ~20% valorización energética (R1), ~15% otros
+        // Los índices en treatOpIds corresponden a: 0=R1(energía), 1=R2, 2=R3(recicl), 3=R4(recicl), 4=R5(recicl)...
+        // Para forzar el porcentaje deseado usamos un patrón fijo de 20 elementos:
+        // 13 reciclaje (R3/R4/R5), 4 valorización (R1), 3 otros
+        var treatOpPattern = new int[] { 2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 0, 3, 4, 0, 2, 0, 1 };
+
         for (int i = 0; i < Math.Min(wasteMoves.Count, 100); i++)
         {
             var (wmId, wmRef, soId, date) = wasteMoves[i];
@@ -1829,6 +1863,12 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             if (incIdx < incidentIds.Count && i < 5)
                 incidentId = incidentIds[incIdx++];
 
+            // Selección de operación según patrón para garantizar tasas de reciclaje realistas
+            var opPatternIdx = treatOpPattern[i % treatOpPattern.Length];
+            var selectedOpId = treatOpIds.Count > opPatternIdx ? treatOpIds[opPatternIdx]
+                             : treatOpIds.Count > 0            ? treatOpIds[i % treatOpIds.Count]
+                             : (Guid?)null;
+
             var tp = new TreatmentPlant
             {
                 Id                   = SeedGuid("tp", i + 1),
@@ -1838,7 +1878,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 ServiceOrderId       = soId,
                 TicketScale          = $"TICKET-TREAT-{i+1:D5}",
                 PlantTreatmentDate   = treatDate,
-                IdTreatmentOperation = treatOpIds.Count > 0 ? treatOpIds[i % treatOpIds.Count] : null,
+                IdTreatmentOperation = selectedOpId,
                 ImproperWeight       = (i * 3) % 50,
                 QualityMetricsJson   = $"{{\"contaminationPct\":{(i % 10) * 0.5},\"moisture\":{10 + i % 15}}}",
                 IncidentId           = incidentId,
@@ -1851,9 +1891,10 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
 
             // Balance de masas: WeightReused + WeightValued + WeightRemove + ImproperWeight ≈ WeightTotal
             var improper   = tp.ImproperWeight ?? 0;
-            var total      = 1000m;
+            // Variación de total para que los gráficos de evolución de pesos sean dinámicos
+            var total      = 800m + (i * 137 + 1) % 4200;
             var reused     = Math.Round(total * 0.15m, 2);
-            var valued     = Math.Round(total * 0.70m, 2);
+            var valued     = Math.Round(total * 0.68m, 2);
             var remove     = total - reused - valued - improper;
 
             for (int l = 0; l < 1 + (i % 3); l++)
@@ -1896,25 +1937,40 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     {
         var settlements = new List<Settlement>();
         var lines       = new List<SettlementLine>();
-        var statuses    = new[] { "Approved", "Approved", "Approved", "Pending", "Rejected" };
+        // Distribución más realista: mayoría Approved, algunos Pending, pocos Rejected
+        var statuses    = new[] { "Approved", "Approved", "Approved", "Approved", "Approved",
+                                   "Approved", "Approved", "Approved", "Pending", "Pending",
+                                   "Pending",  "Rejected" };
         var t = now;
+
+        // Factores mensuales para simular estacionalidad (picos en Q2-jun y Q4-nov/dic)
+        var monthFactors = new decimal[]
+        {
+            0.75m, 0.80m, 0.95m,   // Q1: ene-mar
+            1.10m, 1.20m, 1.35m,   // Q2: abr-jun (pico primaveral)
+            0.90m, 0.85m, 1.00m,   // Q3: jul-sep
+            1.15m, 1.30m, 1.45m    // Q4: oct-dic (pico recogida anual)
+        };
 
         for (int i = 0; i < Math.Min(agreements.Count, 25); i++)
         {
             var (agrId, scrapId, peId) = agreements[i];
-            var baseAmount  = 5000m + (i * 1873) % 45000;
-            var adjustments = -500m + (i * 43) % 1000;
+            var month       = 1 + (i % 12);
+            var mFactor     = monthFactors[month - 1];
+            var baseAmount  = Math.Round((8000m + (i * 2371) % 42000) * mFactor, 2);
+            var adjustments = Math.Round((-800m + (i * 43) % 1600) * mFactor, 2);
             var tax         = Math.Round(baseAmount * 0.21m, 2);
             var total       = baseAmount + adjustments + tax;
+            var status      = statuses[i % statuses.Length];
             var s = new Settlement
             {
                 Id               = SeedGuid("set", i + 1),
                 OwnerId          = ownerId,
                 SettlementNumber = $"LIQ-{t.Year}-{i+1:D4}",
-                Status           = statuses[i % statuses.Length],
+                Status           = status,
                 AgreementId      = agrId,
                 Year             = t.Year,
-                Month            = 1 + (i % 12),
+                Month            = month,
                 IdScrap          = scrapId,
                 IdPublicEntity   = peId,
                 Currency         = "EUR",
@@ -1922,6 +1978,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 AdjustmentsAmount = adjustments,
                 TaxAmount        = tax,
                 TotalAmount      = total,
+                ValidationStatus = status,
+                ValidatedAt      = status == "Approved" ? t.AddDays(-(25 - i % 20)) : null,
                 SourceSystem     = Seed,
                 Version          = 1,
                 CreatedAt        = t,
@@ -1932,7 +1990,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
 
             for (int l = 0; l < 3 + (i % 3); l++)
             {
-                var weightKg   = 500m + (i + l * 1000) % 9500;
+                var weightKg   = Math.Round((800m + (i + l * 1200) % 9200) * mFactor, 0);
                 var pricePerKg = 0.05m + (l % 5) * 0.05m;
                 lines.Add(new SettlementLine
                 {
@@ -1957,34 +2015,68 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     {
         var list       = new List<MarketShare>();
         var categories = new[] { "Envases", "RAEE", "Voluminosos" };
-        var ccaas      = new[] { "Aragón", "Madrid", "Cataluña" };
+        // Todas las CCAA del seed para que el heatmap territorial sea visualmente rico
+        var ccaas = new[]
+        {
+            "Aragón", "Comunidad de Madrid", "Cataluña", "Andalucía",
+            "Comunitat Valenciana", "País Vasco", "Región de Murcia",
+            "Castilla y León", "Illes Balears", "Cantabria",
+            "Comunidad Foral de Navarra", "La Rioja", "Principado de Asturias",
+            "Galicia", "Castilla-La Mancha", "Extremadura"
+        };
         var flowTypes  = new[] { "Recogida", "Reciclaje", "Valorización" };
-        int idx        = 0;
 
+        // Pesos base por categoría (kg) — valores representativos de un SCRAP español mediano
+        // Envases ~200-800t, RAEE ~100-400t, Voluminosos ~80-300t por CCAA y trimestre
+        var baseWeightsByCat = new Dictionary<string, decimal>
+        {
+            ["Envases"]     = 450_000m,
+            ["RAEE"]        = 250_000m,
+            ["Voluminosos"] = 180_000m
+        };
+
+        // Factor de crecimiento por CCAA (más densidad de población = más peso)
+        var ccaaFactor = new decimal[]
+        {
+            0.80m, 2.20m, 1.90m, 1.60m,  // Aragón, Madrid, Cataluña, Andalucía
+            1.30m, 1.10m, 0.70m, 0.75m,  // Valencia, País Vasco, Murcia, Castilla y León
+            0.45m, 0.35m, 0.40m, 0.28m,  // Baleares, Cantabria, Navarra, La Rioja
+            0.38m, 0.90m, 0.65m, 0.50m   // Asturias, Galicia, Castilla-LM, Extremadura
+        };
+
+        int idx = 0;
         for (int s = 0; s < scraps.Count; s++)
         {
             foreach (var cat in categories)
             {
-                foreach (var ccaa in ccaas)
+                var baseW = baseWeightsByCat[cat];
+                for (int c = 0; c < ccaas.Length; c++)
                 {
-                    for (int period = 1; period <= 2; period++)
+                    // Cuatro períodos trimestrales con tendencia creciente (Q1<Q2<Q3<Q4)
+                    for (int period = 1; period <= 4; period++)
                     {
                         idx++;
+                        // Tendencia: Q4 = 1.25× Q1, con variación aleatoria determinista
+                        var trendFactor = 0.88m + period * 0.12m;
+                        var variance    = 1m + ((idx * 7919) % 21 - 10) * 0.02m; // ±20% pseudo-aleatorio
+                        var weight      = Math.Round(baseW * ccaaFactor[c] * trendFactor * variance / scraps.Count, 0);
+                        // Mínimo razonable por CCAA pequeña
+                        if (weight < 15_000m) weight = 15_000m + idx % 10_000;
+
+                        var qMonth = (period - 1) * 3 + 1;
                         list.Add(new MarketShare
                         {
                             Id                  = SeedGuid("ms", idx),
                             OwnerId             = ownerId,
                             IdScrap             = scraps[s],
                             Category            = cat,
-                            AutonomousCommunity = ccaa,
+                            AutonomousCommunity = ccaas[c],
                             Year                = now.Year,
-                            Weight              = 10000m + (idx * 9973) % 490000,
+                            Weight              = weight,
                             Period              = period,
-                            EffectiveFrom       = period == 1
-                                ? new DateOnly(now.Year, 1, 1) : new DateOnly(now.Year, 4, 1),
-                            EffectiveTo         = period == 1
-                                ? new DateOnly(now.Year, 3, 31) : new DateOnly(now.Year, 6, 30),
-                            FlowType            = flowTypes[idx % flowTypes.Length],
+                            EffectiveFrom       = new DateOnly(now.Year, qMonth, 1),
+                            EffectiveTo         = new DateOnly(now.Year, qMonth + 2, DateTime.DaysInMonth(now.Year, qMonth + 2)),
+                            FlowType            = flowTypes[(s + c + period) % flowTypes.Length],
                             SourceSystem        = Seed,
                             Version             = 1
                         });

@@ -583,6 +583,33 @@ try
 
         // ── MAPAS DE CALOR (HM) ───────────────────────────────────────────────
 
+        // ── CUMPLIMIENTO NORMATIVO (CN) ─────────────────────────────────────────
+
+        // Dashboard CN-A — Panel de Cumplimiento Normativo — Visión SCRAP: SCRAP, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewScrapComplianceOverview, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Scrap, ProfileConstants.Admin)));
+
+        // Dashboard CN-B — Auditoría de Cuotas de Mercado: COORDINATOR, DISPATCH_OFFICE, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewMarketShareAudit, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard CN-C — Monitorización de Convenios — Coordinador: COORDINATOR, DISPATCH_OFFICE, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewAgreementComplianceMonitoring, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
+        // Dashboard CN-D — Cumplimiento Normativo — Entidad Pública: PUBLIC_ENT, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewPublicEntityComplianceView, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.PublicEnt, ProfileConstants.Admin)));
+
+        // Dashboard CN-E — Datos de Cumplimiento — Oficina de Asignación: DISPATCH_OFFICE, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewDispatchOfficeComplianceData, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+
         // Dashboard HM-A — Mapa de Calor de Densidad de Residuos: SCRAP, DISPATCH_OFFICE y ADMIN.
         options.AddPolicy(PolicyConstants.CanViewHeatMapWasteDensity, policy =>
             policy.AddRequirements(new ProfileRequirement(
@@ -619,14 +646,20 @@ try
     builder.Services.AddScoped<GreenTransit.Web.Services.NavMenuStateService>();
 
     // ── EF Core: AppDbContext con SQL Server ──────────────────────────────────
-    // AddDbContext resuelve ICurrentUserService del contenedor al construir el contexto.
-    builder.Services.AddDbContext<AppDbContext>((sp, options) =>
+    // AddDbContextFactory registra el factory como Scoped.
+    // IApplicationDbContext se registra como Transient para que cada handler de MediatR
+    // obtenga su propia instancia de DbContext, evitando conflictos de concurrencia
+    // en Blazor Server (el scope del circuito dura toda la sesión).
+    builder.Services.AddDbContextFactory<AppDbContext>((sp, options) =>
     {
         options.UseSqlServer(
             builder.Configuration.GetConnectionString("DefaultConnection"),
             sql => sql.EnableRetryOnFailure(maxRetryCount: 3));
-    });
-    builder.Services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+    }, ServiceLifetime.Scoped);
+    builder.Services.AddTransient<AppDbContext>(sp =>
+        sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
+    builder.Services.AddTransient<IApplicationDbContext>(sp =>
+        sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
 
     builder.Services.AddScoped<IDbInitializer, GreenTransit.Infrastructure.Persistence.DbInitializer>();
 
@@ -649,6 +682,9 @@ try
 
     // ── Servicios de Mapas de Calor ───────────────────────────────────────────
     builder.Services.AddScoped<GreenTransit.Application.Features.Reporting.HeatMaps.Services.HeatMapAggregationService>();
+
+    // ── Servicios de Cumplimiento Normativo (UC-CN) ───────────────────────────
+    builder.Services.AddScoped<GreenTransit.Application.Features.Reporting.RegulatoryCompliance.Services.ComplianceMonitoringService>();
 
     // ── Descubrimiento de pantallas ───────────────────────────────────────────
     var webAssembly = typeof(GreenTransit.Web.Components.App).Assembly;

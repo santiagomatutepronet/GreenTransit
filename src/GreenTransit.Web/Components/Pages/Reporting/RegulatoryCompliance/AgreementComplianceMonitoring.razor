@@ -1,0 +1,339 @@
+@page "/reporting/regulatory-compliance/agreement-monitoring"
+@attribute [Authorize(Policy = PolicyConstants.CanViewAgreementComplianceMonitoring)]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Features.Reporting.RegulatoryCompliance.DTOs
+@using GreenTransit.Application.Features.Reporting.RegulatoryCompliance.Queries
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
+@inject ILogger<AgreementComplianceMonitoring> Logger
+
+<PageTitle>Monitorización de Convenios — GreenTransit</PageTitle>
+
+<div class="page-header mb-4">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-file-earmark-check-fill me-2 text-primary"></i>Monitorización de Convenios
+        </h1>
+        <p class="text-muted mb-0">Dashboard CN-C · Estado, cobertura y cumplimiento de convenios SCRAP — Entidad Pública</p>
+        <p class="text-muted small mt-1">
+            Verifica tarifas de compensación y detecta desviaciones en servicios pactados.
+        </p>
+    </div>
+    <div class="page-header-actions">
+        <button class="btn btn-outline-neutral btn-sm" @onclick="LoadAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+    </div>
+</div>
+
+@* ── Filtros ───────────────────────────────────────────────────────────────── *@
+<div class="filter-bar mb-4">
+    <div class="filter-group">
+        <label>Año</label>
+        <input type="number" class="form-control form-control-sm" style="width:100px"
+               @bind="_year" @bind:after="LoadAsync" min="2020" max="2030" />
+    </div>
+    <div class="filter-group">
+        <label>Comunidad Autónoma</label>
+        <select class="form-select form-select-sm" style="width:180px" @bind="_autonomousCommunity" @bind:after="LoadAsync">
+            <option value="">Todas</option>
+            @foreach (var c in _filterOptions.AutonomousCommunities)
+            {
+                <option value="@c">@c</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Flujo</label>
+        <select class="form-select form-select-sm" style="width:160px" @bind="_wasteStream" @bind:after="LoadAsync">
+            <option value="">Todos</option>
+            @foreach (var s in _filterOptions.WasteStreams)
+            {
+                <option value="@s">@s</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Estado convenio</label>
+        <select class="form-select form-select-sm" style="width:130px" @bind="_agreementStatus" @bind:after="LoadAsync">
+            <option value="">Todos</option>
+            <option value="Active">Activo</option>
+            <option value="Draft">Borrador</option>
+            <option value="Expired">Expirado</option>
+            <option value="Cancelled">Cancelado</option>
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+}
+else if (_data is null)
+{
+    <div class="alert alert-warning">No se han podido cargar los datos.</div>
+}
+else
+{
+    @* ── Alertas ──────────────────────────────────────────────────────────── *@
+    @if (_data.Alerts.Any())
+    {
+        <div class="alert alert-danger mb-4">
+            <strong><i class="bi bi-exclamation-triangle-fill me-2"></i>@_data.Alerts.Count alertas activas</strong>
+            <ul class="mb-0 mt-2">
+                @foreach (var a in _data.Alerts.Take(5))
+                {
+                    <li><span class="badge @(a.Severity == "HIGH" ? "bg-danger" : "bg-warning text-dark") me-1">@a.Severity</span>@a.Message</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @* ── KPIs ─────────────────────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100 border-success">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-file-earmark-text me-1 text-success"></i>Convenios Activos</div>
+                    <div class="kpi-value">@_data.TotalActiveAgreements</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100 border-warning">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-clock-history me-1 text-warning"></i>Próximos a vencer (90d)</div>
+                    <div class="kpi-value">@_data.AgreementsExpiringSoon</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-receipt me-1 text-info"></i>Liquidaciones Pendientes</div>
+                    <div class="kpi-value">@_data.PendingSettlements</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body">
+                    <div class="kpi-label"><i class="bi bi-currency-euro me-1 text-success"></i>Importe Aprobado (año)</div>
+                    <div class="kpi-value">@_data.TotalApprovedAmountYear.ToString("N0") <small class="text-muted">€</small></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Cobertura por CCAA ───────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-bar-chart-fill me-2"></i>Cobertura de convenios por comunidad autónoma</div>
+        <div class="card-body">
+            @if (_data.CoverageByRegion.Any())
+            {
+                <div id="chart-cn-c-coverage" style="min-height:280px"></div>
+            }
+            else
+            {
+                <p class="text-muted text-center pt-4">Sin datos de cobertura.</p>
+            }
+        </div>
+    </div>
+
+    @* ── Tabla de convenios ───────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-table me-2"></i>Estado de convenios por SCRAP y entidad pública</div>
+        <div class="card-body p-0">
+            @{ var _agRows = _data.AgreementRows.ToList(); }
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Nº</th><th>SCRAP</th><th>Entidad Pública</th>
+                            <th>CCAA</th><th>Provincia</th><th>Municipio</th>
+                            <th>Flujo</th><th>Estado</th><th>Tarifa</th><th>Vigencia</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var a in _agRows.Skip((_pgAgreements - 1) * PageSize).Take(PageSize))
+                        {
+                            <tr>
+                                <td><a href="/agreements/@a.Id"><code>@a.AgreementNumber</code></a></td>
+                                <td class="text-truncate" style="max-width:100px">@a.ScrapName</td>
+                                <td class="text-truncate" style="max-width:120px">@a.PublicEntityName</td>
+                                <td>@a.AutonomousCommunity</td>
+                                <td>@a.ProvinceName</td>
+                                <td>@a.MunicipalityName</td>
+                                <td>@a.WasteStream</td>
+                                <td><span class="badge bg-@AgreementStatusBadge(a.Status)">@a.Status</span></td>
+                                <td>@a.TariffModelType</td>
+                                <td style="white-space:nowrap">
+                                    @a.EffectiveFrom.ToString("dd/MM/yy") – @(a.EffectiveTo?.ToString("dd/MM/yy") ?? "—")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <TablePager TotalCount="_agRows.Count" PageSize="PageSize" CurrentPage="_pgAgreements"
+                        CurrentPageChanged="p => _pgAgreements = p" />
+        </div>
+    </div>
+
+    @* ── Liquidaciones ────────────────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-graph-up me-2"></i>Evolución mensual de liquidaciones por SCRAP</div>
+        <div class="card-body">
+            @if (_data.SettlementMonthlyByScrap.Any())
+            {
+                <div id="chart-cn-c-settlements" style="min-height:280px"></div>
+            }
+            else
+            {
+                <p class="text-muted text-center pt-4">Sin datos de liquidaciones.</p>
+            }
+        </div>
+    </div>
+
+    @* ── Servicios vs compromisos ─────────────────────────────────────────── *@
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-clipboard2-check me-2"></i>Servicios prestados vs compromisos</div>
+        <div class="card-body p-0">
+            @{ var _svcRows = _data.ServiceVsCommitments.ToList(); }
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Convenio</th><th>SCRAP</th><th>Entidad</th>
+                            <th class="text-end">Servicios</th><th class="text-end">Toneladas</th><th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in _svcRows.Skip((_pgServices - 1) * PageSize).Take(PageSize))
+                        {
+                            <tr>
+                                <td><a href="/agreements/@s.AgreementId"><code>@s.AgreementNumber</code></a></td>
+                                <td>@s.ScrapName</td>
+                                <td class="text-truncate" style="max-width:120px">@s.PublicEntityName</td>
+                                <td class="text-end">@s.ServicesCompleted</td>
+                                <td class="text-end">@s.TonnesManaged.ToString("N1")</td>
+                                <td><span class="badge bg-@(s.ComplianceStatus == "GREEN" ? "success" : "danger")">@s.ComplianceStatus</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <TablePager TotalCount="_svcRows.Count" PageSize="PageSize" CurrentPage="_pgServices"
+                        CurrentPageChanged="p => _pgServices = p" />
+        </div>
+    </div>
+}
+
+@code {
+    private const int PageSize = 15;
+    private AgreementComplianceMonitoringDto? _data;
+    private ComplianceFilterOptionsDto  _filterOptions = new([], [], [], []);
+    private bool    _loading = true;
+    private bool    _initialized;
+    private bool    _chartsRendered;
+    private int     _year = DateTime.Now.Year;
+    private string? _autonomousCommunity;
+    private string? _wasteStream;
+    private string? _agreementStatus;
+    private int     _pgAgreements = 1;
+    private int     _pgServices   = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (_initialized) return;
+        _initialized = true;
+        try { _filterOptions = await Mediator.Send(new GetComplianceFilterOptionsQuery()); }
+        catch (Exception ex) { Logger.LogWarning(ex, "Error cargando opciones de filtro CN-C"); }
+        await LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_loading && _data is not null && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading        = true;
+        _chartsRendered = false;
+        _pgAgreements   = 1;
+        _pgServices     = 1;
+        try
+        {
+            _data = await Mediator.Send(new GetAgreementComplianceMonitoringQuery(
+                _year, null, null,
+                string.IsNullOrEmpty(_autonomousCommunity) ? null : _autonomousCommunity,
+                null, null,
+                string.IsNullOrEmpty(_wasteStream)         ? null : _wasteStream,
+                null,
+                string.IsNullOrEmpty(_agreementStatus)     ? null : _agreementStatus));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando CN-C");
+            _data = null;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            if (_data.CoverageByRegion.Any())
+            {
+                await JS.InvokeVoidAsync("complianceCharts.renderCoverageGroupedBar", "chart-cn-c-coverage",
+                    _data.CoverageByRegion.Select(c => new {
+                        region = c.AutonomousCommunity, scrap = c.ScrapName,
+                        agreements = c.ActiveAgreements, tonnes = (double)c.TotalTonnesManaged
+                    }).ToList());
+            }
+            if (_data.SettlementMonthlyByScrap.Any())
+            {
+                var scraps = _data.SettlementMonthlyByScrap.Select(x => x.ScrapName).Distinct().ToList();
+                await JS.InvokeVoidAsync("complianceCharts.renderSettlementLineByScrap", "chart-cn-c-settlements",
+                    _data.SettlementMonthlyByScrap.Select(x => new { year = x.Year, month = x.Month, scrap = x.ScrapName, amount = (double)x.TotalAmount }).ToList(),
+                    scraps);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráficos CN-C");
+        }
+    }
+
+    private static string AgreementStatusBadge(string status) => status switch
+    {
+        "Active"    => "success",
+        "Draft"     => "primary",
+        "Expired"   => "danger",
+        "Cancelled" => "secondary",
+        _           => "secondary"
+    };
+
+    public ValueTask DisposeAsync()
+    {
+        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-c-coverage");
+        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-c-settlements");
+        return ValueTask.CompletedTask;
+    }
+}

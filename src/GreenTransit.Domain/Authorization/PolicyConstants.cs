@@ -107,6 +107,23 @@ public static class PolicyConstants
     /// <summary>Dashboard HM-C — Vista de Mapas de Calor para Entidades Públicas: PUBLIC_ENT, DISPATCH_OFFICE, ADMIN.</summary>
     public const string CanViewHeatMapPublicView = "CanViewHeatMapPublicView";
 
+    // ─── Cumplimiento Normativo (CN) ──────────────────────────────────────────
+
+    /// <summary>Dashboard CN-A — Panel de Cumplimiento Normativo — Visión SCRAP: SCRAP, ADMIN.</summary>
+    public const string CanViewScrapComplianceOverview = "CanViewScrapComplianceOverview";
+
+    /// <summary>Dashboard CN-B — Auditoría de Cuotas de Mercado — Reparto entre SCRAPs: COORDINATOR, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewMarketShareAudit = "CanViewMarketShareAudit";
+
+    /// <summary>Dashboard CN-C — Monitorización de Convenios — Coordinador: COORDINATOR, DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewAgreementComplianceMonitoring = "CanViewAgreementComplianceMonitoring";
+
+    /// <summary>Dashboard CN-D — Cumplimiento Normativo — Entidad Pública: PUBLIC_ENT, ADMIN.</summary>
+    public const string CanViewPublicEntityComplianceView = "CanViewPublicEntityComplianceView";
+
+    /// <summary>Dashboard CN-E — Datos de Cumplimiento — Oficina de Asignación: DISPATCH_OFFICE, ADMIN.</summary>
+    public const string CanViewDispatchOfficeComplianceData = "CanViewDispatchOfficeComplianceData";
+
     /// <summary>Acceso a módulo de reporting y trazabilidad: todos los autenticados (con filtrado por datos propios).</summary>
     public const string CanViewReporting = "CanViewReporting";
 

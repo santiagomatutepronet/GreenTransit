@@ -4,7 +4,7 @@
 >
 > Basado en el modelo de datos técnico **v4.1** (SQL Server Azure). Cada funcionalidad detalla **entidades implicadas**, **campos clave** y **transiciones de estado** del traslado.
 >
-> **Documento unificado** que integra: Mapa de Funcionalidades, Mapa de Autenticación y Autorización, Modelo de Datos, Patrón de Autorización en Páginas, Dashboard UC2 (Optimización RAEE), Dashboard UC3 (Movilidad Urbana), Dashboard Mapas de Calor (Densidad y Patrones de Residuos) y Dashboard Huella de Carbono (Emisiones CO₂ en Gestión de Residuos Industriales).
+> **Documento unificado** que integra: Mapa de Funcionalidades, Mapa de Autenticación y Autorización, Modelo de Datos, Patrón de Autorización en Páginas, Dashboard UC2 (Optimización RAEE), Dashboard UC3 (Movilidad Urbana), Dashboard Mapas de Calor (Densidad y Patrones de Residuos), Dashboard Huella de Carbono (Emisiones CO₂ en Gestión de Residuos Industriales) y Dashboard Análisis y Cumplimiento Normativo (RAP — Responsabilidad Ampliada del Productor).
 
 ---
 
@@ -1611,6 +1611,308 @@ En **todas** las pantallas, tablas, filtros y exportaciones de este módulo:
 
 ---
 
+### 5.8. Módulo de Análisis y Cumplimiento Normativo — RAP (UC-CN)
+
+> Agrupa las vistas orientadas a **monitorizar, certificar y auditar el cumplimiento de la Responsabilidad Ampliada del Productor (RAP)** según la Ley 22/2011 de residuos y suelos contaminados. El sistema centraliza la información normativa de diferentes SCRAPs, monitorea su cumplimiento, identifica áreas de riesgo e incumplimiento, y facilita decisiones correctivas.
+>
+> Los datos explotados incluyen: cumplimiento de cada SCRAP con regulaciones locales y nacionales (tasas de reciclaje, certificados de tratamiento, disposición final), datos de convenios con comunidades autónomas (características del servicio, facturas de compensación), y cuotas de mercado con verificación del principio de proporcionalidad.
+>
+> **Participantes clave**: AENOR Confía (verificación y certificación), Oficina de Coordinación de SCRAP RAEE / OFIRAEE (datos de convenios y objetivos de recogida por flujos), SCRAP Cartón Circular (envases comerciales e industriales), ECOEMBES (envases domésticos — adherencia futura), entes locales (toneladas por metodologías de recolección).
+>
+> **No se crean nuevas entidades de dominio.** Todo se implementa con las entidades del modelo v4.1 existente.
+
+#### 5.8.1. CN-A — Panel de Cumplimiento Normativo — Visión SCRAP
+
+- **Ruta**: `/reporting/regulatory-compliance/scrap-overview`
+- **Perfil objetivo**: `SCRAP`, `ADMIN`.
+- **Policy**: `CanViewScrapComplianceOverview`.
+- **Lógica**: cada SCRAP visualiza su propio nivel de cumplimiento normativo: tasas de reciclaje alcanzadas, progreso de objetivos de recogida, estado de sus convenios y alertas de riesgo de incumplimiento.
+
+**Archivos a crear**:
+- `Application/Features/Reporting/RegulatoryCompliance/Queries/GetScrapComplianceOverviewQuery.cs` — handler principal con filtros: `Year`, `Quarter?`/`Month?`, `AutonomousCommunity?`, `Category?`, `FlowType?`.
+- `Application/Features/Reporting/RegulatoryCompliance/DTOs/ScrapComplianceOverviewDto.cs` — DTOs: `ScrapComplianceOverviewDto`, `ComplianceKpiDto`, `QuarterlyComplianceTrendDto`, `MarketShareComplianceRowDto`, `AgreementStatusRowDto`, `SettlementSummaryDto`, `ComplianceAlertDto`.
+- `Application/Features/Reporting/RegulatoryCompliance/Services/ComplianceMonitoringService.cs` — motor de alertas, cálculo de desviaciones y umbrales.
+- `Web/Components/Pages/Reporting/RegulatoryCompliance/ScrapComplianceOverview.razor` — página `/reporting/regulatory-compliance/scrap-overview`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Resumen ejecutivo (cards KPI) | `TreatmentPlantResidues` + `TreatmentOperations` + `EntryPlantResidues` + `MarketShares` + `Agreements` | Tasa reciclaje, tasa valorización, tasa reutilización, % cumplimiento cuotas, nº convenios activos, variación %. Semáforo vs `RegulatoryTargets` |
+| Evolución trimestral de tasas (line chart) | Agregación trimestral `TreatmentPlantResidues` + `TreatmentOperations` | Series: reciclaje, valorización, reutilización. Línea de referencia = objetivo regulatorio |
+| Cumplimiento cuotas por categoría y CCAA (tabla + barras progreso) | `MarketShares` + `EntryPlantResidues` | Categoría, comunidad autónoma (**nombre**), flujo, objetivo kg, real kg, %, estado. Sparkline mensual |
+| Estado de convenios (tabla + timeline) | `Agreements WHERE IdScrap = LinkedEntityId` + `Entities` | Nº acuerdo, ent. pública (**nombre**), CCAA, provincia (**nombre**), municipio (**nombre**), flujo, estado, vigencia, días vencimiento. Semáforo vencimiento |
+| Liquidaciones (bar chart apilado + tabla) | `Settlements WHERE IdScrap = LinkedEntityId` | Importe por mes apilado por `ValidationStatus`. Tabla: nº, año, mes, ent. pública, total, estado |
+| Alertas de incumplimiento (panel inbox) | Calculado en `ComplianceMonitoringService.cs` | Tasa bajo objetivo, cuota < 80%, convenio < 30 días, liquidación rechazada |
+
+---
+
+#### 5.8.2. CN-B — Panel de Auditoría de Cuotas de Mercado — Reparto entre SCRAPs
+
+- **Ruta**: `/reporting/regulatory-compliance/market-share-audit`
+- **Perfil objetivo**: `COORDINATOR`, `DISPATCH_OFFICE`, `ADMIN`.
+- **Policy**: `CanViewMarketShareAudit`.
+- **Lógica**: la Oficina de Coordinación y los coordinadores auditan el reparto proporcional de la responsabilidad entre SCRAPs, verificando que cada uno asume su cuota de mercado correspondiente (principio de proporcionalidad por cuota de mercado según Ley 22/2011).
+
+**Archivos a crear**:
+- `Application/Features/Reporting/RegulatoryCompliance/Queries/GetMarketShareAuditQuery.cs` — filtros: `Year`, `AutonomousCommunity?`, `FlowType?`, `Category?`, `IdScrap?`.
+- `Application/Features/Reporting/RegulatoryCompliance/DTOs/MarketShareAuditDto.cs` — DTOs: `MarketShareAuditDto`, `ScrapProportionalityDto`, `ComplianceHeatmapCellDto`, `DeviationIndexDto`, `AuditExportRowDto`.
+- `Application/Features/Reporting/RegulatoryCompliance/Queries/ExportComplianceDataToExcelQuery.cs` — exportación XLSX (patrón ClosedXML).
+- `Web/Components/Pages/Reporting/RegulatoryCompliance/MarketShareAudit.razor` — página `/reporting/regulatory-compliance/market-share-audit`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Proporcionalidad global (donut + tabla resumen) | `MarketShares` agrupado por `IdScrap` | Donut: peso objetivo por SCRAP como % del total. Tabla: SCRAP (**nombre**), objetivo, real, %, desviación |
+| Comparativa SCRAP × categoría (heatmap tabla) | `MarketShares` + `EntryPlantResidues` | Filas: SCRAP. Columnas: categorías. Celdas: % cumplimiento con color (verde/naranja/rojo) |
+| Evolución mensual reparto real vs objetivo (stacked area) | `EntryPlantResidues.Weight` agrupado mes × SCRAP | Áreas por SCRAP. Líneas referencia: objetivo mensual prorrateado |
+| Desglose por CCAA y flujo (tabla expandible) | `MarketShares` filtrada | Filas agrupables: CCAA (**nombre**) → SCRAP → categoría. Columnas: objetivo, real, %, estado |
+| Índice de desviación por SCRAP (bar chart horizontal) | Cálculo: `(Real - Objetivo) / Objetivo × 100` | Barras verdes (superan) y rojas (por debajo). Umbral ±15% configurable |
+| Exportación XLSX | Dataset completo de auditoría | SCRAP, categoría, CCAA, flujo, objetivo, real, desviación, % |
+
+---
+
+#### 5.8.3. CN-C — Panel de Monitorización de Convenios — Coordinador
+
+- **Ruta**: `/reporting/regulatory-compliance/agreement-monitoring`
+- **Perfil objetivo**: `COORDINATOR`, `DISPATCH_OFFICE`, `ADMIN`.
+- **Policy**: `CanViewAgreementComplianceMonitoring`.
+- **Lógica**: monitorizar el estado y cumplimiento de los convenios entre SCRAPs y entidades públicas, verificar las tarifas de compensación, y detectar desviaciones en los servicios pactados.
+
+**Archivos a crear**:
+- `Application/Features/Reporting/RegulatoryCompliance/Queries/GetAgreementComplianceMonitoringQuery.cs` — filtros: `Year`, `Month?`, `IdScrap?`, `AutonomousCommunity?`, `ProvinceCode?`, `MunicipalityCode?`, `WasteStream?`, `SubStream?`, `AgreementStatus?`.
+- `Application/Features/Reporting/RegulatoryCompliance/DTOs/AgreementComplianceMonitoringDto.cs` — DTOs: `AgreementComplianceMonitoringDto`, `AgreementKpiDto`, `AgreementRowDto`, `SettlementTrackingDto`, `ServiceVsCommitmentDto`.
+- `Web/Components/Pages/Reporting/RegulatoryCompliance/AgreementComplianceMonitoring.razor` — página `/reporting/regulatory-compliance/agreement-monitoring`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Resumen ejecutivo (cards KPI) | `Agreements` + `Settlements` | Convenios activos, próximos a vencer (< 90 días), liquidaciones pendientes, importe liquidado (año), variación % |
+| Cobertura de convenios por CCAA (bar chart agrupado) | `Agreements` agrupado por `AutonomousCommunity` (**nombre**) | Barras por SCRAP dentro de cada CCAA. Línea: toneladas gestionadas |
+| Estado de convenios (tabla interactiva) | `Agreements` + `Entities` (JOINs) | SCRAP, ent. pública, CCAA, provincia, municipio (**nombres**), flujo, subflujo, estado, vigencia, tarifa. Semáforo |
+| Seguimiento liquidaciones (line chart + tabla) | `Settlements` últimos 12 meses | Evolución mensual importe por SCRAP. Tabla: nº, SCRAP, ent. pública, importes, estado |
+| Servicios prestados vs compromisos (tabla) | `WasteMoves` + `ServiceOrders` + `Agreements` | Por convenio: servicios realizados, toneladas vs mínimos (`MinimumsJson`). Semáforo |
+| Alertas de convenios (panel inbox) | `ComplianceMonitoringService.cs` | Vencimiento < 30 días, liquidación rechazada, servicios bajo mínimos |
+
+---
+
+#### 5.8.4. CN-D — Panel de Cumplimiento Normativo — Entidad Pública
+
+- **Ruta**: `/reporting/regulatory-compliance/public-view`
+- **Perfil objetivo**: `PUBLIC_ENT`, `ADMIN`.
+- **Policy**: `CanViewPublicEntityComplianceView`.
+- **Lógica**: los ayuntamientos y entidades públicas monitorizan que los SCRAPs con los que tienen convenios cumplen con sus obligaciones: toneladas recogidas, servicios prestados, liquidaciones de compensación y cumplimiento de la legislación en su ámbito territorial.
+
+**Archivos a crear**:
+- `Application/Features/Reporting/RegulatoryCompliance/Queries/GetPublicEntityComplianceViewQuery.cs` — filtros: `Year`, `Month?`, `IdScrap?`, `WasteStream?`, `Category?`.
+- `Application/Features/Reporting/RegulatoryCompliance/DTOs/PublicEntityComplianceViewDto.cs` — DTOs: `PublicEntityComplianceViewDto`, `ServiceReceivedKpiDto`, `ScrapComplianceInTerritoryDto`, `SettlementDetailDto`, `CollectionMethodDistributionDto`.
+- `Web/Components/Pages/Reporting/RegulatoryCompliance/PublicEntityComplianceView.razor` — página `/reporting/regulatory-compliance/public-view`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Resumen servicios recibidos (cards KPI) | `EntryPlantResidues` + `WasteMoves` + `Settlements` filtrado municipio | Toneladas, nº servicios, nº SCRAPs operando, importe compensado, variación % |
+| Evolución mensual por SCRAP (bar chart apilado) | `EntryPlantResidues.Weight` mes × SCRAP | Barras: mes. Segmentos: SCRAP. Línea: objetivo prorrateado `MarketShares` |
+| Cumplimiento por SCRAP en territorio (tabla + semáforo) | `MarketShares` + `EntryPlantResidues` filtrado CCAA | SCRAP, objetivo, real, %, categoría, flujo. `ProgressBar.razor` |
+| Liquidaciones de compensación (tabla) | `Settlements WHERE IdPublicEntity = LinkedEntityId` | SCRAP, nº, año, mes, importes, estado, validación. Totales acumulados |
+| Toneladas por método recolección (donut) | `Agreements.CoveredMethodsJson` + `ServiceOrders` + `WasteMoves` | Distribución por método cubierto en convenios |
+| Incidencias y reclamaciones (tabla + badge) | `Incidents WHERE ClosedAt IS NULL` ámbito municipio | Tipo, severidad, traslado, SCRAP, fecha, días abierta. `IncidentsBadge.razor` |
+
+---
+
+#### 5.8.5. CN-E — Panel de Datos de Cumplimiento — Oficina de Asignación
+
+- **Ruta**: `/reporting/regulatory-compliance/dispatch-data`
+- **Perfil objetivo**: `DISPATCH_OFFICE`, `ADMIN`.
+- **Policy**: `CanViewDispatchOfficeComplianceData`.
+- **Lógica**: la Oficina de Asignación y Coordinación consolida todos los datos de cumplimiento normativo del ecosistema. Provee datasets exportables para auditorías externas (AENOR Confía) y análisis regulatorio.
+
+**Archivos a crear**:
+- `Application/Features/Reporting/RegulatoryCompliance/Queries/GetDispatchOfficeComplianceDataQuery.cs` — filtros: `Year`, `IdScrap?`, `AutonomousCommunity?`, `FlowType?`, `Category?`.
+- `Application/Features/Reporting/RegulatoryCompliance/DTOs/DispatchOfficeComplianceDataDto.cs` — DTOs: `DispatchOfficeComplianceDataDto`, `EcosystemKpiDto`, `ScrapRankingDto`, `GeographicComplianceHeatmapDto`, `RegulatoryChangeDto`.
+- `Web/Components/Pages/Reporting/RegulatoryCompliance/DispatchOfficeComplianceData.razor` — página `/reporting/regulatory-compliance/dispatch-data`.
+
+**Widgets principales**:
+
+| Widget | Fuente de datos | Descripción |
+|---|---|---|
+| Dashboard ejecutivo (cards KPI) | Todo el tenant | Tasa reciclaje global, valorización, reutilización, nº SCRAPs, nº convenios, importe liquidado, variación % |
+| Ranking SCRAPs por cumplimiento (bar chart horizontal + tabla) | `MarketShares` + `EntryPlantResidues` + `TreatmentPlantResidues` | % cumplimiento por SCRAP descendente. Línea vertical 100%. Tabla: SCRAP, objetivo, real, tasas, convenios, importe |
+| Tabla exportable para auditoría (XLSX) | Join completo operativo | Dataset: SCRAP, categoría, CCAA (**nombre**), provincia (**nombre**), municipio (**nombre**), flujo, año, objetivo, real, %, tasas. Patrón ClosedXML |
+| Evolución interanual (line chart multi-año) | Agregación anual tasas ecosistema | Líneas referencia: `RegulatoryTargets`. Tendencias plurianuales |
+| Mapa calor cumplimiento geográfico (tabla coloreada) | `MarketShares` + `EntryPlantResidues` | Filas: CCAA (**nombre**). Columnas: SCRAPs. Celdas: % con gradiente color |
+| Resumen cambios normativos (panel timeline) | `RegulatoryTargets` + `EmissionFactorSets` + `EcoModulationRuleSets` | Cambios recientes: nuevos objetivos, nuevos factores, nuevas reglas eco-modulación |
+
+---
+
+#### Estructura de archivos del módulo
+
+**Capa Web (Blazor)**:
+
+```
+Web/Components/Pages/Reporting/RegulatoryCompliance/
+├── ScrapComplianceOverview.razor                → /reporting/regulatory-compliance/scrap-overview
+├── MarketShareAudit.razor                       → /reporting/regulatory-compliance/market-share-audit
+├── AgreementComplianceMonitoring.razor          → /reporting/regulatory-compliance/agreement-monitoring
+├── PublicEntityComplianceView.razor             → /reporting/regulatory-compliance/public-view
+└── DispatchOfficeComplianceData.razor           → /reporting/regulatory-compliance/dispatch-data
+```
+
+**Capa Application (CQRS)**:
+
+```
+Application/Features/Reporting/RegulatoryCompliance/
+├── Queries/
+│   ├── GetScrapComplianceOverviewQuery.cs       → CN-A (SCRAP)
+│   ├── GetMarketShareAuditQuery.cs              → CN-B (COORDINATOR / DISPATCH_OFFICE)
+│   ├── GetAgreementComplianceMonitoringQuery.cs → CN-C (COORDINATOR / DISPATCH_OFFICE)
+│   ├── GetPublicEntityComplianceViewQuery.cs    → CN-D (PUBLIC_ENT)
+│   ├── GetDispatchOfficeComplianceDataQuery.cs  → CN-E (DISPATCH_OFFICE)
+│   ├── GetComplianceAlertsSummaryQuery.cs       → Widget compartido: alertas
+│   ├── GetRecyclingRateByFlowQuery.cs           → Widget compartido: tasa reciclaje por flujo
+│   └── ExportComplianceDataToExcelQuery.cs      → Exportación XLSX (patrón ClosedXML)
+├── DTOs/
+│   ├── ScrapComplianceOverviewDto.cs
+│   ├── MarketShareAuditDto.cs
+│   ├── AgreementComplianceMonitoringDto.cs
+│   ├── PublicEntityComplianceViewDto.cs
+│   ├── DispatchOfficeComplianceDataDto.cs
+│   ├── ComplianceAlertDto.cs
+│   ├── RecyclingRateByFlowDto.cs
+│   └── ComplianceExportDto.cs
+└── Services/
+    └── ComplianceMonitoringService.cs           → Motor de alertas, cálculos de desviación, umbrales
+```
+
+**Componentes reutilizables**:
+
+```
+Web/Components/Shared/RegulatoryCompliance/
+├── ComplianceGaugeCard.razor                    → Gauge circular de % cumplimiento con semáforo
+├── MarketShareProportionalityChart.razor        → Gráfico de proporcionalidad real vs objetivo
+├── ComplianceAlertInbox.razor                   → Panel de alertas tipo inbox con severidad
+├── RecyclingRateProgressBar.razor               → Barra de progreso tasa reciclaje (extiende ProgressBar.razor)
+└── AgreementStatusTimeline.razor                → Timeline horizontal del estado de convenios
+```
+
+> **Reutilizar** de los dashboards existentes: `ProgressBar.razor`, `EmissionsCard.razor`, `IncidentsBadge.razor`.
+
+---
+
+#### Modelo de datos — Tablas y campos clave
+
+> **No se crean tablas nuevas**. Todo el UC-CN se alimenta de las tablas existentes del modelo v4.1. Las métricas derivadas (tasas de reciclaje, desviaciones, índices de cumplimiento) se calculan en las Queries CQRS y en `ComplianceMonitoringService.cs`.
+
+| Tabla | Campos principales para este UC-CN |
+|-------|--------------------------------------|
+| `Entities` | `Id`, `Name`, `EntityRole`, `ProvinceCode`, `MunicipalityCode`, `AutonomousCommunity` |
+| `MarketShares` | `Id`, `IdScrap`, `Category`, `AutonomousCommunity`, `Year`, `Weight`, `Period`, `EffectiveFrom`, `EffectiveTo`, `FlowType`, `OwnerId` |
+| `Agreements` | `Id`, `AgreementNumber`, `Status`, `EffectiveFrom`, `EffectiveTo`, `IdScrap`, `IdPublicEntity`, `IdCoordinator`, `WasteStream`, `SubStream`, `AutonomousCommunity`, `ProvinceCode`, `MunicipalityCode`, `TariffModelType`, `TariffRulesJson`, `MinimumsJson`, `CoveredMethodsJson`, `OwnerId` |
+| `Settlements` | `Id`, `SettlementNumber`, `Status`, `AgreementId`, `Year`, `Month`, `IdScrap`, `IdPublicEntity`, `BaseAmount`, `AdjustmentsAmount`, `TaxAmount`, `TotalAmount`, `ValidationStatus`, `ValidatedAt`, `OwnerId` |
+| `SettlementLines` | `SettlementId`, `ProductCategory`, `IdLERCode`, `WeightKg`, `PricePerKg`, `Amount` |
+| `WasteMoves` | `Id`, `IdScrap`, `IdScrap2`, `IdSource`, `IdDestination`, `ServiceOrderId`, `ServiceStatus`, `OwnerId` |
+| `WasteMoveResidues` | `IdWasteMove`, `Weight`, `IdCarrier` |
+| `ServiceOrders` | `Id`, `Status`, `IdPickupPoint`, `IdIssuedBy`, `WasteStream`, `OwnerId` |
+| `EntryPlants` | `Id`, `PlantEntryDate`, `NetWeight`, `ServiceOrderId` |
+| `EntryPlantResidues` | `EntryPlantId`, `Weight`, `IdResidue` |
+| `TreatmentPlants` | `Id`, `IdTreatmentOperation`, `EntryPlantId` |
+| `TreatmentPlantResidues` | `TreatmentPlantId`, `WeightTotal`, `WeightReused`, `WeightValued`, `WeightRejected` |
+| `TreatmentOperations` | `Id`, `Code`, `IsRecycling`, `IsEnergyRecovery`, `IsPreparationForReuse` |
+| `RegulatoryTargets` | `OwnerId`, `Category`, `Year`, `MinRecyclingPercent`, `MinReusePercent` |
+| `Incidents` | `Id`, `Type`, `Severity`, `OpenedAt`, `ClosedAt`, `WasteMoveReference`, `OwnerId` |
+| `Residues` | `Id`, `ResidueType`, `ProductCategory`, `IdLERCode` |
+| `LERCodes` | `Id`, `Code`, `Description`, `IsDangerous`, `IsRAEE` |
+| `EcoModulationRuleSets` | `RuleSetName`, `Version`, `ValidFrom`, `ValidTo` |
+| `EmissionFactorSets` | `FactorSetName`, `Version`, `Status`, `ValidFrom`, `ValidTo` |
+
+---
+
+#### Reglas de autorización y filtrado de datos
+
+> **IMPORTANTE**: El acceso a estos dashboards se gestiona mediante el **sistema de autorización por pantalla configurable desde la interfaz de administración** (`/security/page-permissions`) utilizando las tablas `PageDefinitions` y `PagePermissions`. **No se hardcodea el acceso en código.** Las policies en código actúan como mínimo de seguridad estático; el control fino se delega al sistema dinámico de BD.
+
+| Perfil | Dashboard(s) accesible(s) | Filtrado de datos |
+|--------|---------------------------|-------------------|
+| `SCRAP` | CN-A | Solo ve sus propios datos: `WasteMoves.IdScrap = LinkedEntityId` OR `IdScrap2 = LinkedEntityId`. `MarketShares.IdScrap = LinkedEntityId`. `Agreements.IdScrap = LinkedEntityId`. `Settlements.IdScrap = LinkedEntityId`. |
+| `COORDINATOR` | CN-B, CN-C | Ve transversalmente los SCRAPs vinculados a sus acuerdos: `Agreements.IdCoordinator = LinkedEntityId`. |
+| `PUBLIC_ENT` | CN-D | Solo ve datos del ámbito de su municipio: punto de recogida → `Entities.MunicipalityCode` = municipio de su entidad, o `ServiceOrders.IdIssuedBy = LinkedEntityId`. Convenios: `Agreements.IdPublicEntity = LinkedEntityId`. Liquidaciones: `Settlements.IdPublicEntity = LinkedEntityId`. |
+| `DISPATCH_OFFICE` | CN-B, CN-C, CN-E | Ve todos los datos del tenant (`OwnerId`). Visión operativa completa. |
+| `ADMIN` | CN-A, CN-B, CN-C, CN-D, CN-E | Sin restricciones dentro del tenant. |
+
+**Patrón de filtrado**: usar `ICurrentUserService.LinkedEntityId` + `ICurrentUserService.IsInAnyProfile(...)` + `IDataScopeService.ApplyScope()` (ya implementado).
+
+---
+
+#### Regla obligatoria: Datos geográficos siempre como nombre
+
+En **todas** las pantallas, tablas, filtros y exportaciones de este módulo:
+- `ProvinceCode` → resolver siempre a `Province.Name` (JOIN con tabla `Province`).
+- `MunicipalityCode` → resolver siempre a `Municipality.Name` (JOIN con tabla `Municipality`).
+- `AutonomousCommunity` → mostrar siempre como nombre legible.
+- En selectores/filtros: mostrar `Name` como label, `Code` como value interno.
+- En exportaciones XLSX: columnas con **nombre**, no código.
+
+---
+
+#### Criterios de aceptación
+
+1. Cada dashboard respeta el filtrado multi-tenant (`OwnerId`) y por perfil (`LinkedEntityId`).
+2. El acceso a cada dashboard **no está hardcodeado en código**. Se gestiona mediante el sistema de autorización por pantalla (`PageDefinitions`/`PagePermissions`) configurable desde `/security/page-permissions`.
+3. Los filtros globales persisten en la URL (query string) para permitir compartir enlaces.
+4. Los gráficos usan **ApexCharts** (consistente con el módulo de KPIs existente).
+5. Las consultas SQL usan índices existentes y no generan table scans sobre tablas operativas.
+6. Exportación a XLSX disponible en CN-B y CN-E como mínimo (patrón ClosedXML).
+7. Responsive mobile-first.
+8. Modo oscuro/claro (consistente con `MainLayout.razor`).
+9. Los **umbrales de alertas** (% cumplimiento, días vencimiento) son configurables en `appsettings.json`, no hardcodeados.
+10. Las alertas y recomendaciones se generan en el backend (`ComplianceMonitoringService.cs`), no en el cliente.
+11. **No se crean nuevas entidades de dominio.** Todo se implementa con las entidades del modelo v4.1.
+12. Cada usuario solo ve datos de las entidades asignadas a él o creadas por él, **a excepción de `ADMIN` y `DISPATCH_OFFICE`** que ven todos los datos del tenant.
+13. Datos geográficos (provincia, municipio, comunidad autónoma) se muestran siempre como **nombre**, nunca como código.
+14. **Todos los dashboards incluyen al menos un gráfico** (chart de ApexCharts): no se permiten dashboards compuestos exclusivamente de tablas y cards.
+
+---
+
+#### Configuración en `appsettings.json`
+
+```json
+{
+  "RegulatoryCompliance": {
+    "Alerts": {
+      "MarketShareRiskThresholdPercent": 80,
+      "AgreementExpiryWarningDays": 90,
+      "AgreementExpiryCriticalDays": 30,
+      "MinServicesThresholdPercent": 70
+    },
+    "Defaults": {
+      "DefaultMinRecyclingPercent": 55,
+      "DefaultMinReusePercent": 5,
+      "DefaultMinValorizationPercent": 65
+    }
+  }
+}
+```
+
+---
+
+#### Integración con módulos existentes
+
+- **Dashboard principal (§0.1)**: los widgets de tasa de reciclaje y cumplimiento de cuotas pueden integrarse como cards adicionales en la home, condicionados al perfil.
+- **KPIs regulatorios (§5.2)**: el módulo de KPIs (`/kpis`) ya calcula tasas de reciclaje y cumplimiento de `MarketShares`. Los dashboards CN complementan con la dimensión de auditoría inter-SCRAP, convenios y liquidaciones. Reutilizar el patrón de `GetRegulatoryKpisQuery` y `GetMarketShareComplianceQuery`.
+- **Trazabilidad (§5.1)**: desde cualquier traslado en los dashboards CN, enlace directo a `/traceability?term={WasteMoveReference}`.
+- **Dashboard Monitorización Pública (§5.4.2)**: CN-D extiende la visión de la entidad pública. Enlace cruzado desde CN-D a `/logistics/public-monitoring`.
+- **Cuotas de Mercado (§2.3)**: la vista `/market-shares` muestra el CRUD de cuotas; los dashboards CN explotan esos datos en forma analítica. Reutilizar `ProgressBar.razor`.
+- **Acuerdos (§2.1)**: desde tablas de convenios en CN-C, enlace directo a `/agreements/{id}`.
+- **Liquidaciones (§2.2)**: desde tablas de liquidaciones en CN-A/CN-D, enlace directo al detalle del settlement.
+- **Incidencias (§4.3)**: los widgets de incidencias enlazan a `/incidents/{id}`.
+- **Huella de Carbono (§5.7)**: enlace cruzado desde CN-A para contextualizar el cumplimiento con el impacto ambiental.
+- **Mapas de Calor (§5.8 HeatMaps)**: enlace cruzado desde CN-E para correlacionar cumplimiento geográfico con densidad de residuos.
+
+---
+
 ## 6. 👥 Gestión de Usuarios, Perfiles y Seguridad
 
 > **Estado**: ✅ Implementado — Application + Web layers completos.
@@ -3098,6 +3400,11 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 | **Dash. Huella Carbono Plantas** | `PlantEnergies`, `EntryPlants`, `TreatmentPlants` | — | — | R | — | — | R | — | R | R |
 | **Dash. Huella Carbono Productor** | `WasteMoveResidues`, `ServiceOrders`, `LERCodes` | R | — | — | — | — | — | — | — | R |
 | **Dash. Huella Carbono Ent. Pública** | `WasteMoveResidues`, `Entities`, `ServiceOrders` | — | — | — | R | — | — | — | R | R |
+| **Dash. Cumplimiento SCRAP** | `MarketShares`, `TreatmentPlantResidues`, `Agreements`, `Settlements` | — | — | R | — | — | — | — | — | R |
+| **Dash. Auditoría Cuotas Mercado** | `MarketShares`, `EntryPlantResidues`, `Agreements` | — | — | — | — | — | — | R | R | R |
+| **Dash. Monitorización Convenios** | `Agreements`, `Settlements`, `WasteMoves` | — | — | — | — | — | — | R | R | R |
+| **Dash. Cumplimiento Ent. Pública** | `MarketShares`, `Settlements`, `Agreements`, `Incidents` | — | — | — | R | — | — | — | — | R |
+| **Dash. Datos Cumplimiento Oficina** | `MarketShares`, `TreatmentPlantResidues`, `Agreements`, `Settlements` | — | — | — | — | — | — | — | R | R |
 
 **Justificación:**
 - **Trazabilidad y Vista 360°**: Todos los perfiles acceden pero ven solo los traslados en los que participan. `SCRAP`, `PUBLIC_ENT`, `COORDINATOR`, `DISPATCH_OFFICE` y `ADMIN` ven transversalmente.
@@ -3114,6 +3421,11 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 - **Dashboard Huella Carbono Plantas** (`/reporting/carbon-footprint/plant-energy`): Policy `CanViewPlantEnergyFootprint`. Scope 2 y eficiencia energética. `PLANT_OP` ve solo datos de su planta. `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
 - **Dashboard Huella Carbono Productor** (`/reporting/carbon-footprint/producer-report`): Policy `CanViewProducerCarbonReport`. `PRODUCER` ve solo traslados cuya SO fue emitida por su entidad (`ServiceOrders.IdIssuedBy = LinkedEntityId`).
 - **Dashboard Huella Carbono Entidad Pública** (`/reporting/carbon-footprint/public-view`): Policy `CanViewPublicEntityCarbonView`. `PUBLIC_ENT` ve solo traslados cuyo punto de recogida pertenece a su municipio o cuya SO fue emitida por su entidad. `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
+- **Dashboard Cumplimiento SCRAP** (`/reporting/regulatory-compliance/scrap-overview`): Policy `CanViewScrapComplianceOverview`. Cada SCRAP ve su cumplimiento normativo propio: tasas, cuotas, convenios y alertas. `SCRAP` filtrado por `IdScrap = LinkedEntityId`.
+- **Dashboard Auditoría Cuotas de Mercado** (`/reporting/regulatory-compliance/market-share-audit`): Policy `CanViewMarketShareAudit`. `COORDINATOR` audita el reparto proporcional entre SCRAPs vía `Agreements.IdCoordinator`. `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
+- **Dashboard Monitorización Convenios** (`/reporting/regulatory-compliance/agreement-monitoring`): Policy `CanViewAgreementComplianceMonitoring`. `COORDINATOR` monitoriza convenios de sus acuerdos. `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
+- **Dashboard Cumplimiento Entidad Pública** (`/reporting/regulatory-compliance/public-view`): Policy `CanViewPublicEntityComplianceView`. `PUBLIC_ENT` ve cumplimiento en su ámbito territorial: `Agreements.IdPublicEntity = LinkedEntityId`, `Settlements.IdPublicEntity = LinkedEntityId`.
+- **Dashboard Datos Cumplimiento Oficina** (`/reporting/regulatory-compliance/dispatch-data`): Policy `CanViewDispatchOfficeComplianceData`. Visión consolidada del ecosistema completo para auditorías externas (AENOR Confía). `DISPATCH_OFFICE` y `ADMIN` ven todo el tenant.
 
 ---
 
@@ -3167,6 +3479,11 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 | **Dash. Huella Carbono Plantas** | — | — | **R** | — | — | **R** | — | **R** | R |
 | **Dash. Huella Carbono Productor** | **R** | — | — | — | — | — | — | — | R |
 | **Dash. Huella Carbono Ent. Pública** | — | — | — | **R** | — | — | — | **R** | R |
+| **Dash. Cumplimiento SCRAP** | — | — | **R** | — | — | — | — | — | R |
+| **Dash. Auditoría Cuotas Mercado** | — | — | — | — | — | — | **R** | **R** | R |
+| **Dash. Monitorización Convenios** | — | — | — | — | — | — | **R** | **R** | R |
+| **Dash. Cumplimiento Ent. Pública** | — | — | — | **R** | — | — | — | — | R |
+| **Dash. Datos Cumplimiento Oficina** | — | — | — | — | — | — | — | **R** | R |
 | Usuarios | — | — | R-P | — | — | — | — | — | **CRUD** |
 | Perfiles | — | — | R | — | — | — | — | — | **CRUD** |
 
@@ -3208,6 +3525,20 @@ La siguiente fila se añade a la tabla de la sección 8:
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | ProductDeclaration / Products | CRUD | R (adheridos) | CRUD (suyos) | – | – | – | – | R |
 | dicProductDeclaration* (diccionarios) | CRUD | – | – | – | – | – | – | – |
+
+### Actualización de la Matriz de Permisos (§8) — Módulo de Análisis y Cumplimiento Normativo
+
+Las siguientes filas se añaden a la tabla de la sección 8:
+
+| Funcionalidad | ADMIN | SCRAP | PRODUCER | CARRIER | PLANT_OP | CAC_OP | PUBLIC_ENT | COORDINATOR |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Dash. Cumplimiento SCRAP (CN-A) | R | R | – | – | – | – | – | – |
+| Dash. Auditoría Cuotas Mercado (CN-B) | R | – | – | – | – | – | – | R |
+| Dash. Monitorización Convenios (CN-C) | R | – | – | – | – | – | – | R |
+| Dash. Cumplimiento Ent. Pública (CN-D) | R | – | – | – | – | – | R | – |
+| Dash. Datos Cumplimiento Oficina (CN-E) | R | – | – | – | – | – | – | – |
+
+> **Nota**: `DISPATCH_OFFICE` tiene acceso a CN-B, CN-C y CN-E (con visión completa del tenant). No aparece en esta tabla resumen (§8) pero sí en la matriz detallada (§4.4).
 
 ---
 
@@ -3306,7 +3637,7 @@ El servicio `PageDiscoveryService.InferModuleName()` clasifica cada página en u
 | Namespace / Ruta | Módulo asignado |
 |---|---|
 | `Security` · `/users` · `/profiles` · `/security` | Seguridad |
-| `Reporting` · `/traceability` · `/kpis` · `/documents` · `/reporting/heat-maps/` · `/reporting/carbon-footprint/` | Reporting |
+| `Reporting` · `/traceability` · `/kpis` · `/documents` · `/reporting/heat-maps/` · `/reporting/carbon-footprint/` · `/reporting/regulatory-compliance/` | Reporting |
 | `Logistics` · `/logistics/` | Dashboards Logísticos |
 | `Sustainability` · `/incidents` · `/dum-zones` · `/emissions` · `/plant-energies` | Sostenibilidad |
 | `/entities` · `/ler-codes` · `/residues` · `/treatment-operations` | Configuración |
@@ -3337,6 +3668,16 @@ Nombres legibles recomendados para las pantallas de Huella de Carbono:
 | `PlantEnergyFootprint` | `Huella de Carbono — Huella Energética Plantas` |
 | `ProducerCarbonReport` | `Huella de Carbono — Reporte Productor` |
 | `PublicEntityCarbonView` | `Huella de Carbono — Vista Entidad Pública` |
+
+Nombres legibles recomendados para las pantallas de Análisis y Cumplimiento Normativo:
+
+| Componente | Nombre legible |
+|---|---|
+| `ScrapComplianceOverview` | `Cumplimiento Normativo — Visión SCRAP` |
+| `MarketShareAudit` | `Cumplimiento Normativo — Auditoría Cuotas de Mercado` |
+| `AgreementComplianceMonitoring` | `Cumplimiento Normativo — Monitorización Convenios` |
+| `PublicEntityComplianceView` | `Cumplimiento Normativo — Vista Entidad Pública` |
+| `DispatchOfficeComplianceData` | `Cumplimiento Normativo — Datos Oficina` |
 
 ---
 
@@ -3491,6 +3832,31 @@ Se añaden los siguientes ítems:
 - [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
 
 
+### Checklist adicional — Módulo de Análisis y Cumplimiento Normativo
+
+Se añaden los siguientes ítems:
+
+- [ ] Policies registradas en `PolicyConstants.cs`: `CanViewScrapComplianceOverview`, `CanViewMarketShareAudit`, `CanViewAgreementComplianceMonitoring`, `CanViewPublicEntityComplianceView`, `CanViewDispatchOfficeComplianceData`.
+- [ ] Policies registradas en `Program.cs` con los perfiles indicados en §5.8.
+- [ ] Páginas Blazor creadas en `Web/Components/Pages/Reporting/RegulatoryCompliance/` con `@attribute [Authorize(Policy = ...)]`.
+- [ ] Queries CQRS creadas en `Application/Features/Reporting/RegulatoryCompliance/Queries/`.
+- [ ] DTOs creados en `Application/Features/Reporting/RegulatoryCompliance/DTOs/`.
+- [ ] `ComplianceMonitoringService.cs` implementado con motor de alertas, cálculos de desviación y umbrales configurables.
+- [ ] Componentes reutilizables creados en `Web/Components/Shared/RegulatoryCompliance/`.
+- [ ] Entradas en `NavMenu.razor` en sección Reporting como subcarpeta colapsable "Análisis y Cumplimiento Normativo" con consulta a `IPagePermissionService`.
+- [ ] `InferModuleName()` actualizado para reconocer `/reporting/regulatory-compliance/` → Reporting (si no se infiere automáticamente).
+- [ ] `HumanizeName()` actualizado con nombres legibles en español para los 5 componentes.
+- [ ] Configuración `RegulatoryCompliance` añadida en `appsettings.json` (umbrales de alertas, objetivos por defecto).
+- [ ] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
+- [ ] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PUBLIC_ENT (MunicipalityCode/IdIssuedBy/IdPublicEntity), COORDINATOR (Agreements.IdCoordinator).
+- [ ] Todos los JOINs geográficos resuelven `ProvinceCode` → `Province.Name`, `MunicipalityCode` → `Municipality.Name` y `AutonomousCommunity` como nombre (no código).
+- [ ] Exportación XLSX implementada en CN-B y CN-E (patrón ClosedXML).
+- [ ] Gráficos con ApexCharts en TODOS los dashboards (mínimo uno por dashboard), responsive, modo oscuro/claro.
+- [ ] Filtros persistidos en query string.
+- [ ] Todos los dashboards incluyen al menos un gráfico (no solo tablas y cards).
+- [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
+
+
 ---
 
-*Documento unificado generado a partir de: Mapa_Funcionalidades_GreenTransit.md, Mapa_Autorizacion_GreenTransit.md, Modelo_de_Datos.md, PATRON_AUTORIZACION_PAGINAS.md, Dashboard_UC2_Optimizacion_RAEE.md, Dashboard_UC3_Movilidad_Urbana.md, Dashboard_Mapas_de_Calor.md, Dashboard_Huella_de_Carbono.md.*
+*Documento unificado generado a partir de: Mapa_Funcionalidades_GreenTransit.md, Mapa_Autorizacion_GreenTransit.md, Modelo_de_Datos.md, PATRON_AUTORIZACION_PAGINAS.md, Dashboard_UC2_Optimizacion_RAEE.md, Dashboard_UC3_Movilidad_Urbana.md, Dashboard_Mapas_de_Calor.md, Dashboard_Huella_de_Carbono.md, Dashboard_Analisis_Cumplimiento_Normativo.md.*

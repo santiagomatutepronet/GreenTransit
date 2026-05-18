@@ -678,6 +678,82 @@
         }
         }
 
+        @* -- Dashboards An&aacute;lisis y Cumplimiento Normativo (CN): SCRAP, COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN *@
+        @if (AllowAny("/reporting/regulatory-compliance/scrap-overview",
+                      "/reporting/regulatory-compliance/market-share-audit",
+                      "/reporting/regulatory-compliance/agreement-monitoring",
+                      "/reporting/regulatory-compliance/public-view",
+                      "/reporting/regulatory-compliance/dispatch-data"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesAnyCNDashboard">
+            <Authorized>
+                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-cn")'>
+                    <i class="bi bi-shield-check nav-icon"></i>
+                    <span class="nav-label">An&aacute;lisis Cumplimiento</span>
+                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-cn") ? "rotated" : "")"></i>
+                </div>
+            </Authorized>
+        </ProfileAuthorizeView>
+        @if (!NavMenuState.IsCollapsed("reporting-cn"))
+        {
+        <ProfileAuthorizeView Profiles="@_profilesCNScrap">
+            <Authorized>
+                @if (Allow("/reporting/regulatory-compliance/scrap-overview"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/scrap-overview">
+                    <i class="bi bi-shield-check nav-icon"></i>
+                    <span class="nav-label">Panel SCRAP CN-A</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesCNAudit">
+            <Authorized>
+                @if (Allow("/reporting/regulatory-compliance/market-share-audit"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/market-share-audit">
+                    <i class="bi bi-pie-chart-fill nav-icon"></i>
+                    <span class="nav-label">Auditor&iacute;a Cuotas CN-B</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesCNAgreement">
+            <Authorized>
+                @if (Allow("/reporting/regulatory-compliance/agreement-monitoring"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/agreement-monitoring">
+                    <i class="bi bi-file-earmark-check-fill nav-icon"></i>
+                    <span class="nav-label">Convenios CN-C</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesCNPublic">
+            <Authorized>
+                @if (Allow("/reporting/regulatory-compliance/public-view"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/public-view">
+                    <i class="bi bi-building-check nav-icon"></i>
+                    <span class="nav-label">Entidad P&uacute;blica CN-D</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        <ProfileAuthorizeView Profiles="@_profilesCNDispatch">
+            <Authorized>
+                @if (Allow("/reporting/regulatory-compliance/dispatch-data"))
+                {
+                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/dispatch-data">
+                    <i class="bi bi-database-fill-gear nav-icon"></i>
+                    <span class="nav-label">Oficina Asignaci&oacute;n CN-E</span>
+                </NavLink>
+                }
+            </Authorized>
+        </ProfileAuthorizeView>
+        }
+        }
+
         @if (Allow("/documents"))
         {
         <NavLink class="nav-item nav-item--child" href="/documents">
@@ -1080,6 +1156,43 @@
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.PublicEnt,
         ProfileConstants.PlantOp, ProfileConstants.Producer, ProfileConstants.Carrier,
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // CN-A — Panel Cumplimiento Normativo — Visión SCRAP: SCRAP, ADMIN
+    private static readonly string[] _profilesCNScrap =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Admin
+    ];
+
+    // CN-B — Auditoría Cuotas: COORDINATOR, DISPATCH_OFFICE, ADMIN
+    private static readonly string[] _profilesCNAudit =
+    [
+        ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // CN-C — Convenios: COORDINATOR, DISPATCH_OFFICE, ADMIN
+    private static readonly string[] _profilesCNAgreement =
+    [
+        ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // CN-D — Entidad Pública: PUBLIC_ENT, ADMIN
+    private static readonly string[] _profilesCNPublic =
+    [
+        ProfileConstants.PublicEnt, ProfileConstants.Admin
+    ];
+
+    // CN-E — Oficina de Asignación: DISPATCH_OFFICE, ADMIN
+    private static readonly string[] _profilesCNDispatch =
+    [
+        ProfileConstants.DispatchOffice, ProfileConstants.Admin
+    ];
+
+    // Sub-título Análisis Cumplimiento: cualquiera con acceso a algún dashboard CN
+    private static readonly string[] _profilesAnyCNDashboard =
+    [
+        ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.PublicEnt,
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 }
