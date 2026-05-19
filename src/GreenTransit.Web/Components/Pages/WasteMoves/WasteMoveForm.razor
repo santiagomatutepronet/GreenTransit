@@ -66,7 +66,7 @@ else
                                 Placeholder="— Seleccionar Órdenes de Servicio —" 
                                 Style="width:100%">
                     <Template Context="soItem">
-                        <span><strong>@(((ServiceOrderDto)soItem).ServiceOrderNumber)</strong> — @(((ServiceOrderDto)soItem).LerCodeCode ?? "Sin LER") — @(((ServiceOrderDto)soItem).EstimatedWeight?.ToString("N0") ?? "—") kg</span>
+                        <span><strong>@(((EligibleServiceOrderDto)soItem).ServiceOrderNumber)</strong> — @(((EligibleServiceOrderDto)soItem).LerCodeCode ?? "Sin LER") — @(((EligibleServiceOrderDto)soItem).EstimatedWeight?.ToString("N0") ?? "—") kg</span>
                     </Template>
                 </RadzenDropDown>
 
@@ -341,10 +341,10 @@ else
 
     private bool _isScrapProfile;
 
-    private IReadOnlyList<ServiceOrderDto>   _eligibleSOs         = [];
-    private IReadOnlyList<EntitySelectorDto> _sourceEntities      = [];
-    private IReadOnlyList<EntitySelectorDto> _destinationEntities = [];
-    private IReadOnlyList<EntitySelectorDto> _scrapEntities       = [];
+    private IReadOnlyList<EligibleServiceOrderDto> _eligibleSOs         = [];
+    private IReadOnlyList<EntitySelectorDto>       _sourceEntities      = [];
+    private IReadOnlyList<EntitySelectorDto>       _destinationEntities = [];
+    private IReadOnlyList<EntitySelectorDto>       _scrapEntities       = [];
 
     // â”€â”€ Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     protected override async Task OnInitializedAsync()
@@ -359,16 +359,14 @@ else
         // Lanzar ambas consultas en paralelo: cada Mediator.Send resuelve su propio
         // IApplicationDbContext (registrado Transient sobre IDbContextFactory),
         // por lo que es seguro ejecutarlas concurrentemente.
-        var sosTask = Mediator.Send(new GetServiceOrdersQuery(
-            PageSize             : 100,
-            Statuses             : [ServiceOrderStatuses.Pending, ServiceOrderStatuses.Scheduled],
-            OnlyWithoutWasteMove : true));
-
+        // Para las SOs usamos una query ligera (sin Count, sin subqueries Sum/Join,
+        // sólo los campos que pinta el dropdown).
+        var sosTask      = Mediator.Send(new GetEligibleServiceOrdersForWasteMoveQuery());
         var entitiesTask = Mediator.Send(new GetEntitiesForSelectorQuery(roles));
 
         await Task.WhenAll(sosTask, entitiesTask);
 
-        _eligibleSOs         = sosTask.Result.Items;
+        _eligibleSOs         = sosTask.Result;
         var allEntities      = entitiesTask.Result;
         _sourceEntities      = allEntities.Where(e => WasteMoveSourceRoles.Valid.Contains(e.EntityRole)).ToList();
         _destinationEntities = allEntities.Where(e => WasteMoveDestinationRoles.Valid.Contains(e.EntityRole)).ToList();
@@ -392,99 +390,109 @@ else
         var toRemove = _lines.Where(l => !selectedIds.Contains(l.SoId)).ToList();
         foreach (var l in toRemove) _lines.Remove(l);
 
-        // Añadir líneas de las nuevas SOs seleccionadas
-        var currentSoIds = _lines.Select(l => l.SoId).Distinct().ToList();
-        var newSoIds = selectedIds.Except(currentSoIds).ToList();
+        // Determinar las SOs realmente nuevas
+        var currentSoIds = _lines.Select(l => l.SoId).Distinct().ToHashSet();
+        var newSoIds = selectedIds.Where(id => !currentSoIds.Contains(id)).ToList();
+        if (newSoIds.Count == 0) return;
+
+        // ── 1 sola consulta para TODAS las líneas de residuo de las nuevas SOs.
+        var residuesTask = Mediator.Send(
+            new GetServiceOrderResiduesByIdsQuery(newSoIds));
+
+        // ── Autocompletar origen con el pickup point de la primera SO seleccionada
+        //    (si aún no se ha rellenado).
+        if (_formModel.IdSource is null)
+        {
+            var firstWithPickup = newSoIds
+                .Select(id => _eligibleSOs.FirstOrDefault(s => s.Id == id))
+                .FirstOrDefault(s => s is not null && s.IdPickupPoint.HasValue);
+            if (firstWithPickup is not null)
+                _formModel.IdSource = firstWithPickup.IdPickupPoint;
+        }
+
+        var residues = await residuesTask;
+
+        // ── Crear las LineModel agrupadas por SO. Si una SO no trae residuos,
+        //    se crea una línea desde la cabecera (igual que antes).
+        var residuesBySo = residues.GroupBy(r => r.IdServiceOrder)
+                                   .ToDictionary(g => g.Key, g => g.ToList());
 
         foreach (var soId in newSoIds)
         {
             var so = _eligibleSOs.FirstOrDefault(s => s.Id == soId);
-            if (so != null)
-                await ProcessAddedSoAsync(so);
-        }
-    }
+            if (so is null) continue;
 
-    private async Task ProcessAddedSoAsync(ServiceOrderDto so)
-    {
-        // Autocompletar Origen con el punto de recogida de la SO (primera SO seleccionada)
-        if (_formModel.IdSource is null && so.IdPickupPoint.HasValue)
-            _formModel.IdSource = so.IdPickupPoint.Value;
-
-        // Obtener el detalle de la SO para acceder a todas sus líneas de residuo
-        var detail = await Mediator.Send(new GetServiceOrderByIdQuery(so.Id));
-
-        if (detail is not null && detail.Residues.Count > 0)
-        {
-            // Crear una LineModel por cada línea de residuo de la SO.
-            // Carga secuencial para evitar race conditions en la caché y
-            // llamadas concurrentes a StateHasChanged en Blazor Server.
-            foreach (var residue in detail.Residues)
+            if (residuesBySo.TryGetValue(soId, out var soResidues) && soResidues.Count > 0)
             {
-                var line = new LineModel
+                foreach (var residue in soResidues)
+                {
+                    _lines.Add(new LineModel
+                    {
+                        SoId               = so.Id,
+                        SoNumber           = so.ServiceOrderNumber,
+                        SoResidueId        = residue.Id,
+                        SortOrder          = residue.SortOrder,
+                        IdLerCode          = residue.IdLERCode,
+                        LerCodeCode        = residue.LerCodeCode,
+                        LerCodeDescription = residue.LerCodeDescription,
+                        LoadingResidues    = true,
+                        IsIncluded         = true,
+                        Weight             = residue.EstimatedWeight,
+                        MeasureUnit        = "Kg",
+                        Units              = residue.Units
+                    });
+                }
+            }
+            else
+            {
+                _lines.Add(new LineModel
                 {
                     SoId               = so.Id,
                     SoNumber           = so.ServiceOrderNumber,
-                    SoResidueId        = residue.Id,
-                    SortOrder          = residue.SortOrder,
-                    IdLerCode          = residue.IdLERCode,
-                    LerCodeCode        = residue.LerCodeCode,
-                    LerCodeDescription = residue.LerCodeDescription,
+                    SortOrder          = 0,
+                    IdLerCode          = so.IdLERCode,
+                    LerCodeCode        = so.LerCodeCode,
+                    LerCodeDescription = so.LerCodeDescription,
                     LoadingResidues    = true,
                     IsIncluded         = true,
-                    Weight             = residue.EstimatedWeight,
+                    Weight             = so.EstimatedWeight,
                     MeasureUnit        = "Kg",
-                    Units              = residue.Units
-                };
-                _lines.Add(line);
-                await LoadResiduesForLineAsync(line);
+                    Units              = null
+                });
             }
         }
-        else
+
+        // ── Cargar los catálogos de residuos por LER. Se cachea por LER code,
+        //    se piden en paralelo los que falten y se reutilizan para todas las
+        //    líneas que comparten LER (caso muy común con varias SOs del mismo
+        //    productor).
+        var missingLers = _lines
+            .Where(l => l.LoadingResidues && l.IdLerCode.HasValue && !_residueCache.ContainsKey(l.IdLerCode.Value))
+            .Select(l => l.IdLerCode!.Value)
+            .Distinct()
+            .ToList();
+
+        if (missingLers.Count > 0)
         {
-            // Fallback: SO sin lÃ­neas de residuo â€” crear una lÃ­nea desde la cabecera
-            var line = new LineModel
+            var fetchTasks = missingLers.Select(async lerId =>
             {
-                SoId               = so.Id,
-                SoNumber           = so.ServiceOrderNumber,
-                SortOrder          = 0,
-                IdLerCode          = so.IdLERCode,
-                LerCodeCode        = so.LerCodeCode,
-                LerCodeDescription = so.LerCodeDescription,
-                LoadingResidues    = true,
-                IsIncluded         = true,
-                Weight             = so.EstimatedWeight,
-                MeasureUnit        = "Kg",
-                Units              = null
-            };
-            _lines.Add(line);
-            await LoadResiduesForLineAsync(line);
+                var result = await Mediator.Send(new GetResiduesQuery(IdLERCode: lerId, PageSize: 200));
+                return (lerId, items: result.Items.ToList());
+            }).ToArray();
+
+            var fetched = await Task.WhenAll(fetchTasks);
+            foreach (var (lerId, items) in fetched)
+                _residueCache[lerId] = items;
         }
-    }
 
-    private async Task LoadResiduesForLineAsync(LineModel line)
-    {
-        line.LoadingResidues = true;
-        StateHasChanged();
-
-        if (line.IdLerCode.HasValue)
+        foreach (var line in _lines.Where(l => l.LoadingResidues))
         {
-            if (!_residueCache.TryGetValue(line.IdLerCode.Value, out var cached))
-            {
-                var result = await Mediator.Send(new GetResiduesQuery(
-                    IdLERCode: line.IdLerCode.Value,
-                    PageSize : 200
-                ));
-                cached = result.Items.ToList();
-                _residueCache[line.IdLerCode.Value] = cached;
-            }
-            line.AvailableResidues = cached;
-        }
-        else
-        {
-            line.AvailableResidues = [];
+            line.AvailableResidues = line.IdLerCode.HasValue && _residueCache.TryGetValue(line.IdLerCode.Value, out var cached)
+                ? cached
+                : [];
+            line.LoadingResidues = false;
         }
 
-        line.LoadingResidues = false;
         StateHasChanged();
     }
 

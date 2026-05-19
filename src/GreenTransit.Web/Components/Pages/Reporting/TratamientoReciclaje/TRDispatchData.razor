@@ -33,6 +33,11 @@
                 ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", _es)
                 : _filterYear.ToString())
         </p>
+        <p class="text-muted small mt-1">
+            Visión operativa consolidada del ecosistema de tratamiento: balances de entrada por planta,
+            distribución por operaciones R/D, comparativa de SCRAPs y dataset exportable. Sirve de
+            base para auditorías externas y el cierre del periodo de liquidación.
+        </p>
     </div>
     <div class="page-header-actions">
         <button class="btn btn-success btn-sm" @onclick="ExportXlsxAsync" disabled="@(_loading || _exporting)">

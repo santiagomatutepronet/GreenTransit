@@ -60,42 +60,66 @@ public sealed class GetScrapComplianceOverviewQueryHandler
         var targetRecycling = (decimal)(defaultTarget?.MinRecyclingPercent ?? configDefault);
 
         // ── Pesos en planta (entradas) filtrados por SCRAP ────────────────────
-        var entryResiduesQ = _db.EntryPlants.AsNoTracking()
+        // OPTIMIZACIÓN: una sola consulta agregada por mes/categoría/CCAA que
+        // sustituye a las anteriores 3 round-trips (totalEntry, realWeightByCategory
+        // y allEntryByMonth). El servidor SQL agrega y devolvemos un conjunto pequeño.
+        var entryAggregated = await _db.EntryPlants.AsNoTracking()
             .Where(ep => ep.WasteMove.OwnerId == ownerId
                       && (isAdmin || ep.WasteMove.IdScrap == scrapId || ep.WasteMove.IdScrap2 == scrapId)
                       && ep.WasteMove.ActualPickupStart.HasValue
                       && ep.WasteMove.ActualPickupStart.Value.Year == request.Year)
-            .SelectMany(ep => ep.EntryPlantResidues);
+            .SelectMany(ep => ep.EntryPlantResidues)
+            .GroupBy(epr => new
+            {
+                Month     = epr.EntryPlant.WasteMove.ActualPickupStart!.Value.Month,
+                Category  = epr.Residue.ProductCategory ?? "",
+                StateCode = epr.EntryPlant.WasteMove.Destination!.StateCode ?? ""
+            })
+            .Select(g => new
+            {
+                g.Key.Month,
+                g.Key.Category,
+                g.Key.StateCode,
+                Weight = g.Sum(r => (decimal?)r.Weight) ?? 0m
+            })
+            .ToListAsync(ct);
 
-        if (!string.IsNullOrEmpty(request.AutonomousCommunity))
-            entryResiduesQ = entryResiduesQ.Where(epr =>
-                epr.EntryPlant.WasteMove.Destination!.StateCode == request.AutonomousCommunity);
-
-        var totalEntry = await entryResiduesQ.SumAsync(epr => epr.Weight ?? 0m, ct);
+        // totalEntry con filtro de CCAA aplicado en memoria
+        var totalEntry = string.IsNullOrEmpty(request.AutonomousCommunity)
+            ? entryAggregated.Sum(x => x.Weight)
+            : entryAggregated.Where(x => x.StateCode == request.AutonomousCommunity).Sum(x => x.Weight);
 
         // ── Pesos en tratamiento ──────────────────────────────────────────────
-        var treatmentQ = _db.TreatmentPlants.AsNoTracking()
+        // OPTIMIZACIÓN: una sola consulta agregada por mes y tipo de operación que
+        // sustituye a 4 round-trips (recyclingWeight, valorizationWeight, reuseWeight
+        // y allTreatmentByMonth).
+        var treatmentAggregated = await _db.TreatmentPlants.AsNoTracking()
             .Where(tp => tp.WasteMove!.OwnerId == ownerId
                       && (isAdmin
                           || tp.WasteMove.IdScrap  == scrapId
                           || tp.WasteMove.IdScrap2 == scrapId)
                       && tp.WasteMove.ActualPickupStart.HasValue
-                      && tp.WasteMove.ActualPickupStart.Value.Year == request.Year);
+                      && tp.WasteMove.ActualPickupStart.Value.Year == request.Year)
+            .GroupBy(tp => new
+            {
+                Month       = tp.WasteMove!.ActualPickupStart!.Value.Month,
+                IsRecycling = tp.TreatmentOperation!.IsRecycling,
+                IsEnergy    = tp.TreatmentOperation.IsEnergyRecovery,
+                IsReuse     = tp.TreatmentOperation.IsPreparationForReuse
+            })
+            .Select(g => new
+            {
+                g.Key.Month,
+                g.Key.IsRecycling,
+                g.Key.IsEnergy,
+                g.Key.IsReuse,
+                Weight = g.SelectMany(tp => tp.TreatmentPlantResidues).Sum(r => (decimal?)r.WeightTotal) ?? 0m
+            })
+            .ToListAsync(ct);
 
-        var recyclingWeight    = await treatmentQ
-            .Where(tp => tp.TreatmentOperation!.IsRecycling)
-            .SelectMany(tp => tp.TreatmentPlantResidues)
-            .SumAsync(r => r.WeightTotal ?? 0m, ct);
-
-        var valorizationWeight = await treatmentQ
-            .Where(tp => tp.TreatmentOperation!.IsEnergyRecovery)
-            .SelectMany(tp => tp.TreatmentPlantResidues)
-            .SumAsync(r => r.WeightTotal ?? 0m, ct);
-
-        var reuseWeight        = await treatmentQ
-            .Where(tp => tp.TreatmentOperation!.IsPreparationForReuse)
-            .SelectMany(tp => tp.TreatmentPlantResidues)
-            .SumAsync(r => r.WeightTotal ?? 0m, ct);
+        var recyclingWeight    = treatmentAggregated.Where(x => x.IsRecycling).Sum(x => x.Weight);
+        var valorizationWeight = treatmentAggregated.Where(x => x.IsEnergy).Sum(x => x.Weight);
+        var reuseWeight        = treatmentAggregated.Where(x => x.IsReuse).Sum(x => x.Weight);
 
         var recyclingPct    = totalEntry > 0 ? recyclingWeight    / totalEntry * 100m : 0m;
         var valorizationPct = totalEntry > 0 ? valorizationWeight / totalEntry * 100m : 0m;
@@ -117,16 +141,10 @@ public sealed class GetScrapComplianceOverviewQueryHandler
         var marketSharesData = await msQuery.ToListAsync(ct);
         var targetTotal      = marketSharesData.Sum(ms => ms.Weight);
 
-        // Peso real por categoría para calcular cumplimiento de cuota
-        var realWeightByCategory = await _db.EntryPlants.AsNoTracking()
-            .Where(ep => ep.WasteMove.OwnerId == ownerId
-                      && (isAdmin || ep.WasteMove.IdScrap == scrapId || ep.WasteMove.IdScrap2 == scrapId)
-                      && ep.WasteMove.ActualPickupStart.HasValue
-                      && ep.WasteMove.ActualPickupStart.Value.Year == request.Year)
-            .SelectMany(ep => ep.EntryPlantResidues)
-            .GroupBy(epr => epr.Residue.ProductCategory ?? "")
-            .Select(g => new { Category = g.Key, WeightKg = g.Sum(r => r.Weight) })
-            .ToDictionaryAsync(x => x.Category, x => x.WeightKg, ct);
+        // Peso real por categoría — derivado del agregado ya cargado (sin query extra)
+        var realWeightByCategory = entryAggregated
+            .GroupBy(x => x.Category)
+            .ToDictionary(g => g.Key, g => (decimal?)g.Sum(x => x.Weight));
 
         var marketShareRows = marketSharesData.Select(ms =>
         {
@@ -275,7 +293,9 @@ public sealed class GetScrapComplianceOverviewQueryHandler
                 : [];
 
         // ── Variaciones vs periodo anterior ───────────────────────────────────
-        var prevYear       = request.Year - 1;
+        // Una sola consulta para el año anterior: entrada total y peso reciclado
+        // se obtienen agregando en SQL (sin SelectMany previo a Sum por categoría).
+        var prevYear = request.Year - 1;
         var prevEntry = await _db.EntryPlants.AsNoTracking()
             .Where(ep => ep.WasteMove.OwnerId == ownerId
                       && (isAdmin || ep.WasteMove.IdScrap == scrapId || ep.WasteMove.IdScrap2 == scrapId)

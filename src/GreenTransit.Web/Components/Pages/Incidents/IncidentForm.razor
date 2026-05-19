@@ -112,7 +112,7 @@ else
                 <RadzenColumn Size="12" SizeMD="6">
                     <RadzenFormField Text="Traslado vinculado" Variant="Variant.Outlined" Style="width:100%">
                         <ChildContent>
-                            <RadzenDropDown TValue="string" @bind-Value="_selectedWasteMoveId"
+                            <RadzenDropDown TValue="Guid?" @bind-Value="_selectedWasteMoveId"
                                             Data="@_activeWasteMoves"
                                             TextProperty="WasteMoveReference" ValueProperty="Id"
                                             Change="@(_ => OnWasteMoveSelected())"
@@ -189,7 +189,7 @@ else
 
     // ── PRODUCER: selector de traslados propios ───────────────────────────────
     private bool     _loadingWasteMoves;
-    private string   _selectedWasteMoveId = "";
+    private Guid?    _selectedWasteMoveId;
     private Guid?    _linkedServiceOrderId;
     private List<WasteMoveDto> _activeWasteMoves = [];
 
@@ -210,13 +210,13 @@ else
 
     private void OnWasteMoveSelected()
     {
-        if (!Guid.TryParse(_selectedWasteMoveId, out var wmId))
+        if (_selectedWasteMoveId is null)
         {
             _wasteMoveReference   = null;
             _linkedServiceOrderId = null;
             return;
         }
-        var wm = _activeWasteMoves.FirstOrDefault(x => x.Id == wmId);
+        var wm = _activeWasteMoves.FirstOrDefault(x => x.Id == _selectedWasteMoveId.Value);
         _wasteMoveReference   = wm?.WasteMoveReference;
         _linkedServiceOrderId = null;   // WasteMove → ServiceOrderId se resuelve en el command si se expone
     }
@@ -265,6 +265,7 @@ else
         _reportedByCenterCode = _errorMessage = null;
         _submitted = _saving = _saved = false;
         _createdId = Guid.Empty;
+        _selectedWasteMoveId = null;
     }
 
     private static string GetSeverityBtnClass(string sev) => sev switch

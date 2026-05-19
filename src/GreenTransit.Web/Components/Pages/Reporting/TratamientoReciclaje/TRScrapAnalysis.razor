@@ -31,6 +31,11 @@
                 ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", _es)
                 : _filterYear.ToString())
         </p>
+        <p class="text-muted small mt-1">
+            Analiza el balance de tratamiento por planta, la tasa de revalorización por tipo de residuo
+            y la evolución mensual de calidad. Permite al SCRAP detectar fracciones con bajo reciclaje,
+            controlar impropios e identificar oportunidades de mejora operativa.
+        </p>
     </div>
 </div>
 
@@ -113,6 +118,58 @@ else if (_data is not null)
         </div>
     </div>
 
+    @* ── Gráfico: Balance de tratamiento por planta ───────────────────────── *@
+    @if (_data.TreatmentBalance.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-bar-chart-fill me-1"></i>Balance de tratamiento por planta — vista gráfica
+            </div>
+            <div class="card-body">
+                @{
+                    const int cW = 700, cH = 220, cPadL = 110, cPadB = 40, cPadT = 20;
+                    var bars    = _data.TreatmentBalance;
+                    int cInnW   = cW - cPadL - 20;
+                    int cInnH   = cH - cPadB - cPadT;
+                    double maxV = (double)bars.Max(b => Math.Max(b.WeightReused, Math.Max(b.WeightValued, b.WeightRemove)));
+                    if (maxV == 0) maxV = 1;
+                    int gW      = cInnW / bars.Count;
+                    int bW      = Math.Max(6, gW / 4 - 2);
+                    var inv     = System.Globalization.CultureInfo.InvariantCulture;
+
+                    var svgBars = new System.Text.StringBuilder();
+                    svgBars.Append($"<svg viewBox=\"0 0 {cW} {cH}\" style=\"width:100%;max-width:{cW}px;height:{cH}px;font-family:inherit;\">");
+                    for (int i = 0; i <= 4; i++)
+                    {
+                        double yv  = maxV * i / 4;
+                        int    yp  = cPadT + cInnH - cInnH * i / 4;
+                        svgBars.Append($"<line x1=\"{cPadL}\" y1=\"{yp}\" x2=\"{cW-20}\" y2=\"{yp}\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>");
+                        svgBars.Append($"<text x=\"{cPadL-6}\" y=\"{yp+4}\" text-anchor=\"end\" font-size=\"10\" fill=\"#888\">{FormatKg(yv)}</text>");
+                    }
+                    for (int gi = 0; gi < bars.Count; gi++)
+                    {
+                        var b   = bars[gi];
+                        int gx  = cPadL + gi * gW + gW / 2;
+                        double hR = (double)b.WeightReused > 0 ? cInnH * (double)b.WeightReused / maxV : 0;
+                        double hV = (double)b.WeightValued > 0 ? cInnH * (double)b.WeightValued / maxV : 0;
+                        double hX = (double)b.WeightRemove > 0 ? cInnH * (double)b.WeightRemove / maxV : 0;
+                        int x1 = gx - bW * 3 / 2 - 2, x2 = gx - bW / 2, x3 = gx + bW / 2 + 2;
+                        svgBars.Append($"<rect x=\"{x1}\" y=\"{(cPadT+cInnH-hR).ToString("F1",inv)}\" width=\"{bW}\" height=\"{hR.ToString("F1",inv)}\" fill=\"#198754\" rx=\"2\"/>");
+                        svgBars.Append($"<rect x=\"{x2}\" y=\"{(cPadT+cInnH-hV).ToString("F1",inv)}\" width=\"{bW}\" height=\"{hV.ToString("F1",inv)}\" fill=\"#0d6efd\" rx=\"2\"/>");
+                        svgBars.Append($"<rect x=\"{x3}\" y=\"{(cPadT+cInnH-hX).ToString("F1",inv)}\" width=\"{bW}\" height=\"{hX.ToString("F1",inv)}\" fill=\"#dc3545\" rx=\"2\"/>");
+                        svgBars.Append($"<text x=\"{gx}\" y=\"{cH-6}\" text-anchor=\"middle\" font-size=\"9\" fill=\"#555\">{TruncateName(b.PlantName, 12)}</text>");
+                    }
+                    svgBars.Append($"<line x1=\"{cPadL}\" y1=\"{cPadT+cInnH}\" x2=\"{cW-20}\" y2=\"{cPadT+cInnH}\" stroke=\"#aaa\" stroke-width=\"1\"/>");
+                    svgBars.Append($"<rect x=\"{cPadL}\" y=\"6\" width=\"10\" height=\"10\" fill=\"#198754\"/><text x=\"{cPadL+13}\" y=\"15\" font-size=\"10\" fill=\"#333\">Reutilizados</text>");
+                    svgBars.Append($"<rect x=\"{cPadL+80}\" y=\"6\" width=\"10\" height=\"10\" fill=\"#0d6efd\"/><text x=\"{cPadL+93}\" y=\"15\" font-size=\"10\" fill=\"#333\">Valorizados</text>");
+                    svgBars.Append($"<rect x=\"{cPadL+160}\" y=\"6\" width=\"10\" height=\"10\" fill=\"#dc3545\"/><text x=\"{cPadL+173}\" y=\"15\" font-size=\"10\" fill=\"#333\">Rechazados</text>");
+                    svgBars.Append("</svg>");
+                }
+                <div class="overflow-auto">@((MarkupString)svgBars.ToString())</div>
+            </div>
+        </div>
+    }
+
     @* ── Tasa de revalorización por residuo ───────────────────────────────── *@
     <div class="card mb-4">
         <div class="card-header fw-semibold">
@@ -184,6 +241,54 @@ else if (_data is not null)
             </div>
         </div>
     </div>
+
+    @* ── Gráfico: Evolución mensual de calidad ───────────────────────────── *@
+    @if (_data.MonthlyTrend.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up me-1"></i>Evolución mensual — Tasa reciclaje &amp; % Impropios
+            </div>
+            <div class="card-body">
+                @{
+                    const int lW = 700, lH = 220, lPadL = 40, lPadB = 40, lPadT = 20;
+                    var trend  = _data.MonthlyTrend;
+                    int lInnW  = lW - lPadL - 20;
+                    int lInnH  = lH - lPadB - lPadT;
+                    int pts    = trend.Count;
+                    var linv   = System.Globalization.CultureInfo.InvariantCulture;
+                    Func<int, double>    lxPos = idx => lPadL + (pts > 1 ? lInnW * idx / (double)(pts - 1) : lInnW / 2.0);
+                    Func<double, double> lyPos = v   => lPadT + lInnH - lInnH * Math.Min(v, 100) / 100.0;
+
+                    var recycPts  = string.Join(" ", trend.Select((t, i) => $"{lxPos(i).ToString("F1", linv)},{lyPos(t.RecyclingRate).ToString("F1", linv)}"));
+                    var impropPts = string.Join(" ", trend.Select((t, i) => $"{lxPos(i).ToString("F1", linv)},{lyPos(t.ImproperRate).ToString("F1", linv)}"));
+
+                    var svgLine = new System.Text.StringBuilder();
+                    svgLine.Append($"<svg viewBox=\"0 0 {lW} {lH}\" style=\"width:100%;max-width:{lW}px;height:{lH}px;font-family:inherit;\">");
+                    for (int i = 0; i <= 4; i++)
+                    {
+                        double yv = 25.0 * i;
+                        double yp = lyPos(yv);
+                        svgLine.Append($"<line x1=\"{lPadL}\" y1=\"{yp.ToString("F1",linv)}\" x2=\"{lW-20}\" y2=\"{yp.ToString("F1",linv)}\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>");
+                        svgLine.Append($"<text x=\"{lPadL-4}\" y=\"{(yp+4).ToString("F1",linv)}\" text-anchor=\"end\" font-size=\"10\" fill=\"#888\">{(int)yv}%</text>");
+                    }
+                    svgLine.Append($"<polyline points=\"{recycPts}\" fill=\"none\" stroke=\"#198754\" stroke-width=\"2.5\" stroke-linejoin=\"round\"/>");
+                    for (int i = 0; i < trend.Count; i++)
+                        svgLine.Append($"<circle cx=\"{lxPos(i).ToString("F1",linv)}\" cy=\"{lyPos(trend[i].RecyclingRate).ToString("F1",linv)}\" r=\"4\" fill=\"#198754\"/>");
+                    svgLine.Append($"<polyline points=\"{impropPts}\" fill=\"none\" stroke=\"#dc3545\" stroke-width=\"2.5\" stroke-linejoin=\"round\" stroke-dasharray=\"6 3\"/>");
+                    for (int i = 0; i < trend.Count; i++)
+                        svgLine.Append($"<circle cx=\"{lxPos(i).ToString("F1",linv)}\" cy=\"{lyPos(trend[i].ImproperRate).ToString("F1",linv)}\" r=\"4\" fill=\"#dc3545\"/>");
+                    for (int i = 0; i < trend.Count; i++)
+                        svgLine.Append($"<text x=\"{lxPos(i).ToString("F1",linv)}\" y=\"{lH-6}\" text-anchor=\"middle\" font-size=\"9\" fill=\"#555\">{TruncateName(trend[i].Period, 7)}</text>");
+                    svgLine.Append($"<line x1=\"{lPadL}\" y1=\"{lPadT+lInnH}\" x2=\"{lW-20}\" y2=\"{lPadT+lInnH}\" stroke=\"#aaa\" stroke-width=\"1\"/>");
+                    svgLine.Append($"<line x1=\"{lPadL}\" y1=\"10\" x2=\"{lPadL+20}\" y2=\"10\" stroke=\"#198754\" stroke-width=\"2.5\"/><text x=\"{lPadL+24}\" y=\"14\" font-size=\"10\" fill=\"#333\">Tasa reciclaje</text>");
+                    svgLine.Append($"<line x1=\"{lPadL+110}\" y1=\"10\" x2=\"{lPadL+130}\" y2=\"10\" stroke=\"#dc3545\" stroke-width=\"2.5\" stroke-dasharray=\"6 3\"/><text x=\"{lPadL+134}\" y=\"14\" font-size=\"10\" fill=\"#333\">% Impropios</text>");
+                    svgLine.Append("</svg>");
+                }
+                <div class="overflow-auto">@((MarkupString)svgLine.ToString())</div>
+            </div>
+        </div>
+    }
 
     @* ── Comparativa Multi-SCRAP ──────────────────────────────────────────── *@
     <div class="card mb-4">
@@ -367,6 +472,12 @@ else if (_data is not null)
         "Orange" => "bg-warning text-dark",
         _        => "bg-danger"
     };
+
+    private static string FormatKg(double v) =>
+        v >= 1_000 ? $"{v / 1_000:F0}t" : $"{v:F0}";
+
+    private static string TruncateName(string name, int max) =>
+        name.Length <= max ? name : name[..max] + "…";
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

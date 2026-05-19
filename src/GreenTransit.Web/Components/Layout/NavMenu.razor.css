@@ -79,15 +79,107 @@
     font-weight: 600;
 }
 
+/* ── Diferenciación de niveles en RadzenPanelMenu ──────────────────────────── */
+
+/* Nivel 1: ítems raíz con hijos — visualmente más prominentes */
+::deep .rz-panel-menu > ul > li > a,
+::deep .rz-panel-menu > ul > li > .rz-navigation-item {
+    font-size:   var(--text-sm);
+    font-weight: 500;
+    color:       rgba(255,255,255,0.85);
+}
+
+/* Nivel 1 expandido: fondo sutil para que destaque como cabecera de grupo */
+::deep .rz-panel-menu > ul > li.rz-navigation-item-active-group > a,
+::deep .rz-panel-menu > ul > li.rz-navigation-item-active-group > .rz-navigation-item {
+    background:  rgba(255,255,255,0.07);
+    color:       #fff;
+    font-weight: 600;
+    border-left: 3px solid rgba(138, 204, 195, 0.60);
+}
+
+/* Nivel 2: hijos directos — más pequeños, indentados y con línea guía */
+::deep .rz-panel-menu > ul > li > ul > li > a,
+::deep .rz-panel-menu > ul > li > ul > li > .rz-navigation-item {
+    padding-left: 30px !important;
+    font-size:    0.82rem;
+    color:        rgba(255,255,255,0.58);
+    border-left:  3px solid transparent;
+    box-shadow:   inset 2px 0 0 0 rgba(138, 204, 195, 0.15);
+}
+
+::deep .rz-panel-menu > ul > li > ul > li > a:hover,
+::deep .rz-panel-menu > ul > li > ul > li > .rz-navigation-item:hover {
+    color:      rgba(255,255,255,0.90);
+    box-shadow: inset 2px 0 0 0 rgba(138, 204, 195, 0.45);
+}
+
+/* Nivel 3: nietos — aún más indentados y atenuados */
+::deep .rz-panel-menu > ul > li > ul > li > ul > li > a,
+::deep .rz-panel-menu > ul > li > ul > li > ul > li > .rz-navigation-item {
+    padding-left: 46px !important;
+    font-size:    0.79rem;
+    color:        rgba(255,255,255,0.48);
+    box-shadow:   inset 2px 0 0 0 rgba(138, 204, 195, 0.10);
+}
+
+::deep .rz-panel-menu > ul > li > ul > li > ul > li > a:hover,
+::deep .rz-panel-menu > ul > li > ul > li > ul > li > .rz-navigation-item:hover {
+    color:      rgba(255,255,255,0.82);
+    box-shadow: inset 2px 0 0 0 rgba(138, 204, 195, 0.40);
+}
+
+/* Ítem de nivel 1 expandido (grupo padre abierto) */
+::deep .rz-navigation-item-wrapper > .rz-navigation-item.rz-navigation-item-selected:not(.nav-item--child):not(.nav-item--grandchild),
+::deep .nav-item--parent-expanded {
+    background:  rgba(255,255,255,0.06);
+    color:       #fff;
+    font-weight: 600;
+    border-left: 3px solid rgba(138, 204, 195, 0.55);
+}
+
 /* Ítems hijos (nivel 2) */
 ::deep .nav-item--child {
-    padding-left: 28px;
-    font-size:    0.83rem;
+    padding-left: 32px;
+    font-size:    0.82rem;
+    color:        rgba(255,255,255,0.60);
+    border-left:  3px solid transparent;
+    position:     relative;
+}
+
+/* Línea vertical que marca el bloque de hijos expandido */
+::deep .nav-item--child::before {
+    content:          '';
+    position:         absolute;
+    left:             15px;
+    top:              0;
+    bottom:           0;
+    width:            1px;
+    background:       rgba(138, 204, 195, 0.20);
+    pointer-events:   none;
+}
+
+::deep .nav-item--child:hover {
+    color:       rgba(255,255,255,0.90);
+    border-left: 3px solid rgba(138, 204, 195, 0.35);
+}
+
+::deep .nav-item--child:hover::before {
+    background: rgba(138, 204, 195, 0.40);
+}
+
+::deep .nav-item--child.active {
+    color:       #fff;
+    border-left: 3px solid #8ACCC3;
+}
+
+::deep .nav-item--child.active::before {
+    background: #8ACCC3;
 }
 
 /* Sub-título de grupo anidado dentro de un nav-group (nivel 2) */
 .nav-group-title--sub {
-    padding:        5px 16px 3px 28px;
+    padding:        5px 16px 3px 32px;
     font-size:      9px;
     font-weight:    700;
     text-transform: uppercase;
@@ -105,8 +197,17 @@
 
 /* Ítems nietos (nivel 3, dentro de un sub-grupo) */
 ::deep .nav-item--grandchild {
-    padding-left: 40px;
-    font-size:    0.80rem;
+    padding-left: 48px;
+    font-size:    0.79rem;
+    color:        rgba(255,255,255,0.52);
+}
+
+::deep .nav-item--grandchild:hover {
+    color: rgba(255,255,255,0.85);
+}
+
+::deep .nav-item--grandchild.active {
+    color: #fff;
 }
 
 /* Icono de nav */

@@ -633,3 +633,39 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* ── Sidebar Radzen PanelMenu — diferenciación de niveles ──────────────────── */
+/*
+ * Sobrescribimos las CSS custom properties de Radzen para que los ítems
+ * de nivel 1 (grupos padre), nivel 2 (hijos) y nivel 3 (nietos) sean
+ * visualmente distintos dentro del sidebar oscuro (#17233C).
+ */
+.rz-sidebar .rz-panel-menu {
+    /* Nivel 1: ítems raíz — texto blanco brillante, sin fondo */
+    --rz-panel-menu-item-color:                  rgba(255, 255, 255, 0.88);
+    --rz-panel-menu-item-hover-background-color: rgba(138, 204, 195, 0.12);
+    --rz-panel-menu-item-hover-color:            #ffffff;
+    --rz-panel-menu-font-size:                   0.875rem;
+    --rz-panel-menu-font-weight:                 500;
+
+    /* Nivel 2: hijos — fondo oscuro diferenciado, texto más pequeño y atenuado */
+    --rz-panel-menu-item-2nd-level-background-color:       rgba(0, 0, 0, 0.22);
+    --rz-panel-menu-item-2nd-level-hover-background-color: rgba(138, 204, 195, 0.14);
+    --rz-panel-menu-item-2nd-level-hover-color:            rgba(255, 255, 255, 0.95);
+    --rz-panel-menu-item-2nd-level-color:                  rgba(255, 255, 255, 0.60);
+    --rz-panel-menu-item-2nd-level-font-size:              0.815rem;
+    --rz-panel-menu-item-2nd-level-font-weight:            400;
+    --rz-panel-menu-item-2nd-level-offset:                 2.4rem;
+    --rz-panel-menu-item-2nd-level-active-background-color: rgba(138, 204, 195, 0.20);
+    --rz-panel-menu-item-2nd-level-active-color:            #ffffff;
+    --rz-panel-menu-item-2nd-level-active-font-weight:      600;
+    --rz-panel-menu-icon-2nd-level-icon-size:              0.85rem;
+
+    /* Nivel 3: nietos — aún más oscuro, texto pequeño y atenuado */
+    --rz-panel-menu-item-3rd-level-background-color:       rgba(0, 0, 0, 0.36);
+    --rz-panel-menu-item-3rd-level-hover-background-color: rgba(138, 204, 195, 0.12);
+    --rz-panel-menu-item-3rd-level-hover-color:            rgba(255, 255, 255, 0.88);
+    --rz-panel-menu-item-3rd-level-color:                  rgba(255, 255, 255, 0.46);
+    --rz-panel-menu-item-3rd-level-active-background-color: rgba(138, 204, 195, 0.18);
+    --rz-panel-menu-item-3rd-level-active-color:            #ffffff;
+}

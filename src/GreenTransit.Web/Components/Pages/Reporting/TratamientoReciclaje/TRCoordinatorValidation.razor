@@ -33,6 +33,11 @@
                 ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", _es)
                 : _filterYear.ToString())
         </p>
+        <p class="text-muted small mt-1">
+            Vista agregada multi-SCRAP para el coordinador: compara tasas de reciclaje, impropios
+            y operaciones de tratamiento entre los SCRAPs bajo su convenio. Facilita la validación
+            cruzada de datos y la detección de desviaciones antes del cierre de liquidaciones.
+        </p>
     </div>
     <div class="page-header-actions">
         <button class="btn btn-success btn-sm" @onclick="ExportXlsxAsync" disabled="@(_loading || _exporting)">

@@ -31,6 +31,11 @@
                 ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("MMMM yyyy", _es)
                 : _filterYear.ToString())
         </p>
+        <p class="text-muted small mt-1">
+            Monitoriza el cumplimiento de los SCRAPs en el territorio municipal: tasas de reciclaje,
+            kg valorizados, porcentaje de impropios e incidencias abiertas. Permite al ayuntamiento
+            verificar que los objetivos de la Ley 22/2011 se alcanzan en su ámbito de gestión.
+        </p>
     </div>
 </div>
 
@@ -142,6 +147,89 @@ else if (_data is not null)
         </div>
     </div>
 
+    @* ── Gráfico: Evolución mensual de tasas ──────────────────────────────── *@
+    @if (_data.MonthlyTrend.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up me-1"></i>Evolución mensual — Tasa reciclaje &amp; % Impropios
+            </div>
+            <div class="card-body">
+                @{
+                    const int lW = 700, lH = 230, lPadL = 42, lPadB = 42, lPadT = 24;
+                    var trend  = _data.MonthlyTrend;
+                    int lInnW  = lW - lPadL - 16;
+                    int lInnH  = lH - lPadB - lPadT;
+                    int pts    = trend.Count;
+                    var linv   = System.Globalization.CultureInfo.InvariantCulture;
+                    Func<int,    double> lxPos = idx => lPadL + (pts > 1 ? lInnW * idx / (double)(pts - 1) : lInnW / 2.0);
+                    Func<double, double> lyPos = v   => lPadT + lInnH - lInnH * Math.Min(Math.Max(v, 0), 100) / 100.0;
+
+                    var recycPts  = string.Join(" ", trend.Select((t, i) => $"{lxPos(i).ToString("F1",linv)},{lyPos(t.RecyclingRate).ToString("F1",linv)}"));
+                    var impropPts = string.Join(" ", trend.Select((t, i) => $"{lxPos(i).ToString("F1",linv)},{lyPos(t.ImproperRate).ToString("F1",linv)}"));
+
+                    var svg = new System.Text.StringBuilder();
+                    svg.Append($"<svg viewBox=\"0 0 {lW} {lH}\" style=\"width:100%;max-width:{lW}px;height:{lH}px;font-family:inherit;\">");
+
+                    // Área de fondo suave para zona "buena" (>50% reciclaje)
+                    double yGoodTop = lyPos(100), yGoodBot = lyPos(50);
+                    svg.Append($"<rect x=\"{lPadL}\" y=\"{yGoodTop.ToString("F1",linv)}\" width=\"{lInnW}\" height=\"{(yGoodBot-yGoodTop).ToString("F1",linv)}\" fill=\"#d1e7dd\" opacity=\"0.35\"/>");
+
+                    // Líneas guía Y (0,25,50,75,100)
+                    for (int i = 0; i <= 4; i++)
+                    {
+                        double yv = 25.0 * i;
+                        double yp = lyPos(yv);
+                        svg.Append($"<line x1=\"{lPadL}\" y1=\"{yp.ToString("F1",linv)}\" x2=\"{lW-16}\" y2=\"{yp.ToString("F1",linv)}\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>");
+                        svg.Append($"<text x=\"{lPadL-5}\" y=\"{(yp+4).ToString("F1",linv)}\" text-anchor=\"end\" font-size=\"10\" fill=\"#888\">{(int)yv}%</text>");
+                    }
+
+                    // Línea de umbral mínimo 50%
+                    double yThresh = lyPos(50);
+                    svg.Append($"<line x1=\"{lPadL}\" y1=\"{yThresh.ToString("F1",linv)}\" x2=\"{lW-16}\" y2=\"{yThresh.ToString("F1",linv)}\" stroke=\"#ffc107\" stroke-width=\"1\" stroke-dasharray=\"4 3\" opacity=\"0.8\"/>");
+
+                    // Polilínea Tasa reciclaje
+                    svg.Append($"<polyline points=\"{recycPts}\" fill=\"none\" stroke=\"#198754\" stroke-width=\"2.5\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>");
+                    // Puntos
+                    for (int i = 0; i < trend.Count; i++)
+                    {
+                        double cx = lxPos(i), cy = lyPos(trend[i].RecyclingRate);
+                        svg.Append($"<circle cx=\"{cx.ToString("F1",linv)}\" cy=\"{cy.ToString("F1",linv)}\" r=\"4\" fill=\"#198754\" stroke=\"#fff\" stroke-width=\"1.5\"/>");
+                    }
+
+                    // Polilínea Impropios
+                    svg.Append($"<polyline points=\"{impropPts}\" fill=\"none\" stroke=\"#dc3545\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-dasharray=\"6 3\"/>");
+                    // Puntos
+                    for (int i = 0; i < trend.Count; i++)
+                    {
+                        double cx = lxPos(i), cy = lyPos(trend[i].ImproperRate);
+                        svg.Append($"<circle cx=\"{cx.ToString("F1",linv)}\" cy=\"{cy.ToString("F1",linv)}\" r=\"3.5\" fill=\"#dc3545\" stroke=\"#fff\" stroke-width=\"1.5\"/>");
+                    }
+
+                    // Eje X — etiquetas
+                    for (int i = 0; i < trend.Count; i++)
+                        svg.Append($"<text x=\"{lxPos(i).ToString("F1",linv)}\" y=\"{lH-8}\" text-anchor=\"middle\" font-size=\"9\" fill=\"#555\">{TruncateName(trend[i].Period, 7)}</text>");
+
+                    // Eje X base
+                    svg.Append($"<line x1=\"{lPadL}\" y1=\"{lPadT+lInnH}\" x2=\"{lW-16}\" y2=\"{lPadT+lInnH}\" stroke=\"#aaa\" stroke-width=\"1\"/>");
+
+                    // Leyenda
+                    svg.Append($"<line x1=\"{lPadL}\" y1=\"12\" x2=\"{lPadL+18}\" y2=\"12\" stroke=\"#198754\" stroke-width=\"2.5\"/>");
+                    svg.Append($"<circle cx=\"{lPadL+9}\" cy=\"12\" r=\"3.5\" fill=\"#198754\"/>");
+                    svg.Append($"<text x=\"{lPadL+22}\" y=\"16\" font-size=\"10\" fill=\"#333\">Tasa reciclaje</text>");
+                    svg.Append($"<line x1=\"{lPadL+110}\" y1=\"12\" x2=\"{lPadL+128}\" y2=\"12\" stroke=\"#dc3545\" stroke-width=\"2\" stroke-dasharray=\"6 3\"/>");
+                    svg.Append($"<circle cx=\"{lPadL+119}\" cy=\"12\" r=\"3\" fill=\"#dc3545\"/>");
+                    svg.Append($"<text x=\"{lPadL+132}\" y=\"16\" font-size=\"10\" fill=\"#333\">% Impropios</text>");
+                    svg.Append($"<rect x=\"{lPadL+216}\" y=\"6\" width=\"12\" height=\"8\" fill=\"#d1e7dd\" opacity=\"0.7\"/>");
+                    svg.Append($"<text x=\"{lPadL+232}\" y=\"16\" font-size=\"10\" fill=\"#555\">Zona objetivo</text>");
+
+                    svg.Append("</svg>");
+                }
+                <div class="overflow-auto">@((MarkupString)svg.ToString())</div>
+            </div>
+        </div>
+    }
+
     @* ── Detalle por SCRAP ─────────────────────────────────────────────────── *@
     <div class="card mb-4">
         <div class="card-header fw-semibold">
@@ -176,15 +264,85 @@ else if (_data is not null)
                                 <td class="text-end @(s.OpenIncidents > 0 ? "text-warning fw-semibold" : "")">@s.OpenIncidents</td>
                             </tr>
                         }
-                        @if (!_data.ScrapDetails.Any())
-                        { <tr><td colspan="6" class="text-muted text-center py-3">Sin datos</td></tr> }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+                            @if (!_data.ScrapDetails.Any())
+                                            { <tr><td colspan="6" class="text-muted text-center py-3">Sin datos</td></tr> }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
 
-    @* ── Distribución operaciones R/D ─────────────────────────────────────── *@
+                        @* ── Gráfico: Tasa de reciclaje por SCRAP (barras horizontales) ────────── *@
+                        @if (_data.ScrapDetails.Any())
+                        {
+                            <div class="card mb-4">
+                                <div class="card-header fw-semibold">
+                                    <i class="bi bi-bar-chart-steps me-1"></i>Tasa de reciclaje por SCRAP — comparativa
+                                </div>
+                                <div class="card-body">
+                                    @{
+                                        const int hW = 700, hPadL = 150, hPadR = 60, hPadT = 16, hRowH = 28, hGap = 6;
+                                        var scraps = _data.ScrapDetails;
+                                        int hInnW  = hW - hPadL - hPadR;
+                                        int hH     = hPadT + scraps.Count * (hRowH + hGap) + 24;
+                                        var hinv   = System.Globalization.CultureInfo.InvariantCulture;
+
+                                        var hsvg = new System.Text.StringBuilder();
+                                        hsvg.Append($"<svg viewBox=\"0 0 {hW} {hH}\" style=\"width:100%;max-width:{hW}px;height:{hH}px;font-family:inherit;\">");
+
+                                        // Líneas de referencia verticales (0,25,50,75,100%)
+                                        for (int g = 0; g <= 4; g++)
+                                        {
+                                            double gx = hPadL + hInnW * g / 4.0;
+                                            hsvg.Append($"<line x1=\"{gx.ToString("F1",hinv)}\" y1=\"{hPadT}\" x2=\"{gx.ToString("F1",hinv)}\" y2=\"{hH-18}\" stroke=\"#e5e5e5\" stroke-width=\"1\"/>");
+                                            hsvg.Append($"<text x=\"{gx.ToString("F1",hinv)}\" y=\"{hH-5}\" text-anchor=\"middle\" font-size=\"9\" fill=\"#888\">{g*25}%</text>");
+                                        }
+
+                                        // Línea umbral 50%
+                                        double xThresh50 = hPadL + hInnW * 50.0 / 100.0;
+                                        hsvg.Append($"<line x1=\"{xThresh50.ToString("F1",hinv)}\" y1=\"{hPadT}\" x2=\"{xThresh50.ToString("F1",hinv)}\" y2=\"{hH-18}\" stroke=\"#ffc107\" stroke-width=\"1.5\" stroke-dasharray=\"5 3\" opacity=\"0.9\"/>");
+
+                                        for (int si = 0; si < scraps.Count; si++)
+                                        {
+                                            var sc   = scraps[si];
+                                            double y = hPadT + si * (hRowH + hGap);
+                                            double bw = hInnW * Math.Min(sc.RecyclingRate, 100.0) / 100.0;
+                                            string color = sc.RecyclingTrafficLight switch
+                                            {
+                                                "Green"  => "#198754",
+                                                "Orange" => "#fd7e14",
+                                                _        => "#dc3545"
+                                            };
+
+                                            // Etiqueta SCRAP (izquierda)
+                                            hsvg.Append($"<text x=\"{hPadL-6}\" y=\"{(y + hRowH/2.0 + 4).ToString("F1",hinv)}\" text-anchor=\"end\" font-size=\"10\" fill=\"#333\">{TruncateName(sc.ScrapName, 18)}</text>");
+
+                                            // Barra de fondo
+                                            hsvg.Append($"<rect x=\"{hPadL}\" y=\"{y.ToString("F1",hinv)}\" width=\"{hInnW}\" height=\"{hRowH}\" fill=\"#f0f0f0\" rx=\"3\"/>");
+
+                                            // Barra de valor
+                                            if (bw > 0)
+                                                hsvg.Append($"<rect x=\"{hPadL}\" y=\"{y.ToString("F1",hinv)}\" width=\"{bw.ToString("F1",hinv)}\" height=\"{hRowH}\" fill=\"{color}\" rx=\"3\" opacity=\"0.85\"/>");
+
+                                            // Etiqueta de porcentaje (derecha de la barra)
+                                            double labelX = hPadL + bw + 5;
+                                            hsvg.Append($"<text x=\"{labelX.ToString("F1",hinv)}\" y=\"{(y + hRowH/2.0 + 4).ToString("F1",hinv)}\" font-size=\"10\" fill=\"{color}\" font-weight=\"bold\">{sc.RecyclingRate.ToString("F1",hinv)}%</text>");
+                                        }
+
+                                        // Leyenda semáforo
+                                        double legY = hH - 3;
+                                        hsvg.Append($"<rect x=\"{hPadL}\" y=\"{(legY-9).ToString("F1",hinv)}\" width=\"10\" height=\"10\" fill=\"#198754\" rx=\"2\"/><text x=\"{hPadL+13}\" y=\"{legY.ToString("F1",hinv)}\" font-size=\"9\" fill=\"#333\">&gt;70% (óptimo)</text>");
+                                        hsvg.Append($"<rect x=\"{hPadL+95}\" y=\"{(legY-9).ToString("F1",hinv)}\" width=\"10\" height=\"10\" fill=\"#fd7e14\" rx=\"2\"/><text x=\"{hPadL+108}\" y=\"{legY.ToString("F1",hinv)}\" font-size=\"9\" fill=\"#333\">40-70% (aceptable)</text>");
+                                        hsvg.Append($"<rect x=\"{hPadL+205}\" y=\"{(legY-9).ToString("F1",hinv)}\" width=\"10\" height=\"10\" fill=\"#dc3545\" rx=\"2\"/><text x=\"{hPadL+218}\" y=\"{legY.ToString("F1",hinv)}\" font-size=\"9\" fill=\"#333\">&lt;40% (bajo)</text>");
+
+                                        hsvg.Append("</svg>");
+                                    }
+                                    <div class="overflow-auto">@((MarkupString)hsvg.ToString())</div>
+                                </div>
+                            </div>
+                        }
+
+                        @* ── Distribución operaciones R/D ─────────────────────────────────────── *@
     <div class="card mb-4">
         <div class="card-header fw-semibold">
             <i class="bi bi-pie-chart-fill me-1"></i>Distribución por operación de tratamiento
@@ -286,6 +444,9 @@ else if (_data is not null)
         "Warning" => "bi-exclamation-triangle-fill",
         _         => "bi-info-circle-fill"
     };
+
+    private static string TruncateName(string name, int max) =>
+        name.Length <= max ? name : name[..max] + "…";
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
