@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/service-orders"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -10,9 +12,10 @@
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 
-@inject IMediator           Mediator
-@inject NavigationManager   Nav
-@inject ICurrentUserService CurrentUser
+@inject IMediator              Mediator
+@inject NavigationManager      Nav
+@inject ICurrentUserService    CurrentUser
+@inject IPagePermissionService PagePermissions
 
 <PageTitle>Órdenes de Servicio</PageTitle>
 
@@ -20,9 +23,12 @@
     <h1 class="page-title">
         <i class="bi bi-clipboard2-check-fill me-2"></i>Órdenes de Servicio
     </h1>
-    <button class="btn btn-primary btn-sm" @onclick='() => Nav.NavigateTo("/service-orders/new")'>
-        <i class="bi bi-plus-lg me-1"></i>Nueva SO
-    </button>
+    @if (_canWrite)
+    {
+        <button class="btn btn-primary btn-sm" @onclick='() => Nav.NavigateTo("/service-orders/new")'>
+            <i class="bi bi-plus-lg me-1"></i>Nueva SO
+        </button>
+    }
 </div>
 
 @* ── Filtros ────────────────────────────────────────────────────────────────── *@
@@ -87,118 +93,69 @@
     </div>
 </div>
 
-@if (_loading)
-{
-    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
-}
-else if (_result is null || _result.Items.Count == 0)
-{
-    <div class="alert alert-info">No se encontraron órdenes de servicio.</div>
-}
-else
-{
-    <div class="table-wrapper">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Nº Orden</th>
-                    <th>Estado</th>
-                    <th>Prioridad</th>
-                    <th>Emisión</th>
-                    <th>Recogida planif.</th>
-                    <th>Punto recogida</th>
-                    <th>Flujo</th>
-                    <th class="cell-number">Peso est.</th>
-                    <th style="width:100px"></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var so in _result.Items)
-                {
-                    <tr>
-                        <td>
-                            <a href="/service-orders/@so.Id" class="font-semibold">
-                                @so.ServiceOrderNumber
-                            </a>
-                            @if (!string.IsNullOrEmpty(so.WasteMoveReference))
-                            {
-                                <br /><span class="text-muted text-xs">@so.WasteMoveReference</span>
-                            }
-                        </td>
-                        <td><span class="@ServiceOrderStatuses.BadgeCss(so.Status)">@ServiceOrderStatuses.Label(so.Status)</span></td>
-                        <td><span class="@ServiceOrderPriorities.BadgeCss(so.Priority)">@ServiceOrderPriorities.Label(so.Priority)</span></td>
-                        <td class="cell-muted">@so.IssuedAt.ToString("dd/MM/yyyy")</td>
-                        <td class="cell-muted">@(so.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "—")</td>
-                        <td class="cell-muted">@(so.PickupPointName ?? "—")</td>
-                        <td>@(WasteFlowCatalog.FindByCode(so.WasteStream)?.Name ?? so.WasteStream ?? "—")</td>
-                        <td class="cell-number">
-                            @(so.EstimatedWeight.HasValue ? $"{so.EstimatedWeight:N0} kg" : "—")
-                        </td>
-                        <td>
-                            @{
-                                var detailUrl = "/service-orders/" + so.Id;
-                                var editUrl   = "/service-orders/" + so.Id + "/edit";
-                            }
-                            <div class="btn-group">
-                                <button class="btn btn-ghost btn-sm btn-icon-only"
-                                        title="Ver detalle"
-                                        @onclick="() => Nav.NavigateTo(detailUrl)">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                                @if (ServiceOrderStatuses.Editable.Contains(so.Status))
-                                {
-                                    <button class="btn btn-ghost btn-sm btn-icon-only"
-                                            title="Editar"
-                                            @onclick="() => Nav.NavigateTo(editUrl)">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                }
-                                <button class="btn btn-ghost btn-sm btn-icon-only"
-                                        title="Duplicar"
-                                        @onclick="() => DuplicateAsync(so.Id)">
-                                    <i class="bi bi-copy"></i>
-                                </button>
-                                @if (so.Status != ServiceOrderStatuses.Cancelled)
-                                {
-                                    <button class="btn btn-outline-danger btn-sm btn-icon-only"
-                                            title="Cancelar"
-                                            @onclick="() => ConfirmCancelAsync(so)">
-                                        <i class="bi bi-x-circle"></i>
-                                    </button>
-                                }
-                            </div>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-
-        @* ── Paginación ──────────────────────────────────────────────────── *@
-        @if (_result.TotalPages > 1)
-        {
-            <div class="pagination">
-                <span class="pagination-info">
-                    @((_page - 1) * PageSize + 1)–@(Math.Min(_page * PageSize, _result.TotalCount))
-                    de @_result.TotalCount resultados
-                </span>
-                <button class="pagination-btn" disabled="@(!_result.HasPrevious)"
-                        @onclick="() => GoPageAsync(_page - 1)">
-                    <i class="bi bi-chevron-left"></i>
-                </button>
-                @for (var i = 1; i <= _result.TotalPages; i++)
-                {
-                    var pg = i;
-                    <button class="pagination-btn @(pg == _page ? "active" : "")"
-                            @onclick="() => GoPageAsync(pg)">@pg</button>
-                }
-                <button class="pagination-btn" disabled="@(!_result.HasNext)"
-                        @onclick="() => GoPageAsync(_page + 1)">
-                    <i class="bi bi-chevron-right"></i>
-                </button>
-            </div>
-        }
-    </div>
-}
+<RadzenDataGrid @ref="_grid" TItem="ServiceOrderDto"
+                Data="@(_result?.Items ?? [])" Count="@(_result?.TotalCount ?? 0)"
+                LoadData="@OnLoadData"
+                AllowPaging="true" PageSize="PageSize"
+                AllowSorting="true" AllowFiltering="false"
+                IsLoading="@_loading"
+                EmptyText="No se encontraron órdenes de servicio."
+                PagerHorizontalAlign="HorizontalAlign.Right">
+    <Columns>
+        <RadzenDataGridColumn TItem="ServiceOrderDto" Property="ServiceOrderNumber" Title="Nº Orden" Width="160px">
+                <Template Context="so">
+                    <a href="/service-orders/@so.Id" class="rz-link rz-text-weight-bold">@so.ServiceOrderNumber</a>
+                    @if (!string.IsNullOrEmpty(so.WasteMoveReference))
+                    { <br /><span class="rz-text-secondary-color rz-text-sm">@so.WasteMoveReference</span> }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ServiceOrderDto" Property="Status" Title="Estado" Width="130px">
+                <Template Context="so">
+                    <span class="@ServiceOrderStatuses.BadgeCss(so.Status)">@ServiceOrderStatuses.Label(so.Status)</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ServiceOrderDto" Property="Priority" Title="Prioridad" Width="110px">
+                <Template Context="so">
+                    <span class="@ServiceOrderPriorities.BadgeCss(so.Priority)">@ServiceOrderPriorities.Label(so.Priority)</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ServiceOrderDto" Property="IssuedAt" Title="Emisión" Width="105px" FormatString="{0:dd/MM/yyyy}" />
+            <RadzenDataGridColumn TItem="ServiceOrderDto" Property="PlannedPickupStart" Title="Recogida planif." Width="120px">
+                <Template Context="so">@(so.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ServiceOrderDto" Property="PickupPointName" Title="Punto recogida" Width="160px">
+                <Template Context="so">@(so.PickupPointName ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ServiceOrderDto" Property="WasteStream" Title="Flujo" Width="130px">
+                <Template Context="so">@(WasteFlowCatalog.FindByCode(so.WasteStream)?.Name ?? so.WasteStream ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ServiceOrderDto" Property="EstimatedWeight" Title="Peso est." Width="100px" TextAlign="TextAlign.Right">
+                <Template Context="so">@(so.EstimatedWeight.HasValue ? $"{so.EstimatedWeight:N0} kg" : "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ServiceOrderDto" Title="" Width="120px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                <Template Context="so">
+                    @{ var detailUrl = "/service-orders/" + so.Id; var editUrl = "/service-orders/" + so.Id + "/edit"; }
+                    <RadzenButton Icon="visibility" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => Nav.NavigateTo(detailUrl))" title="Ver detalle" />
+                    @if (_canWrite && ServiceOrderStatuses.Editable.Contains(so.Status))
+                    {
+                        <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => Nav.NavigateTo(editUrl))" title="Editar" />
+                    }
+                    @if (_canWrite)
+                    {
+                        <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => DuplicateAsync(so.Id))" title="Duplicar" />
+                    }
+                    @if (_canWrite && so.Status != ServiceOrderStatuses.Cancelled)
+                    {
+                        <RadzenButton Icon="cancel" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger"
+                                      Click="@(() => ConfirmCancelAsync(so))" title="Cancelar" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+</RadzenDataGrid>
 
 @if (!string.IsNullOrEmpty(_errorMessage))
 {
@@ -213,6 +170,7 @@ else
 @code {
     private const int PageSize = 20;
 
+    private RadzenDataGrid<ServiceOrderDto> _grid = default!;
     private bool   _loading = true;
     private int    _page    = 1;
     private string _search            = "";
@@ -227,13 +185,25 @@ else
     private ConfirmDialog _confirmDialog = default!;
     private string _confirmMessage = "";
     private Guid   _cancelTargetId;
+    private bool   _canWrite;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        _canWrite = await PagePermissions.CanWriteRouteAsync("/service-orders");
+        await LoadAsync();
+    }
+
+    private async Task OnLoadData(LoadDataArgs args)
+    {
+        _page = args.Skip.HasValue ? (args.Skip.Value / PageSize) + 1 : 1;
+        await LoadAsync();
+    }
 
     private async Task SearchAsync()
     {
         _page = 1;
         await LoadAsync();
+        if (_grid is not null) await _grid.Reload();
     }
 
     private async Task GoPageAsync(int page)
@@ -273,6 +243,7 @@ else
         _search = ""; _filterStatus = ""; _filterPriority = ""; _filterWasteStream = "";
         _pickupFrom = null; _pickupTo = null; _page = 1;
         _ = LoadAsync();
+        if (_grid is not null) _ = _grid.Reload();
     }
 
     private async Task DuplicateAsync(Guid id)

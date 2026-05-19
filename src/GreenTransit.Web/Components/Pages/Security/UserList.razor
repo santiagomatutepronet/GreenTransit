@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/users"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -72,87 +74,56 @@
             @* ── Tabla ─────────────────────────────────────────────────────── *@
             @if (_loading)
             {
-                <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+                <div class="gt-loading"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
             }
             else if (_result is null || _result.Items.Count == 0)
             {
-                <div class="alert alert-info">No se encontraron usuarios con los filtros aplicados.</div>
+                <RadzenAlert AlertStyle="AlertStyle.Info">No se encontraron usuarios con los filtros aplicados.</RadzenAlert>
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Login</th>
-                                <th>Email</th>
-                                <th>Perfil</th>
-                                <th>Estado</th>
-                                <th>Entidad vinculada</th>
-                                <th class="text-end">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var u in _result.Items)
-                            {
-                                <tr>
-                                    <td>
-                                        <a class="fw-semibold text-decoration-none"
-                                           href="/users/@u.Id">@u.Login</a>
-                                    </td>
-                                    <td>@(u.Email ?? "—")</td>
-                                    <td><span class="badge @ProfileBadgeClass(u.ProfileReference)">@u.ProfileReference</span></td>
-                                    <td>
-                                        @if (u.IsActive)
-                                        { <span class="badge bg-success">Activo</span> }
-                                        else
-                                        { <span class="badge bg-secondary">Inactivo</span> }
-                                    </td>
-                                    <td>
-                                        @* Entidad vinculada se muestra desde el detalle *@
-                                        <span class="text-muted small">—</span>
-                                    </td>
-                                    <td class="text-end">
-                                        <a class="btn btn-outline-secondary btn-xs me-1"
-                                           href="/users/@u.Id" title="Ver detalle">
-                                            <i class="bi bi-eye"></i>
-                                        </a>
-                                        <a class="btn btn-outline-primary btn-xs me-1"
-                                           href="/users/@u.Id/edit" title="Editar">
-                                            <i class="bi bi-pencil"></i>
-                                        </a>
-                                        @if (u.IsActive)
-                                        {
-                                            <button class="btn btn-outline-danger btn-xs"
-                                                    title="Desactivar"
-                                                    @onclick="() => ConfirmDeactivate(u)">
-                                                <i class="bi bi-person-x"></i>
-                                            </button>
-                                        }
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-
-                @* ── Paginación ────────────────────────────────────────────── *@
-                @if (_result.TotalPages > 1)
-                {
-                    <div class="d-flex justify-content-between align-items-center mt-2">
-                        <small class="text-muted">
-                            @_result.TotalCount resultado(s) — Página @_result.PageNumber de @_result.TotalPages
-                        </small>
-                        <div class="btn-group btn-group-sm">
-                            <button class="btn btn-outline-secondary"
-                                    disabled="@(!_result.HasPrevious)"
-                                    @onclick="PrevPage">‹ Anterior</button>
-                            <button class="btn btn-outline-secondary"
-                                    disabled="@(!_result.HasNext)"
-                                    @onclick="NextPage">Siguiente ›</button>
-                        </div>
-                    </div>
-                }
+                <RadzenDataGrid TItem="UserDto"
+                                Data="@_result.Items" Count="@_result.TotalCount"
+                                AllowPaging="true" PageSize="PageSize"
+                                AllowSorting="true" AllowFiltering="false"
+                                EmptyText="No se encontraron usuarios."
+                                PagerHorizontalAlign="HorizontalAlign.Right">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="UserDto" Property="Login" Title="Login" Width="150px">
+                            <Template Context="u">
+                                <a class="rz-link rz-text-weight-bold" href="/users/@u.Id">@u.Login</a>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserDto" Property="Email" Title="Email" Width="200px">
+                            <Template Context="u">@(u.Email ?? "—")</Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserDto" Property="ProfileReference" Title="Perfil" Width="120px">
+                            <Template Context="u"><span class="badge @ProfileBadgeClass(u.ProfileReference)">@u.ProfileReference</span></Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserDto" Property="IsActive" Title="Estado" Width="100px">
+                            <Template Context="u">
+                                @if (u.IsActive) { <span class="badge bg-success">Activo</span> }
+                                else { <span class="badge bg-secondary">Inactivo</span> }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserDto" Title="Entidad vinculada" Width="150px">
+                            <Template Context="u"><span class="rz-text-secondary-color rz-text-sm">—</span></Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserDto" Title="Acciones" Width="110px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                            <Template Context="u">
+                                <RadzenButton Icon="visibility" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => Nav.NavigateTo($"/users/{u.Id}"))" title="Ver" />
+                                <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => Nav.NavigateTo($"/users/{u.Id}/edit"))" title="Editar" />
+                                @if (u.IsActive)
+                                {
+                                    <RadzenButton Icon="person_off" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger"
+                                                  Click="@(() => ConfirmDeactivate(u))" title="Desactivar" />
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
             }
 
             @* ── Confirmación desactivación ────────────────────────────────── *@

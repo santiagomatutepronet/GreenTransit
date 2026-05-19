@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/product-declarations"
 @attribute [Authorize(Policy = PolicyConstants.CanViewProductDeclarations)]
 @rendermode InteractiveServer
@@ -91,121 +93,80 @@
 
 @if (_loading)
 {
-    <div class="text-center" style="padding:3rem 0">
-        <div class="spinner spinner-lg"></div>
-    </div>
+    <div class="gt-loading"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else if (_result is null || _result.Items.Count == 0)
 {
-    <div class="alert alert-info">No se encontraron declaraciones de producción.</div>
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">No se encontraron declaraciones de producción.</RadzenAlert>
 }
 else
 {
-    <div class="table-wrapper">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Referencia</th>
-                    <th>Productor</th>
-                    <th>Año</th>
-                    <th>Periodo</th>
-                    <th>Tipo</th>
-                    <th>Estado</th>
-                    <th class="cell-number">Importe</th>
-                    <th>Creación</th>
-                    <th>Emisión</th>
-                    <th style="width:120px"></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var pd in _result.Items)
-                {
-                    <tr>
-                        <td>
-                            <a href="/product-declarations/@pd.Id" class="font-semibold">
-                                @(pd.Reference ?? pd.Id.ToString()[..8])
-                            </a>
-                        </td>
-                        <td class="cell-muted">@(pd.ProducerName ?? "—")</td>
-                        <td class="cell-muted">@(pd.Year?.ToString() ?? "—")</td>
-                        <td class="cell-muted">@(pd.Period.HasValue ? $"T{pd.Period}" : "—")</td>
-                        <td class="cell-muted">@(pd.Type ?? "—")</td>
-                        <td><span class="@StateBadge(pd.State)">@(pd.State ?? "—")</span></td>
-                        <td class="cell-number">
-                            @(pd.Amount.HasValue ? $"{pd.Amount:N2} {pd.Currency}" : "—")
-                        </td>
-                        <td class="cell-muted">@(pd.DateCreate?.ToString("dd/MM/yyyy") ?? "—")</td>
-                        <td class="cell-muted">@(pd.DateEmit?.ToString("dd/MM/yyyy") ?? "—")</td>
-                        <td>
-                            @{
-                                var detailUrl = "/product-declarations/" + pd.Id;
-                                var editUrl   = "/product-declarations/" + pd.Id + "/edit";
-                                var isEditable = ProductDeclaration.States.Editable.Contains(pd.State ?? "");
-                                var canManage  = CurrentUser.IsInAnyProfile(ProfileConstants.Admin, ProfileConstants.Producer);
-                                var isAdmin    = CurrentUser.IsInProfile(ProfileConstants.Admin);
-                            }
-                            <div class="btn-group">
-                                <button class="btn btn-ghost btn-sm btn-icon-only" title="Ver"
-                                        @onclick="() => Nav.NavigateTo(detailUrl)">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                                @if (isEditable && canManage)
-                                {
-                                    <button class="btn btn-ghost btn-sm btn-icon-only" title="Editar"
-                                            @onclick="() => Nav.NavigateTo(editUrl)">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                }
-                                @if (pd.State == ProductDeclaration.States.Draft && canManage)
-                                {
-                                    <button class="btn btn-ghost btn-sm btn-icon-only" title="Emitir"
-                                            @onclick="() => EmitAsync(pd.Id)">
-                                        <i class="bi bi-send"></i>
-                                    </button>
-                                }
-                                @if (pd.State == ProductDeclaration.States.Issued && isAdmin)
-                                {
-                                    <button class="btn btn-ghost btn-sm btn-icon-only" title="Validar"
-                                            @onclick="() => ValidateAsync(pd.Id)">
-                                        <i class="bi bi-check-circle"></i>
-                                    </button>
-                                    <button class="btn btn-outline-danger btn-sm btn-icon-only" title="Rechazar"
-                                            @onclick="() => OpenRejectAsync(pd)">
-                                        <i class="bi bi-x-circle"></i>
-                                    </button>
-                                }
-                            </div>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-
-        @* ── Paginación ──────────────────────────────────────────────────── *@
-        @if (_result.TotalPages > 1)
-        {
-            <div class="pagination">
-                <span class="pagination-info">
-                    @((_page - 1) * PageSize + 1)–@(Math.Min(_page * PageSize, _result.TotalCount))
-                    de @_result.TotalCount resultados
-                </span>
-                <button class="pagination-btn" disabled="@(!_result.HasPrevious)"
-                        @onclick="() => GoPageAsync(_page - 1)">
-                    <i class="bi bi-chevron-left"></i>
-                </button>
-                @for (var i = 1; i <= _result.TotalPages; i++)
-                {
-                    var pg = i;
-                    <button class="pagination-btn @(pg == _page ? "active" : "")"
-                            @onclick="() => GoPageAsync(pg)">@pg</button>
-                }
-                <button class="pagination-btn" disabled="@(!_result.HasNext)"
-                        @onclick="() => GoPageAsync(_page + 1)">
-                    <i class="bi bi-chevron-right"></i>
-                </button>
-            </div>
-        }
-    </div>
+    <RadzenDataGrid TItem="ProductDeclarationDto"
+                    Data="@_result.Items" Count="@_result.TotalCount"
+                    AllowPaging="true" PageSize="PageSize"
+                    AllowSorting="true" AllowFiltering="false"
+                    EmptyText="No se encontraron declaraciones."
+                    PagerHorizontalAlign="HorizontalAlign.Right">
+        <Columns>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Property="Reference" Title="Referencia" Width="140px">
+                <Template Context="pd">
+                    <a href="/product-declarations/@pd.Id" class="rz-link rz-text-weight-bold">
+                        @(pd.Reference ?? pd.Id.ToString()[..8])
+                    </a>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Property="ProducerName" Title="Productor" Width="160px">
+                <Template Context="pd">@(pd.ProducerName ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Property="Year" Title="Año" Width="70px">
+                <Template Context="pd">@(pd.Year?.ToString() ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Title="Periodo" Width="80px">
+                <Template Context="pd">@(pd.Period.HasValue ? $"T{pd.Period}" : "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Property="Type" Title="Tipo" Width="120px">
+                <Template Context="pd">@(pd.Type ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Property="State" Title="Estado" Width="100px">
+                <Template Context="pd"><span class="@StateBadge(pd.State)">@(pd.State ?? "—")</span></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Property="Amount" Title="Importe" Width="120px" TextAlign="TextAlign.Right">
+                <Template Context="pd">@(pd.Amount.HasValue ? $"{pd.Amount:N2} {pd.Currency}" : "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Property="DateCreate" Title="Creación" Width="100px">
+                <Template Context="pd">@(pd.DateCreate?.ToString("dd/MM/yyyy") ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Property="DateEmit" Title="Emisión" Width="100px">
+                <Template Context="pd">@(pd.DateEmit?.ToString("dd/MM/yyyy") ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Title="" Width="140px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                <Template Context="pd">
+                    @{ var isEditable = ProductDeclaration.States.Editable.Contains(pd.State ?? "");
+                       var canManage  = CurrentUser.IsInAnyProfile(ProfileConstants.Admin, ProfileConstants.Producer);
+                       var isAdmin    = CurrentUser.IsInProfile(ProfileConstants.Admin); }
+                    <RadzenButton Icon="visibility" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => Nav.NavigateTo("/product-declarations/" + pd.Id))" title="Ver" />
+                    @if (isEditable && canManage)
+                    {
+                        <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => Nav.NavigateTo("/product-declarations/" + pd.Id + "/edit"))" title="Editar" />
+                    }
+                    @if (pd.State == ProductDeclaration.States.Draft && canManage)
+                    {
+                        <RadzenButton Icon="send" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => EmitAsync(pd.Id))" title="Emitir" />
+                    }
+                    @if (pd.State == ProductDeclaration.States.Issued && isAdmin)
+                    {
+                        <RadzenButton Icon="check_circle" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Success"
+                                      Click="@(() => ValidateAsync(pd.Id))" title="Validar" />
+                        <RadzenButton Icon="cancel" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger"
+                                      Click="@(() => OpenRejectAsync(pd))" title="Rechazar" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
 }
 
 @* ── Modal rechazo ──────────────────────────────────────────────────────────── *@

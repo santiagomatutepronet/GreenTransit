@@ -4,99 +4,99 @@
 @implements IAsyncDisposable
 @using GreenTransit.Application.Common.Interfaces
 @using Microsoft.AspNetCore.Components.Authorization
+@using Radzen
+@using Radzen.Blazor
 
 <HeadContent>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
 </HeadContent>
 
-<div class="app-shell @(_darkMode ? "dark-mode" : "") @(_sidebarCollapsed ? "sidebar-collapsed" : "")">
+<RadzenLayout class="@(_darkMode ? "dark-mode" : "")">
 
-    @* ── Sidebar ──────────────────────────────────────────────────────────── *@
-    <aside class="sidebar" aria-label="Navegación principal">
-        <div class="sidebar-header">
-            <span class="sidebar-logo">
-                <i class="bi bi-recycle"></i>
-                <span class="sidebar-logo-text">GreenTransit</span>
-            </span>
-            <button class="btn-icon sidebar-toggle-inner"
-                    onclick="gtSidebar.toggle()"
-                    title="Colapsar/Expandir menú"
-                    aria-label="Toggle sidebar">
-                <i class="bi bi-layout-sidebar-reverse"></i>
-            </button>
-        </div>
+    @* ── Header / Topbar ─────────────────────────────────────────────────── *@
+    <RadzenHeader>
+        <RadzenStack Orientation="Orientation.Horizontal"
+                     AlignItems="AlignItems.Center"
+                     JustifyContent="JustifyContent.SpaceBetween"
+                     Style="height: 100%; padding: 0 1rem;">
 
-        <div class="sidebar-scroll">
-            <NavMenu />
-        </div>
-    </aside>
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         AlignItems="AlignItems.Center"
+                         Gap="0.5rem">
+                <RadzenSidebarToggle Click="@(() => _sidebarExpanded = !_sidebarExpanded)" />
+                <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">
+                    <i class="bi bi-recycle" style="color: var(--rz-success)"></i>
+                    GreenTransit
+                </RadzenText>
+            </RadzenStack>
 
-    @* ── Contenido principal ──────────────────────────────────────────────── *@
-    <div class="main-wrapper">
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         AlignItems="AlignItems.Center"
+                         Gap="1rem">
 
-        @* ── Topbar ──────────────────────────────────────────────────────── *@
-        <header class="topbar">
-            <div class="topbar-left">
-                <button class="btn-icon topbar-hamburger"
-                        onclick="gtSidebar.toggle()"
-                        title="Colapsar/Expandir menú"
-                        aria-label="Toggle sidebar">
-                    <i class="bi bi-list"></i>
-                </button>
                 <GlobalSearchBar />
-            </div>
 
-            <div class="topbar-right">
-
-                <div class="topbar-tenant" title="Tenant activo">
+                <div title="Tenant activo" style="display: flex; align-items: center; gap: 0.25rem;">
                     <i class="bi bi-building"></i>
-                    <span class="topbar-tenant-id">@TenantShort</span>
+                    <span>@TenantShort</span>
                 </div>
 
-                @* Información del usuario *@
-                <div class="topbar-user">
-                    <i class="bi bi-person-circle topbar-user-icon"></i>
-                    <div class="topbar-user-info">
-                        <span class="topbar-user-name">@CurrentUser.UserName</span>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="bi bi-person-circle" style="font-size: 1.25rem;"></i>
+                    <div style="display: flex; flex-direction: column; line-height: 1.1;">
+                        <span style="font-weight: 600; font-size: 0.875rem;">@CurrentUser.UserName</span>
                         @if (!string.IsNullOrEmpty(CurrentUser.UserProfile))
                         {
-                            <span class="topbar-user-badge badge-@CurrentUser.UserProfile.ToLowerInvariant()">
+                            <span class="topbar-user-badge badge-@CurrentUser.UserProfile.ToLowerInvariant()"
+                                  style="font-size: 0.7rem;">
                                 @CurrentUser.UserProfile
                             </span>
                         }
                     </div>
                 </div>
 
-                @* Toggle modo oscuro/claro *@
-                <button class="btn-icon"
-                        @onclick="ToggleDarkMode"
-                        title="@(_darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro")"
-                        aria-label="Toggle dark mode">
-                    <i class="bi @(_darkMode ? "bi-sun-fill" : "bi-moon-fill")"></i>
-                </button>
+                <RadzenButton Icon="@(_darkMode ? "light_mode" : "dark_mode")"
+                              ButtonStyle="ButtonStyle.Light"
+                              Variant="Variant.Text"
+                              Click="ToggleDarkMode"
+                              title="@(_darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro")" />
 
-                @* Cerrar sesión — data-enhance-nav="false" fuerza recarga HTTP completa
-                   para que el circuito Blazor se destruya y la cookie eliminada surta efecto *@
                 <AuthorizeView>
                     <Authorized>
-                        <a class="btn-icon" href="/account/logout"
+                        <a class="rz-button rz-button-sm rz-secondary rz-variant-text"
+                           href="/account/logout"
                            data-enhance-nav="false"
-                           title="Cerrar sesión" aria-label="Cerrar sesión">
+                           title="Cerrar sesión">
                             <i class="bi bi-box-arrow-right"></i>
                         </a>
                     </Authorized>
                 </AuthorizeView>
 
-            </div>
-        </header>
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenHeader>
 
-        @* ── Contenido de la página ──────────────────────────────────────── *@
-        <main class="page-content" id="main-content">
+    @* ── Sidebar ─────────────────────────────────────────────────────────── *@
+    <RadzenSidebar Expanded="@_sidebarExpanded"
+                   ExpandedChanged="@OnSidebarExpandedChanged"
+                   Style="--rz-sidebar-width: 280px;">
+        <NavMenu />
+    </RadzenSidebar>
+
+    @* ── Contenido principal ─────────────────────────────────────────────── *@
+    <RadzenBody>
+        <div class="rz-p-4">
             @Body
-        </main>
+        </div>
+    </RadzenBody>
 
-    </div>
-</div>
+</RadzenLayout>
+
+@* ── Componentes globales de Radzen ──────────────────────────────────────── *@
+<RadzenDialog />
+<RadzenNotification />
+<RadzenContextMenu />
+<RadzenTooltip />
 
 @* Error UI de Blazor *@
 <div id="blazor-error-ui" data-nosnippet>
@@ -109,7 +109,7 @@
     [CascadingParameter]
     private Task<AuthenticationState>? AuthTask { get; set; }
 
-    private bool _sidebarCollapsed;
+    private bool _sidebarExpanded = true;
     private bool _darkMode;
     private DotNetObjectReference<MainLayout>? _dotNetRef;
 
@@ -119,10 +119,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // En modo interactivo Blazor Server, IHttpContextAccessor.HttpContext es null.
-        // Poblamos ICurrentUserService con el ClaimsPrincipal del circuito Blazor
-        // ANTES de que cualquier componente hijo (NavMenu, Dashboard...) inicialice,
-        // garantizando que todos los queries usen el usuario y tenant correctos.
         if (AuthTask is not null)
         {
             var state = await AuthTask;
@@ -134,27 +130,22 @@
     {
         if (firstRender)
         {
-            _dotNetRef = DotNetObjectReference.Create(this);
-            // Leer estado persistido y registrar referencia .NET en JS
             var stored = await JS.InvokeAsync<string?>("localStorage.getItem", "gt-sidebar");
             var storedCollapsed = stored == "1";
-            await JS.InvokeVoidAsync("gtSidebar.init", _dotNetRef, storedCollapsed);
-            // Solo re-renderizar si el estado difiere del valor inicial (false)
-            // para evitar el doble refresco en cada carga de página
-            if (storedCollapsed != _sidebarCollapsed)
+            // En Radzen, Expanded=true significa visible; collapsed=true → expanded=false
+            var storedExpanded = !storedCollapsed;
+            if (storedExpanded != _sidebarExpanded)
             {
-                _sidebarCollapsed = storedCollapsed;
+                _sidebarExpanded = storedExpanded;
                 StateHasChanged();
             }
         }
     }
 
-    /// <summary>Llamado desde JS para mantener el estado Blazor sincronizado.</summary>
-    [JSInvokable]
-    public void SetSidebar(bool collapsed)
+    private async Task OnSidebarExpandedChanged(bool expanded)
     {
-        _sidebarCollapsed = collapsed;
-        StateHasChanged();
+        _sidebarExpanded = expanded;
+        await JS.InvokeVoidAsync("localStorage.setItem", "gt-sidebar", expanded ? "0" : "1");
     }
 
     private void ToggleDarkMode() => _darkMode = !_darkMode;

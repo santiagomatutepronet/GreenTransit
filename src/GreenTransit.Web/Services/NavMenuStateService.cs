@@ -21,4 +21,7 @@ public sealed class NavMenuStateService
         if (!_collapsed.Add(key))
             _collapsed.Remove(key);
     }
+
+    public void Expand(string key) => _collapsed.Remove(key);
+    public void Collapse(string key) => _collapsed.Add(key);
 }

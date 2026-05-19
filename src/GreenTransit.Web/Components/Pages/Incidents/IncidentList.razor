@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/incidents"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -93,95 +95,63 @@
 @* ── Tabla ────────────────────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="text-center py-5">
-        <div class="spinner spinner-lg"></div>
-    </div>
+    <div class="text-center py-5"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else if (_items.Count == 0)
 {
-    <div class="alert alert-info">
-        <i class="bi bi-info-circle me-2"></i>
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
         No hay incidencias @(_isOpen ? "abiertas" : "cerradas") con los filtros actuales.
-    </div>
+    </RadzenAlert>
 }
 else
 {
-    <div class="card">
-        <div class="table-responsive">
-            <table class="table table-hover table-sm mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Severidad</th>
-                        <th>Tipo</th>
-                        <th>Traslado</th>
-                        <th>Notificado por</th>
-                        <th>Abierta</th>
-                        @if (!_isOpen)
-                        {
-                            <th>Cerrada</th>
-                        }
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var inc in _items)
-                    {
-                        <tr>
-                            <td>
-                                <span class="badge @GetSeverityClass(inc.Severity)">
-                                    @inc.Severity
-                                </span>
-                            </td>
-                            <td class="text-truncate" style="max-width:160px">@inc.Type</td>
-                            <td>
-                                @if (!string.IsNullOrWhiteSpace(inc.WasteMoveReference))
-                                {
-                                    <span class="font-monospace small">@inc.WasteMoveReference</span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">—</span>
-                                }
-                            </td>
-                            <td class="text-truncate" style="max-width:140px">@inc.ReportedByName</td>
-                            <td class="small text-muted text-nowrap">
-                                @inc.OpenedAt.ToString("dd/MM/yyyy HH:mm")
-                            </td>
-                            @if (!_isOpen)
-                            {
-                                <td class="small text-muted text-nowrap">
-                                    @(inc.ClosedAt?.ToString("dd/MM/yyyy HH:mm"))
-                                </td>
-                            }
-                            <td>
-                                <button class="btn btn-outline-primary btn-xs"
-                                        @onclick="() => GoToDetail(inc.Id)">
-                                    <i class="bi bi-eye-fill"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
+    <RadzenDataGrid TItem="IncidentDto"
+                    Data="@_items" Count="@_totalCount"
+                    AllowPaging="false" AllowSorting="true" AllowFiltering="false"
+                    EmptyText="No hay incidencias.">
+        <Columns>
+            <RadzenDataGridColumn TItem="IncidentDto" Property="Severity" Title="Severidad" Width="110px">
+                <Template Context="inc">
+                    <span class="badge @GetSeverityClass(inc.Severity)">@inc.Severity</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="IncidentDto" Property="Type" Title="Tipo" Width="180px">
+                <Template Context="inc"><span style="max-width:160px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@inc.Type</span></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="IncidentDto" Property="WasteMoveReference" Title="Traslado" Width="140px">
+                <Template Context="inc">
+                    @if (!string.IsNullOrWhiteSpace(inc.WasteMoveReference))
+                    { <span class="font-monospace small">@inc.WasteMoveReference</span> }
+                    else { <span class="rz-text-secondary-color">—</span> }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="IncidentDto" Property="ReportedByName" Title="Notificado por" Width="150px" />
+            <RadzenDataGridColumn TItem="IncidentDto" Property="OpenedAt" Title="Abierta" Width="130px" FormatString="{0:dd/MM/yyyy HH:mm}" />
+            @if (!_isOpen)
+            {
+                <RadzenDataGridColumn TItem="IncidentDto" Property="ClosedAt" Title="Cerrada" Width="130px">
+                    <Template Context="inc">@(inc.ClosedAt?.ToString("dd/MM/yyyy HH:mm"))</Template>
+                </RadzenDataGridColumn>
+            }
+            <RadzenDataGridColumn TItem="IncidentDto" Title="" Width="70px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                <Template Context="inc">
+                    <RadzenButton Icon="visibility" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => GoToDetail(inc.Id))" />
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
 
     @if (_totalPages > 1)
     {
         <div class="d-flex justify-content-between align-items-center mt-3">
-            <span class="text-muted small">
-                @_totalCount resultado(s) — Página @_page / @_totalPages
-            </span>
+            <span class="rz-text-secondary-color rz-text-sm">@_totalCount resultado(s) — Página @_page / @_totalPages</span>
             <div class="d-flex gap-1">
-                <button class="btn btn-outline-neutral btn-sm"
-                        disabled="@(_page <= 1)"
-                        @onclick="PrevPageAsync">
+                <button class="btn btn-outline-secondary btn-sm" disabled="@(_page <= 1)" @onclick="PrevPageAsync">
                     <i class="bi bi-chevron-left"></i>
                 </button>
                 <span class="btn btn-sm btn-light disabled">@_page</span>
-                <button class="btn btn-outline-neutral btn-sm"
-                        disabled="@(_page >= _totalPages)"
-                        @onclick="NextPageAsync">
+                <button class="btn btn-outline-secondary btn-sm" disabled="@(_page >= _totalPages)" @onclick="NextPageAsync">
                     <i class="bi bi-chevron-right"></i>
                 </button>
             </div>

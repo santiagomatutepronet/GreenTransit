@@ -11,6 +11,8 @@
 @using GreenTransit.Domain.Authorization
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator         Mediator
 @inject NavigationManager Nav
@@ -26,117 +28,105 @@
 
 @if (_loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div class="gt-loading"><RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else
 {
-    <EditForm Model="_model" OnValidSubmit="@(async () => await SaveAsync())">
-        <div class="row g-3">
+    <RadzenTemplateForm TItem="UserFormModel" Data="@_model" Submit="@SaveAsync">
 
-            @* ── 1. Datos básicos ──────────────────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-person-vcard me-2"></i>Datos básicos
-                    </div>
-                    <div class="card-body row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Login <span class="text-danger">*</span></label>
-                            <InputText class="form-control" @bind-Value="_model.Login" />
-                            <FieldMessage Field="Login" Errors="_validationErrors" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Email</label>
-                            <InputText class="form-control" @bind-Value="_model.Email" />
-                            <FieldMessage Field="Email" Errors="_validationErrors" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Nombre completo</label>
-                            <InputText class="form-control" @bind-Value="_model.CompleteName" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Perfil <span class="text-danger">*</span></label>
-                            <InputSelect class="form-select" @bind-Value="_model.IdProfile">
-                                <option value="0">— Seleccionar —</option>
-                                @foreach (var p in _profiles)
-                                {
-                                    <option value="@p.Id">@p.Reference</option>
-                                }
-                            </InputSelect>
-                            <FieldMessage Field="IdProfile" Errors="_validationErrors" />
-                        </div>
-                    </div>
-                </div>
-            </div>
+        @* ── 1. Datos básicos ──────────────────────────────────────────── *@
+        <RadzenFieldset Text="Datos básicos" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Login *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Login" @bind-Value="_model.Login" Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="Login" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Email" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Email" @bind-Value="_model.Email" InputType="InputType.Email" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Nombre completo" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="CompleteName" @bind-Value="_model.CompleteName" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Perfil *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="int" Name="IdProfile" @bind-Value="_model.IdProfile"
+                                            Data="@_profiles" TextProperty="Reference" ValueProperty="Id"
+                                            Placeholder="— Seleccionar —" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
-            @* ── 2. Geografía ──────────────────────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-geo-alt-fill me-2"></i>Geografía
-                    </div>
-                    <div class="card-body">
-                        <GeographySelector
-                            @bind-CountryCode="_geoCountryCode"
-                            @bind-CountryCode:after="OnCountryChangedAsync"
-                            @bind-StateCode="_geoStateCode"
-                            @bind-StateCode:after="OnStateChangedAsync"
-                            @bind-ProvinceCode="_geoProvinceCode"
-                            @bind-ProvinceCode:after="OnProvinceChangedAsync"
-                            @bind-MunicipalityCode="_geoMuniCode"
-                            @bind-MunicipalityCode:after="OnMunicipalityChangedAsync"
-                            @bind-ZipCode="_model.ZipCode" />
-                        <div class="row g-3 mt-1">
-                            <div class="col-md-8">
-                                <label class="form-label">Dirección</label>
-                                <InputText class="form-control" @bind-Value="_model.Address" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        @* ── 2. Geografía ──────────────────────────────────────────────── *@
+        <RadzenFieldset Text="Geografía" class="rz-mb-4">
+            <GeographySelector
+                @bind-CountryCode="_geoCountryCode"
+                @bind-CountryCode:after="OnCountryChangedAsync"
+                @bind-StateCode="_geoStateCode"
+                @bind-StateCode:after="OnStateChangedAsync"
+                @bind-ProvinceCode="_geoProvinceCode"
+                @bind-ProvinceCode:after="OnProvinceChangedAsync"
+                @bind-MunicipalityCode="_geoMuniCode"
+                @bind-MunicipalityCode:after="OnMunicipalityChangedAsync"
+                @bind-ZipCode="_model.ZipCode" />
+            <RadzenRow Gap="1rem" class="rz-mt-4">
+                <RadzenColumn SizeMD="8">
+                    <RadzenFormField Text="Dirección" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Address" @bind-Value="_model.Address" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
-            @* ── 3. Interoperabilidad EDC ──────────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold" style="cursor:pointer" @onclick="ToggleEdc">
-                        <i class="bi bi-plug-fill me-2"></i>Interoperabilidad
-                        <i class="bi @(_edcExpanded ? "bi-chevron-up" : "bi-chevron-down") float-end"></i>
-                    </div>
-                    @if (_edcExpanded)
-                    {
-                        <div class="card-body row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Portal EDC Provider</label>
-                                <InputText class="form-control" @bind-Value="_model.PortalEDCProvider" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Portal EDC Consumer</label>
-                                <InputText class="form-control" @bind-Value="_model.PortalEDCConsumer" />
-                            </div>
-                        </div>
-                    }
-                </div>
-            </div>
+        @* ── 3. Interoperabilidad EDC ──────────────────────────────────── *@
+        <RadzenFieldset Text="Interoperabilidad" AllowCollapse="true" Collapsed="@(!_edcExpanded)" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="6">
+                    <RadzenFormField Text="Portal EDC Provider" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="PortalEDCProvider" @bind-Value="_model.PortalEDCProvider" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="6">
+                    <RadzenFormField Text="Portal EDC Consumer" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="PortalEDCConsumer" @bind-Value="_model.PortalEDCConsumer" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
-            @* ── Acciones ──────────────────────────────────────────────────── *@
-            <div class="col-12 d-flex gap-2 justify-content-end">
-                @if (!string.IsNullOrEmpty(_errorMessage))
-                {
-                    <div class="alert alert-danger py-2 px-3 mb-0 flex-grow-1">@_errorMessage</div>
-                }
-                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="GoBack">Cancelar</button>
-                <button type="submit" class="btn btn-primary btn-sm" disabled="@_saving">
-                    @if (_saving)
-                    {
-                        <span class="spinner-border spinner-border-sm me-1"></span>
-                    }
-                    Guardar
-                </button>
-            </div>
+        @* ── Acciones ──────────────────────────────────────────────────── *@
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mb-4">@_errorMessage</RadzenAlert>
+        }
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="Cancelar" Icon="cancel" ButtonStyle="ButtonStyle.Light"
+                          ButtonType="ButtonType.Button" Click="@(_ => GoBack())" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Guardar" Icon="save"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@_saving" IsBusy="@_saving" />
+        </RadzenStack>
 
-        </div>
-    </EditForm>
+    </RadzenTemplateForm>
 }
 
 @code {
@@ -320,8 +310,7 @@ else
         }
     }
 
-    private void GoBack()    => Nav.NavigateTo("/users");
-    private void ToggleEdc() => _edcExpanded = !_edcExpanded;
+    private void GoBack() => Nav.NavigateTo("/users");
 
     // ── Modelo del formulario ─────────────────────────────────────────────────
 

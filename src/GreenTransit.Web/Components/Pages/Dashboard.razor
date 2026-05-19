@@ -543,14 +543,14 @@ else
         DataLabels = new DataLabels { Enabled = true },
         Xaxis      = new XAxis { Labels = new XAxisLabels { Show = true } },
         Grid       = new Grid { BorderColor = "#f0f0f0" },
-        Tooltip    = new Tooltip { Y = new TooltipY { Formatter = "function(val){ return val + ' traslados'; }" } }
+        Tooltip    = new ApexCharts.Tooltip { Y = new TooltipY { Formatter = "function(val){ return val + ' traslados'; }" } }
     };
 
     private ApexChartOptions<RateItem> _donutChartOptions = new()
     {
-        Legend     = new Legend { Position = LegendPosition.Bottom },
+        Legend     = new Legend { Position = ApexCharts.LegendPosition.Bottom },
         DataLabels = new DataLabels { Enabled = true },
-        Tooltip    = new Tooltip { Y = new TooltipY { Formatter = "function(val){ return val.toFixed(1) + '%'; }" } }
+        Tooltip    = new ApexCharts.Tooltip { Y = new TooltipY { Formatter = "function(val){ return val.toFixed(1) + '%'; }" } }
     };
 
     private ApexChartOptions<MonthlyKgDto> _monthlyChartOptions = new()

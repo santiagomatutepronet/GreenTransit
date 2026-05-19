@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/plant-energies"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -123,82 +125,59 @@
 @* ── Tabla de registros ───────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="d-flex justify-content-center py-5">
-        <div class="spinner-border text-warning" role="status">
-            <span class="visually-hidden">Cargando…</span>
-        </div>
-    </div>
+    <div class="d-flex justify-content-center py-5"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else if (_result is null || _result.Items.Count == 0)
 {
-    <div class="alert alert-light text-center">Sin registros para los filtros seleccionados.</div>
+    <RadzenAlert AlertStyle="AlertStyle.Light" class="text-center">Sin registros para los filtros seleccionados.</RadzenAlert>
 }
 else
 {
-    <div class="card">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Planta</th>
-                            <th>NIMA</th>
-                            <th>Año</th>
-                            <th>Mes</th>
-                            <th class="text-end">kWh</th>
-                            <th>Fuente</th>
-                            <th>Grid Mix</th>
-                            <th>Notas</th>
-                            @if (_isAdmin || _isPlantOp)
-                            {
-                                <th></th>
-                            }
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var r in _result!.Items)
-                        {
-                            <tr>
-                                <td class="small">@r.PlantName</td>
-                                <td class="small text-muted">@r.PlantCenterCode</td>
-                                <td class="small">@r.Year</td>
-                                <td class="small">@(r.Month.HasValue ? MonthName(r.Month.Value) : "—")</td>
-                                <td class="text-end small fw-semibold">@r.KwhTotal.ToString("N0")</td>
-                                <td class="small text-muted">@r.Source</td>
-                                <td class="small text-muted">@r.GridMixRef</td>
-                                <td class="small text-muted text-truncate" style="max-width:180px;" title="@r.Notes">@r.Notes</td>
-                                @if (_isAdmin || _isPlantOp)
-                                {
-                                    <td>
-                                        <button class="btn btn-outline-secondary btn-sm py-0 px-1"
-                                                @onclick="() => OpenForm(r)">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                    </td>
-                                }
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <div class="card-footer py-1 text-muted small d-flex justify-content-between align-items-center">
-            <span>@_result!.TotalCount registro(s)</span>
-            @if (_result.TotalPages > 1)
+    <RadzenDataGrid TItem="PlantEnergyDto"
+                    Data="@_result.Items" Count="@_result.TotalCount"
+                    AllowPaging="false" AllowSorting="true" AllowFiltering="false"
+                    EmptyText="Sin registros.">
+        <Columns>
+            <RadzenDataGridColumn TItem="PlantEnergyDto" Property="PlantName" Title="Planta" Width="160px" />
+            <RadzenDataGridColumn TItem="PlantEnergyDto" Property="PlantCenterCode" Title="NIMA" Width="120px" />
+            <RadzenDataGridColumn TItem="PlantEnergyDto" Property="Year" Title="Año" Width="70px" />
+            <RadzenDataGridColumn TItem="PlantEnergyDto" Title="Mes" Width="90px">
+                <Template Context="r">@(r.Month.HasValue ? MonthName(r.Month.Value) : "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="PlantEnergyDto" Property="KwhTotal" Title="kWh" Width="100px" TextAlign="TextAlign.Right">
+                <Template Context="r"><strong>@r.KwhTotal.ToString("N0")</strong></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="PlantEnergyDto" Property="Source" Title="Fuente" Width="130px">
+                <Template Context="r">@r.Source</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="PlantEnergyDto" Property="GridMixRef" Title="Grid Mix" Width="110px">
+                <Template Context="r">@r.GridMixRef</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="PlantEnergyDto" Property="Notes" Title="Notas" Width="180px">
+                <Template Context="r"><span title="@r.Notes" style="max-width:180px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@r.Notes</span></Template>
+            </RadzenDataGridColumn>
+            @if (_isAdmin || _isPlantOp)
             {
-                <div class="btn-group btn-group-sm">
-                    <button class="btn btn-outline-secondary" disabled="@(!_result.HasPrevious)"
-                            @onclick="() => GoPageAsync(_page - 1)">
-                        <i class="bi bi-chevron-left"></i>
-                    </button>
-                    <span class="btn btn-outline-secondary disabled">@_page / @_result.TotalPages</span>
-                    <button class="btn btn-outline-secondary" disabled="@(!_result.HasNext)"
-                            @onclick="() => GoPageAsync(_page + 1)">
-                        <i class="bi bi-chevron-right"></i>
-                    </button>
-                </div>
+                <RadzenDataGridColumn TItem="PlantEnergyDto" Title="" Width="60px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                    <Template Context="r">
+                        <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => OpenForm(r))" />
+                    </Template>
+                </RadzenDataGridColumn>
             }
-        </div>
+        </Columns>
+    </RadzenDataGrid>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <small class="rz-text-secondary-color">@_result.TotalCount registro(s)</small>
+        @if (_result.TotalPages > 1)
+        {
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" disabled="@(!_result.HasPrevious)" @onclick="() => GoPageAsync(_page - 1)"><i class="bi bi-chevron-left"></i></button>
+                <span class="btn btn-outline-secondary disabled">@_page / @_result.TotalPages</span>
+                <button class="btn btn-outline-secondary" disabled="@(!_result.HasNext)" @onclick="() => GoPageAsync(_page + 1)"><i class="bi bi-chevron-right"></i></button>
+            </div>
+        }
     </div>
 }
 

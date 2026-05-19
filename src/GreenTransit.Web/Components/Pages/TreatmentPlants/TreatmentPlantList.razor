@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/treatment-plants"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -115,93 +117,66 @@
 @* ── Tabla ────────────────────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="text-center py-4">
-        <div class="spinner spinner-lg"></div>
-    </div>
+    <div class="gt-loading"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else if (_result is null || _result.TotalCount == 0)
 {
-    <div class="alert alert-info">No se encontraron registros de tratamiento.</div>
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">No se encontraron registros de tratamiento.</RadzenAlert>
 }
 else
 {
-    <div class="card">
-        <div class="card-body p-0">
-            <table class="table table-hover table-sm mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Referencia traslado</th>
-                        <th>Ticket</th>
-                        <th>Fecha tratamiento</th>
-                        <th>Operación R/D</th>
-                        <th>Líneas</th>
-                        <th>Incidencia</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var item in _result.Items)
+    <RadzenDataGrid TItem="TreatmentPlantDto"
+                    Data="@_result.Items" Count="@_result.TotalCount"
+                    AllowPaging="false" AllowSorting="true" AllowFiltering="false"
+                    EmptyText="No se encontraron registros de tratamiento.">
+        <Columns>
+            <RadzenDataGridColumn TItem="TreatmentPlantDto" Property="WasteMoveReference" Title="Referencia traslado" Width="160px">
+                <Template Context="item"><strong>@(item.WasteMoveReference ?? "—")</strong></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TreatmentPlantDto" Property="TicketScale" Title="Ticket" Width="110px">
+                <Template Context="item">@(item.TicketScale ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TreatmentPlantDto" Property="PlantTreatmentDate" Title="Fecha tratamiento" Width="145px">
+                <Template Context="item">@(item.PlantTreatmentDate?.ToString("dd/MM/yyyy") ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TreatmentPlantDto" Property="TreatmentOperationCode" Title="Operación R/D">
+                <Template Context="item">
+                    @if (item.TreatmentOperationCode is not null)
                     {
-                        <tr>
-                            <td class="fw-semibold">@(item.WasteMoveReference ?? "—")</td>
-                            <td>@(item.TicketScale ?? "—")</td>
-                            <td>@(item.PlantTreatmentDate?.ToString("dd/MM/yyyy") ?? "—")</td>
-                            <td>
-                                @if (item.TreatmentOperationCode is not null)
-                                {
-                                    <span class="badge @(item.TreatmentOperationType == "Recovery" ? "bg-success" : "bg-warning text-dark")">
-                                        @item.TreatmentOperationCode
-                                    </span>
-                                    <span class="ms-1 text-muted small">@item.TreatmentOperationDescription</span>
-                                }
-                                else { <text>—</text> }
-                            </td>
-                            <td>@item.ResidueLineCount</td>
-                            <td>
-                                @if (item.HasIncident)
-                                {
-                                    <span class="badge bg-danger">
-                                        <i class="bi bi-exclamation-triangle-fill me-1"></i>Incidencia
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-success-subtle text-success">OK</span>
-                                }
-                            </td>
-                            <td>
-                                <button class="btn btn-outline-primary btn-sm"
-                                        @onclick='() => Nav.NavigateTo("/treatment-plants/" + item.Id)'>
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                            </td>
-                        </tr>
+                        <RadzenBadge Text="@item.TreatmentOperationCode"
+                                     BadgeStyle="@(item.TreatmentOperationType == "Recovery" ? BadgeStyle.Success : BadgeStyle.Warning)" />
+                        <span class="rz-text-secondary-color rz-text-sm ms-1">@item.TreatmentOperationDescription</span>
                     }
-                </tbody>
-            </table>
-        </div>
-    </div>
+                    else { <text>—</text> }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TreatmentPlantDto" Property="ResidueLineCount" Title="Líneas" Width="80px" TextAlign="TextAlign.Center" />
+            <RadzenDataGridColumn TItem="TreatmentPlantDto" Property="HasIncident" Title="Incidencia" Width="120px" TextAlign="TextAlign.Center">
+                <Template Context="item">
+                    @if (item.HasIncident) { <RadzenBadge Text="Incidencia" BadgeStyle="BadgeStyle.Danger" /> }
+                    else { <RadzenBadge Text="OK" BadgeStyle="BadgeStyle.Success" /> }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TreatmentPlantDto" Title="" Width="70px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                <Template Context="item">
+                    <RadzenButton Icon="visibility" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => Nav.NavigateTo("/treatment-plants/" + item.Id))" />
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
 
-    @* ── Paginación ──────────────────────────────────────────────────────── *@
     @if (_result.TotalPages > 1)
     {
         <div class="d-flex justify-content-between align-items-center mt-2">
-            <small class="text-muted">
+            <small class="rz-text-secondary-color">
                 @((_page - 1) * PageSize + 1)–@(Math.Min(_page * PageSize, _result.TotalCount))
                 de @_result.TotalCount registros
             </small>
             <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary"
-                        disabled="@(!_result.HasPrevious)"
-                        @onclick="PrevPage">
-                    <i class="bi bi-chevron-left"></i>
-                </button>
+                <button class="btn btn-outline-secondary" disabled="@(!_result.HasPrevious)" @onclick="PrevPage"><i class="bi bi-chevron-left"></i></button>
                 <span class="btn btn-outline-secondary disabled">@_page / @_result.TotalPages</span>
-                <button class="btn btn-outline-secondary"
-                        disabled="@(!_result.HasNext)"
-                        @onclick="NextPage">
-                    <i class="bi bi-chevron-right"></i>
-                </button>
+                <button class="btn btn-outline-secondary" disabled="@(!_result.HasNext)" @onclick="NextPage"><i class="bi bi-chevron-right"></i></button>
             </div>
         </div>
     }

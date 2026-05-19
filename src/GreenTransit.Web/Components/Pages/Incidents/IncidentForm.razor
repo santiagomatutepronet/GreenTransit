@@ -9,6 +9,8 @@
 @using GreenTransit.Domain.Authorization
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator           Mediator
 @inject NavigationManager   Nav
@@ -23,9 +25,8 @@
         </h1>
     </div>
     <div class="page-header-actions">
-        <button class="btn btn-outline-neutral btn-sm" @onclick='() => Nav.NavigateTo("/incidents")'>
-            <i class="bi bi-arrow-left me-1"></i>Cancelar
-        </button>
+        <RadzenButton Text="Cancelar" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                      Click="@(_ => Nav.NavigateTo("/incidents"))" />
     </div>
 </div>
 
@@ -36,216 +37,154 @@
 
                 @if (_saved)
                 {
-                    <div class="alert alert-success d-flex align-items-start gap-2">
-                        <i class="bi bi-check-circle-fill fs-4 flex-shrink-0 mt-1"></i>
-                        <div>
-                            <strong>Incidencia registrada correctamente.</strong>
-                            @if (_severity is "High" or "Critical" &&
-                                 !string.IsNullOrWhiteSpace(_wasteMoveReference))
-                            {
-                                <div class="mt-1 text-danger fw-semibold">
-                                    <i class="bi bi-lock-fill me-1"></i>
-                                    El traslado <strong>@_wasteMoveReference</strong>
-                                    ha sido bloqueado.
-                                </div>
-                            }
-                        </div>
-                    </div>
-                    <div class="d-flex gap-2 mt-2">
-                        <button class="btn btn-primary"
-                                @onclick='() => Nav.NavigateTo($"/incidents/{_createdId}")'>
-                            <i class="bi bi-eye me-1"></i>Ver incidencia
-                        </button>
-                        <button class="btn btn-outline-neutral" @onclick="ResetForm">
-                            <i class="bi bi-plus-lg me-1"></i>Nueva
-                        </button>
-                    </div>
+                    <RadzenAlert AlertStyle="AlertStyle.Success">
+                        <strong>Incidencia registrada correctamente.</strong>
+                        @if (_severity is "High" or "Critical" && !string.IsNullOrWhiteSpace(_wasteMoveReference))
+                        {
+                            <div class="rz-mt-2 rz-color-danger"><strong>El traslado @_wasteMoveReference ha sido bloqueado.</strong></div>
+                        }
+                    </RadzenAlert>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" class="rz-mt-3">
+                        <RadzenButton Text="Ver incidencia" Icon="visibility" ButtonStyle="ButtonStyle.Primary"
+                                      Click="@(_ => Nav.NavigateTo($"/incidents/{_createdId}"))" />
+                        <RadzenButton Text="Nueva" Icon="add" ButtonStyle="ButtonStyle.Light"
+                                      Click="@(_ => ResetForm())" />
+                    </RadzenStack>
                 }
                 else
                 {
-                    <EditForm Model="_model" OnValidSubmit="SubmitAsync">
-                        <DataAnnotationsValidator />
+                    <RadzenTemplateForm TItem="object" Data="@_model" Submit="@SubmitAsync">
 
-                        @* ── Severidad (botones grandes) ───────────────────────── *@
-                        <div class="mb-4">
-                            <label class="form-label fw-bold fs-6">
-                                Severidad <span class="text-danger">*</span>
-                            </label>
-                            <div class="d-grid gap-2">
+                        @* ── Severidad ─────────────────────────────────────────── *@
+                        <div class="rz-mb-4">
+                            <RadzenText TextStyle="TextStyle.Subtitle1">Severidad *</RadzenText>
+                            <RadzenStack Gap="0.5rem" class="rz-mt-2">
                                 @foreach (var sev in _severities)
                                 {
-                                    <button type="button"
-                                            class="btn btn-lg text-start @GetSeverityBtnClass(sev) @(_severity == sev ? "active" : "")"
-                                            @onclick="() => _severity = sev">
-                                        <i class="bi @GetSeverityIcon(sev) me-2"></i>
-                                        <strong>@sev</strong>
-                                        <small class="d-block fw-normal ms-4 mt-1 opacity-75">
-                                            @GetSeverityDescription(sev)
-                                        </small>
-                                    </button>
+                                    <RadzenButton Text="@sev" Icon="@GetSeverityIcon(sev)"
+                                                  ButtonStyle="@(_severity == sev ? ButtonStyle.Primary : ButtonStyle.Light)"
+                                                  Click="@(_ => _severity = sev)" Style="text-align:left; width:100%" />
                                 }
-                            </div>
+                            </RadzenStack>
                             @if (_submitted && string.IsNullOrWhiteSpace(_severity))
                             {
-                                <div class="text-danger small mt-1">
-                                    Selecciona una severidad.
-                                </div>
+                                <small class="rz-color-danger">Selecciona una severidad.</small>
                             }
                         </div>
 
                         @* ── Tipo ──────────────────────────────────────────────── *@
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">
-                                Tipo de incidencia <span class="text-danger">*</span>
-                            </label>
-                            <select class="form-select form-select-lg" @bind="_type">
-                                <option value="">— Seleccionar tipo —</option>
-                                <option>Descuadre de peso</option>
-                                <option>Residuo no conforme</option>
-                                <option>Retraso</option>
-                                <option>Avería vehículo</option>
-                                <option>Contaminación de fracción</option>
-                                <option>Documento faltante</option>
-                                <option>Otro</option>
-                            </select>
+                        <div class="rz-mb-4">
+                            <RadzenFormField Text="Tipo de incidencia *" Variant="Variant.Outlined" Style="width:100%">
+                                <ChildContent>
+                                    <RadzenDropDown TValue="string?" @bind-Value="_type"
+                                                    Data="@(new[]{"Descuadre de peso","Residuo no conforme","Retraso","Avería vehículo","Contaminación de fracción","Documento faltante","Otro"})"
+                                                    Placeholder="— Seleccionar tipo —" AllowClear="true" Style="width:100%" />
+                                </ChildContent>
+                            </RadzenFormField>
                             @if (_submitted && string.IsNullOrWhiteSpace(_type))
                             {
-                                <div class="text-danger small mt-1">Selecciona un tipo.</div>
+                                <small class="rz-color-danger">Selecciona un tipo.</small>
                             }
                         </div>
 
                         @* ── Descripción ───────────────────────────────────────── *@
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">
-                                Descripción <span class="text-danger">*</span>
-                            </label>
-                            <textarea class="form-control" rows="5"
-                                      placeholder="Describe la incidencia con el máximo detalle posible…"
-                                      @bind="_description"
-                                      maxlength="2000"></textarea>
-                            <div class="form-text text-end">
-                                @(_description?.Length ?? 0)/2000
-                            </div>
+                        <div class="rz-mb-4">
+                            <RadzenFormField Text="Descripción *" Variant="Variant.Outlined" Style="width:100%">
+                                <ChildContent>
+                                    <RadzenTextArea @bind-Value="_description" Rows="5"
+                                                   Placeholder="Describe la incidencia con el máximo detalle posible…"
+                                                   MaxLength="2000" Style="width:100%" />
+                                </ChildContent>
+                            </RadzenFormField>
+                            <small class="rz-text-secondary-color">@(_description?.Length ?? 0)/2000</small>
                             @if (_submitted && string.IsNullOrWhiteSpace(_description))
                             {
-                                <div class="text-danger small">La descripción es obligatoria.</div>
+                                <small class="rz-color-danger">La descripción es obligatoria.</small>
                             }
                         </div>
 
                         @* ── Traslado vinculado (opcional) ─────────────────────── *@
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">
-                                Traslado vinculado
-                                <span class="text-muted small fw-normal">(opcional)</span>
-                            </label>
+                        <div class="rz-mb-4">
                             @if (_isProducer)
                             {
-                                @* PRODUCER: solo puede vincular sus propios traslados *@
-                                <select class="form-select" @bind="_selectedWasteMoveId"
-                                        @bind:after="OnWasteMoveSelected">
-                                    <option value="">— Sin traslado vinculado —</option>
-                                    @foreach (var wm in _producerWasteMoves)
-                                    {
-                                        <option value="@wm.Id">
-                                            @(wm.WasteMoveReference ?? wm.Id.ToString()[..8])
-                                            @(wm.ServiceStatus is null ? "" : $" — {wm.ServiceStatus}")
-                                        </option>
-                                    }
-                                </select>
+                                <RadzenFormField Text="Traslado vinculado (opcional)" Variant="Variant.Outlined" Style="width:100%">
+                                    <ChildContent>
+                                        <RadzenDropDown TValue="string" @bind-Value="_selectedWasteMoveId"
+                                                        Data="@_producerWasteMoves"
+                                                        TextProperty="WasteMoveReference" ValueProperty="Id"
+                                                        Change="@(_ => OnWasteMoveSelected())"
+                                                        AllowClear="true" Placeholder="— Sin traslado vinculado —" Style="width:100%" />
+                                    </ChildContent>
+                                </RadzenFormField>
                                 @if (_producerWasteMoves.Count == 0 && !_loadingWasteMoves)
                                 {
-                                    <small class="text-muted">No tienes traslados activos.</small>
+                                    <small class="rz-text-secondary-color">No tienes traslados activos.</small>
                                 }
                             }
                             else
                             {
-                                <input type="text"
-                                       class="form-control"
-                                       placeholder="Ej: WM-2025-001234"
-                                       @bind="_wasteMoveReference" />
+                                <RadzenFormField Text="Traslado vinculado (opcional)" Variant="Variant.Outlined" Style="width:100%">
+                                    <ChildContent>
+                                        <RadzenTextBox @bind-Value="_wasteMoveReference" Placeholder="Ej: WM-2025-001234" Style="width:100%" />
+                                    </ChildContent>
+                                </RadzenFormField>
                             }
-                            @if (_severity is "High" or "Critical" &&
-                                 !string.IsNullOrWhiteSpace(_wasteMoveReference))
+                            @if (_severity is "High" or "Critical" && !string.IsNullOrWhiteSpace(_wasteMoveReference))
                             {
-                                <div class="alert alert-warning d-flex gap-2 align-items-start mt-2 py-2">
-                                    <i class="bi bi-lock-fill flex-shrink-0 mt-1"></i>
-                                    <span class="small">
-                                        Al guardar, el traslado <strong>@_wasteMoveReference</strong>
-                                        quedará <strong>BLOQUEADO</strong> hasta que se resuelva
-                                        la incidencia.
-                                    </span>
-                                </div>
+                                <RadzenAlert AlertStyle="AlertStyle.Warning" class="rz-mt-2">
+                                    Al guardar, el traslado <strong>@_wasteMoveReference</strong> quedará <strong>BLOQUEADO</strong> hasta que se resuelva la incidencia.
+                                </RadzenAlert>
                             }
                         </div>
 
                         @* ── Ticket báscula ────────────────────────────────────── *@
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">
-                                Ticket báscula
-                                <span class="text-muted small fw-normal">(opcional)</span>
-                            </label>
-                            <input type="text"
-                                   class="form-control"
-                                   placeholder="Ej: TK-20250130-001"
-                                   @bind="_ticketScale" />
+                        <div class="rz-mb-4">
+                            <RadzenFormField Text="Ticket báscula (opcional)" Variant="Variant.Outlined" Style="width:100%">
+                                <ChildContent>
+                                    <RadzenTextBox @bind-Value="_ticketScale" Placeholder="Ej: TK-20250130-001" Style="width:100%" />
+                                </ChildContent>
+                            </RadzenFormField>
                         </div>
 
                         @* ── Notificador ───────────────────────────────────────── *@
-                        <hr />
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">
-                                Notificado por <span class="text-danger">*</span>
-                            </label>
-                            <input type="text"
-                                   class="form-control"
-                                   placeholder="Nombre completo"
-                                   @bind="_reportedByName" />
+                        <hr class="rz-my-4" />
+                        <div class="rz-mb-4">
+                            <RadzenFormField Text="Notificado por *" Variant="Variant.Outlined" Style="width:100%">
+                                <ChildContent>
+                                    <RadzenTextBox @bind-Value="_reportedByName" Placeholder="Nombre completo" Style="width:100%" />
+                                </ChildContent>
+                            </RadzenFormField>
                             @if (_submitted && string.IsNullOrWhiteSpace(_reportedByName))
                             {
-                                <div class="text-danger small mt-1">
-                                    El nombre del notificador es obligatorio.
-                                </div>
+                                <small class="rz-color-danger">El nombre del notificador es obligatorio.</small>
                             }
                         </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-6">
-                                <label class="form-label form-label-sm fw-semibold">NIF/CIF</label>
-                                <input type="text"
-                                       class="form-control form-control-sm"
-                                       placeholder="Opcional"
-                                       @bind="_reportedByNationalId" />
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label form-label-sm fw-semibold">
-                                    Código centro (NIMA)
-                                </label>
-                                <input type="text"
-                                       class="form-control form-control-sm"
-                                       placeholder="Opcional"
-                                       @bind="_reportedByCenterCode" />
-                            </div>
-                        </div>
+                        <RadzenRow Gap="1rem" class="rz-mb-4">
+                            <RadzenColumn SizeMD="6">
+                                <RadzenFormField Text="NIF/CIF (opcional)" Variant="Variant.Outlined" Style="width:100%">
+                                    <ChildContent>
+                                        <RadzenTextBox @bind-Value="_reportedByNationalId" Placeholder="Opcional" Style="width:100%" />
+                                    </ChildContent>
+                                </RadzenFormField>
+                            </RadzenColumn>
+                            <RadzenColumn SizeMD="6">
+                                <RadzenFormField Text="Código centro NIMA (opcional)" Variant="Variant.Outlined" Style="width:100%">
+                                    <ChildContent>
+                                        <RadzenTextBox @bind-Value="_reportedByCenterCode" Placeholder="Opcional" Style="width:100%" />
+                                    </ChildContent>
+                                </RadzenFormField>
+                            </RadzenColumn>
+                        </RadzenRow>
 
                         @if (!string.IsNullOrWhiteSpace(_errorMessage))
                         {
-                            <div class="alert alert-danger">
-                                <i class="bi bi-x-circle me-2"></i>@_errorMessage
-                            </div>
+                            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mb-4">@_errorMessage</RadzenAlert>
                         }
 
-                        <div class="d-grid mt-4">
-                            <button type="submit"
-                                    class="btn btn-danger btn-lg"
-                                    disabled="@_saving">
-                                @if (_saving)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-2"></span>
-                                }
-                                <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                                Registrar incidencia
-                            </button>
-                        </div>
-                    </EditForm>
+                        <RadzenButton ButtonType="ButtonType.Submit" Text="Registrar incidencia" Icon="warning"
+                                      ButtonStyle="ButtonStyle.Danger" Disabled="@_saving" IsBusy="@_saving"
+                                      Style="width:100%" />
+                    </RadzenTemplateForm>
                 }
             </div>
         </div>

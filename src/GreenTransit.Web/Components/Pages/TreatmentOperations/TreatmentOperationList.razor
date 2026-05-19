@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/treatment-operations"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -48,126 +50,79 @@
 @* ── Contenido ─────────────────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div class="gt-loading"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else
 {
     @foreach (var group in Groups)
     {
-        <div class="card mb-3">
-            <div class="card-header fw-semibold d-flex align-items-center gap-2 py-2">
+        <RadzenCard class="rz-mb-4">
+            <div class="d-flex align-items-center gap-2 rz-mb-3">
                 @if (group.Key == "Recovery")
                 {
-                    <i class="bi bi-arrow-repeat text-success"></i>
-                    <span>R — Valorización (R1–R13)</span>
+                    <RadzenIcon Icon="autorenew" Style="color: var(--rz-success)" />
+                    <strong>R — Valorización (R1–R13)</strong>
                 }
                 else
                 {
-                    <i class="bi bi-trash text-danger"></i>
-                    <span>D — Eliminación (D1–D15)</span>
+                    <RadzenIcon Icon="delete_outline" Style="color: var(--rz-danger)" />
+                    <strong>D — Eliminación (D1–D15)</strong>
                 }
-                <span class="badge bg-secondary ms-auto">@group.Count()</span>
+                <RadzenBadge Text="@group.Count().ToString()" BadgeStyle="BadgeStyle.Secondary" class="ms-auto" />
             </div>
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width:80px">Código</th>
-                            <th>Descripción</th>
-                            <th style="width:160px">Descripción corta</th>
-                            <th style="width:90px" class="text-center">Reciclaje</th>
-                            <th style="width:100px" class="text-center">Energía</th>
-                            <th style="width:120px" class="text-center">Prep. reutiliz.</th>
-                            <th style="width:70px" class="text-center">Estado</th>
-                            <AuthorizeView Roles="ADMIN">
-                                <th style="width:80px" class="text-end">Acciones</th>
-                            </AuthorizeView>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var op in group)
-                        {
-                            <tr>
-                                <td><code class="fw-semibold">@op.Code</code></td>
-                                <td>@op.Description</td>
-                                <td class="text-muted small">@op.ShortDescription</td>
-                                <td class="text-center">
-                                    @if (op.IsRecycling)
-                                    {
-                                        <span class="badge bg-success">♻ Sí</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">—</span>
-                                    }
-                                </td>
-                                <td class="text-center">
-                                    @if (op.IsEnergyRecovery)
-                                    {
-                                        <span class="badge bg-warning text-dark">⚡ Sí</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">—</span>
-                                    }
-                                </td>
-                                <td class="text-center">
-                                    @if (op.IsPreparationForReuse)
-                                    {
-                                        <span class="badge bg-info text-dark">🔄 Sí</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">—</span>
-                                    }
-                                </td>
-                                <td class="text-center">
-                                    @if (op.IsActive)
-                                    {
-                                        <span class="badge bg-success">Activo</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-secondary">Inactivo</span>
-                                    }
-                                </td>
-                                <AuthorizeView Roles="ADMIN">
-                                    <td class="text-end">
-                                        @{ var editUrl = $"/treatment-operations/{op.Id}/edit"; }
-                                        <button class="btn btn-outline-secondary btn-sm"
-                                                @onclick="() => Nav.NavigateTo(editUrl)">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                    </td>
-                                </AuthorizeView>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
+            <RadzenDataGrid TItem="TreatmentOperationDto"
+                            Data="@group.ToList()"
+                            AllowSorting="true" AllowFiltering="false"
+                            AllowPaging="false"
+                            EmptyText="No se encontraron operaciones.">
+                <Columns>
+                    <RadzenDataGridColumn TItem="TreatmentOperationDto" Property="Code" Title="Código" Width="80px">
+                        <Template Context="op"><code class="rz-text-weight-bold">@op.Code</code></Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="TreatmentOperationDto" Property="Description" Title="Descripción" />
+                    <RadzenDataGridColumn TItem="TreatmentOperationDto" Property="ShortDescription" Title="Desc. corta" Width="160px">
+                        <Template Context="op"><span class="rz-text-secondary-color rz-text-sm">@op.ShortDescription</span></Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="TreatmentOperationDto" Property="IsRecycling" Title="Reciclaje" Width="90px" TextAlign="TextAlign.Center">
+                        <Template Context="op">
+                            @if (op.IsRecycling) { <RadzenBadge Text="♻ Sí" BadgeStyle="BadgeStyle.Success" /> }
+                            else { <span class="rz-text-disabled">—</span> }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="TreatmentOperationDto" Property="IsEnergyRecovery" Title="Energía" Width="90px" TextAlign="TextAlign.Center">
+                        <Template Context="op">
+                            @if (op.IsEnergyRecovery) { <RadzenBadge Text="⚡ Sí" BadgeStyle="BadgeStyle.Warning" /> }
+                            else { <span class="rz-text-disabled">—</span> }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="TreatmentOperationDto" Property="IsPreparationForReuse" Title="Prep. reutiliz." Width="120px" TextAlign="TextAlign.Center">
+                        <Template Context="op">
+                            @if (op.IsPreparationForReuse) { <RadzenBadge Text="🔄 Sí" BadgeStyle="BadgeStyle.Info" /> }
+                            else { <span class="rz-text-disabled">—</span> }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="TreatmentOperationDto" Property="IsActive" Title="Estado" Width="80px" TextAlign="TextAlign.Center">
+                        <Template Context="op">
+                            @if (op.IsActive) { <RadzenBadge Text="Activo" BadgeStyle="BadgeStyle.Success" /> }
+                            else { <RadzenBadge Text="Inactivo" BadgeStyle="BadgeStyle.Secondary" /> }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <AuthorizeView Roles="ADMIN">
+                        <RadzenDataGridColumn TItem="TreatmentOperationDto" Title="" Width="70px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                            <Template Context="op">
+                                <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => Nav.NavigateTo($"/treatment-operations/{op.Id}/edit"))" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </AuthorizeView>
+                </Columns>
+            </RadzenDataGrid>
+        </RadzenCard>
     }
 
     @if (!_result?.Items.Any() ?? true)
     {
-        <div class="alert alert-info">No se encontraron operaciones con los filtros aplicados.</div>
-    }
-    @if (_result is not null && _result.TotalPages > 1)
-    {
-        <div class="d-flex justify-content-between align-items-center mt-2">
-            <small class="text-muted">@_result.TotalCount operaciones</small>
-            <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary" disabled="@(!_result.HasPrevious)"
-                        @onclick="() => GoPageAsync(_page - 1)">
-                    <i class="bi bi-chevron-left"></i>
-                </button>
-                <span class="btn btn-outline-secondary disabled">@_page / @_result.TotalPages</span>
-                <button class="btn btn-outline-secondary" disabled="@(!_result.HasNext)"
-                        @onclick="() => GoPageAsync(_page + 1)">
-                    <i class="bi bi-chevron-right"></i>
-                </button>
-            </div>
-        </div>
+        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">No se encontraron operaciones con los filtros aplicados.</RadzenAlert>
     }
 }
 

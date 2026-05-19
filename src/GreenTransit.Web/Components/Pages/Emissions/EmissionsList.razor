@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/emissions"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -5,7 +7,6 @@
 @using GreenTransit.Application.Features.Emissions.Commands
 @using GreenTransit.Application.Features.Emissions.Queries
 @using GreenTransit.Application.Common.Interfaces
-@using GreenTransit.Application.Features.Emissions.Queries
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 
@@ -101,101 +102,66 @@
 @* ── Tabla ────────────────────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="d-flex justify-content-center py-5">
-        <div class="spinner-border text-secondary" role="status">
-            <span class="visually-hidden">Cargando…</span>
-        </div>
-    </div>
+    <div class="d-flex justify-content-center py-5"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else if (_summary is null || _summary.Page.Items.Count == 0)
 {
-    <div class="alert alert-light text-center">
-        Sin traslados con emisiones calculadas para los filtros seleccionados.
-        <br />
-        <span class="text-muted small">
+    <RadzenAlert AlertStyle="AlertStyle.Light" class="text-center">
+        Sin traslados con emisiones calculadas para los filtros seleccionados.<br />
+        <span class="rz-text-secondary-color rz-text-sm">
             Las emisiones se calculan al confirmar la recogida de un traslado.
-            @if (_isAdmin)
-            {
-                <span> Usa <strong>Recalcular todo</strong> para forzar el cálculo de traslados existentes.</span>
-            }
+            @if (_isAdmin) { <span> Usa <strong>Recalcular todo</strong> para forzar el cálculo de traslados existentes.</span> }
         </span>
-    </div>
+    </RadzenAlert>
 }
 else
 {
-    <div class="card">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Referencia</th>
-                            <th>Estado</th>
-                            <th>Fecha recogida</th>
-                            <th class="text-end">Distancia (km)</th>
-                            <th class="text-end">CO₂e (kg)</th>
-                            <th class="text-end">CO₂e (t)</th>
-                            <th>Set factores</th>
-                            <th>Líneas</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var line in _summary.Page.Items)
-                        {
-                            <tr>
-                                <td class="small fw-semibold">
-                                    @(line.WasteMoveReference ?? line.WasteMoveId.ToString("N")[..8].ToUpper())
-                                </td>
-                                <td>
-                                    <span class="badge @StatusBadge(line.ServiceStatus)">
-                                        @line.ServiceStatus
-                                    </span>
-                                </td>
-                                <td class="small text-muted">
-                                    @(line.GatheredDate.HasValue
-                                        ? line.GatheredDate.Value.ToString("dd/MM/yyyy")
-                                        : "—")
-                                </td>
-                                <td class="text-end small">@line.TotalDistanceKm.ToString("N0")</td>
-                                <td class="text-end small fw-semibold text-danger">
-                                    @line.TotalKgCO2e.ToString("N2")
-                                </td>
-                                <td class="text-end small text-muted">
-                                    @((line.TotalKgCO2e / 1000m).ToString("N4"))
-                                </td>
-                                <td class="small text-muted">v@line.EmissionFactorVersion</td>
-                                <td class="small text-center">@line.ResidueLines</td>
-                            </tr>
-                        }
-                    </tbody>
-                    <tfoot class="table-light fw-semibold small">
-                        <tr>
-                            <td colspan="4" class="text-end">Total</td>
-                            <td class="text-end text-danger">@_summary.TotalKgCO2e.ToString("N2")</td>
-                            <td class="text-end text-muted">@((_summary.TotalKgCO2e / 1000m).ToString("N4"))</td>
-                            <td colspan="2"></td>
-                        </tr>
-                    </tfoot>
-                </table>
+    <RadzenDataGrid TItem="EmissionSummaryLineDto"
+                    Data="@_summary.Page.Items" Count="@_summary.Page.TotalCount"
+                    AllowPaging="false" AllowSorting="true" AllowFiltering="false"
+                    EmptyText="Sin emisiones calculadas.">
+        <Columns>
+            <RadzenDataGridColumn TItem="EmissionSummaryLineDto" Property="WasteMoveReference" Title="Referencia" Width="140px">
+                <Template Context="line">
+                    <span class="font-monospace rz-text-weight-bold rz-text-sm">
+                        @(line.WasteMoveReference ?? line.WasteMoveId.ToString("N")[..8].ToUpper())
+                    </span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="EmissionSummaryLineDto" Property="ServiceStatus" Title="Estado" Width="110px">
+                <Template Context="line">
+                    <span class="badge @StatusBadge(line.ServiceStatus)">@line.ServiceStatus</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="EmissionSummaryLineDto" Property="GatheredDate" Title="Fecha recogida" Width="130px">
+                <Template Context="line">@(line.GatheredDate?.ToString("dd/MM/yyyy") ?? "—")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="EmissionSummaryLineDto" Property="TotalDistanceKm" Title="Distancia (km)" Width="120px" TextAlign="TextAlign.Right">
+                <Template Context="line">@line.TotalDistanceKm.ToString("N0")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="EmissionSummaryLineDto" Property="TotalKgCO2e" Title="CO₂e (kg)" Width="110px" TextAlign="TextAlign.Right">
+                <Template Context="line"><strong class="rz-color-danger">@line.TotalKgCO2e.ToString("N2")</strong></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="EmissionSummaryLineDto" Title="CO₂e (t)" Width="100px" TextAlign="TextAlign.Right">
+                <Template Context="line"><span class="rz-text-secondary-color rz-text-sm">@((line.TotalKgCO2e / 1000m).ToString("N4"))</span></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="EmissionSummaryLineDto" Property="EmissionFactorVersion" Title="Set factores" Width="100px">
+                <Template Context="line">v@line.EmissionFactorVersion</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="EmissionSummaryLineDto" Property="ResidueLines" Title="Líneas" Width="80px" TextAlign="TextAlign.Center" />
+        </Columns>
+    </RadzenDataGrid>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <small class="rz-text-secondary-color">@_summary.Page.TotalCount traslado(s) con emisiones calculadas</small>
+        @if (_summary.Page.TotalPages > 1)
+        {
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" disabled="@(!_summary.Page.HasPrevious)" @onclick="() => GoPageAsync(_page - 1)"><i class="bi bi-chevron-left"></i></button>
+                <span class="btn btn-outline-secondary disabled">@_page / @_summary.Page.TotalPages</span>
+                <button class="btn btn-outline-secondary" disabled="@(!_summary.Page.HasNext)" @onclick="() => GoPageAsync(_page + 1)"><i class="bi bi-chevron-right"></i></button>
             </div>
-        </div>
-        <div class="card-footer py-1 text-muted small d-flex justify-content-between align-items-center">
-            <span>@_summary.Page.TotalCount traslado(s) con emisiones calculadas</span>
-            @if (_summary.Page.TotalPages > 1)
-            {
-                <div class="btn-group btn-group-sm">
-                    <button class="btn btn-outline-secondary" disabled="@(!_summary.Page.HasPrevious)"
-                            @onclick="() => GoPageAsync(_page - 1)">
-                        <i class="bi bi-chevron-left"></i>
-                    </button>
-                    <span class="btn btn-outline-secondary disabled">@_page / @_summary.Page.TotalPages</span>
-                    <button class="btn btn-outline-secondary" disabled="@(!_summary.Page.HasNext)"
-                            @onclick="() => GoPageAsync(_page + 1)">
-                        <i class="bi bi-chevron-right"></i>
-                    </button>
-                </div>
-            }
-        </div>
+        }
     </div>
 }
 

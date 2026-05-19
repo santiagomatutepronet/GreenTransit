@@ -1,4 +1,4 @@
-@page "/residues/new"
+﻿@page "/residues/new"
 @page "/residues/{ResidueId:guid}/edit"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -11,6 +11,8 @@
 @using GreenTransit.Application.Features.Residues.Queries
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator        Mediator
 @inject NavigationManager Nav
@@ -26,245 +28,241 @@
 
 @if (_loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div class="gt-loading"><RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else
 {
-    <EditForm Model="_model" OnValidSubmit="SaveAsync">
-        <div class="row g-3">
+    <RadzenTemplateForm TItem="ResidueFormModel" Data="@_model" Submit="@SaveAsync">
 
-            @* ── 1. Tipo y datos básicos ──────────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-card-text me-2"></i>Datos generales
-                    </div>
-                    <div class="card-body row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label">Tipo <span class="text-danger">*</span></label>
-                            <InputSelect class="form-select" @bind-Value="_model.ResidueType"
-                                         @bind-Value:after="OnTypeChanged">
-                                <option value="">— Seleccionar —</option>
-                                <option value="Waste">Residuo (Waste)</option>
-                                <option value="Product">Producto (Product)</option>
-                                <option value="ProductSpec">Ficha técnica (ProductSpec)</option>
-                            </InputSelect>
-                            <FieldMessage Field="ResidueType" Errors="_validationErrors" />
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label">Nombre <span class="text-danger">*</span></label>
-                            <InputText class="form-control" @bind-Value="_model.Name" />
-                            <FieldMessage Field="Name" Errors="_validationErrors" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Referencia</label>
-                            <InputText class="form-control" @bind-Value="_model.Reference" />
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Descripción</label>
-                            <InputTextArea class="form-control" rows="2" @bind-Value="_model.Description" />
-                        </div>
-                    </div>
-                </div>
-            </div>
+        @* ── 1. Tipo y datos básicos ──────────────────────────────────── *@
+        <RadzenFieldset Text="Datos generales" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Tipo *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string?" Name="ResidueType" @bind-Value="_model.ResidueType"
+                                            Data="@(new[]{new{V="Waste",L="Residuo (Waste)"},new{V="Product",L="Producto (Product)"},new{V="ProductSpec",L="Ficha técnica (ProductSpec)"}})"
+                                            TextProperty="L" ValueProperty="V"
+                                            Change="@(_ => OnTypeChanged())"
+                                            Placeholder="— Seleccionar —" AllowClear="true" Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="ResidueType" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="5">
+                    <RadzenFormField Text="Nombre *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Name" @bind-Value="_model.Name" Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="Name" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Referencia" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Reference" @bind-Value="_model.Reference" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn Size="12">
+                    <RadzenFormField Text="Descripción" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextArea Name="Description" @bind-Value="_model.Description" Rows="2" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
-            @* ── 2. Clasificación normativa ───────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-shield-exclamation me-2"></i>Clasificación normativa
-                    </div>
-                    <div class="card-body row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Código LER</label>
-                            <select class="form-select" @bind="_model.IdLERCode">
-                                <option value="">— Ninguno —</option>
-                                @foreach (var l in _lerCodesFlat)
-                                {
-                                    <option value="@l.Id">@l.Code — @l.Description</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Tipo de flujo</label>
-                            <select class="form-select" value="@_model.FlowType"
-                                    @onchange="OnFlowTypeChanged">
-                                <option value="">— Seleccionar —</option>
-                                @foreach (var ft in FlowTypes)
-                                {
-                                    <option value="@ft.Code">@ft.Label</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Categoría de producto</label>
-                            <select class="form-select" @bind="_model.ProductCategory"
-                                    disabled="@(string.IsNullOrEmpty(_model.FlowType))">
-                                <option value="">— Selecciona flujo primero —</option>
-                                @foreach (var cat in CategoriesForFlow(_model.FlowType))
-                                {
-                                    <option value="@cat">@cat</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Uso del producto</label>
-                            <InputText class="form-control" @bind-Value="_model.ProductUse" />
-                        </div>
-                        <div class="col-md-2 d-flex flex-column gap-2 justify-content-end">
-                            <div class="form-check">
-                                <InputCheckbox class="form-check-input" id="chkDangerous"
-                                               @bind-Value="_model.IsDangerous"
-                                               @bind-Value:after="StateHasChanged" />
-                                <label class="form-check-label" for="chkDangerous">Peligroso</label>
-                            </div>
-                            <div class="form-check">
-                                <InputCheckbox class="form-check-input" id="chkRaee"
-                                               @bind-Value="_model.IsRAEE" />
-                                <label class="form-check-label" for="chkRaee">RAEE</label>
-                            </div>
-                        </div>
+        @* ── 2. Clasificación normativa ───────────────────────────────── *@
+        <RadzenFieldset Text="Clasificación normativa" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Código LER" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="Guid?" Name="IdLERCode" @bind-Value="_model.IdLERCode"
+                                            Data="@_lerCodesFlat" TextProperty="Code" ValueProperty="Id"
+                                            AllowFiltering="true" AllowClear="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="— Ninguno —" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Tipo de flujo" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string?" Name="FlowType" @bind-Value="_model.FlowType"
+                                            Data="@FlowTypes" TextProperty="Label" ValueProperty="Code"
+                                            Change="@(v => OnFlowTypeChangedRadzen(v?.ToString()))"
+                                            AllowClear="true" Placeholder="— Seleccionar —" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Categoría de producto" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string?" Name="ProductCategory" @bind-Value="_model.ProductCategory"
+                                            Data="@CategoriesForFlow(_model.FlowType)"
+                                            Disabled="@(string.IsNullOrEmpty(_model.FlowType))"
+                                            AllowClear="true" Placeholder="— Selecciona flujo primero —" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Uso del producto" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="ProductUse" @bind-Value="_model.ProductUse" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="2">
+                    <RadzenStack Gap="0.75rem" class="rz-mt-2">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenCheckBox TValue="bool" Name="IsDangerous" @bind-Value="_model.IsDangerous"
+                                            Change="@(_ => StateHasChanged())" />
+                            <RadzenLabel Text="Peligroso" Component="IsDangerous" />
+                        </RadzenStack>
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenCheckBox TValue="bool" Name="IsRAEE" @bind-Value="_model.IsRAEE" />
+                            <RadzenLabel Text="RAEE" Component="IsRAEE" />
+                        </RadzenStack>
+                    </RadzenStack>
+                </RadzenColumn>
+                @if (_model.IsDangerous)
+                {
+                    <RadzenColumn SizeMD="4">
+                        <RadzenFormField Text="Código peligrosidad * (H-codes, UN, ADR)" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenTextBox Name="DangerousCode" @bind-Value="_model.DangerousCode" Style="width:100%" />
+                            </ChildContent>
+                            <Helper><RadzenRequiredValidator Component="DangerousCode" Text="Obligatorio para residuos peligrosos" /></Helper>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                }
+            </RadzenRow>
+        </RadzenFieldset>
 
-                        @if (_model.IsDangerous)
-                        {
-                            <div class="col-md-4">
-                                <label class="form-label">
-                                    Código peligrosidad <span class="text-danger">*</span>
-                                    <span class="text-muted small">(H-codes, UN, ADR)</span>
-                                </label>
-                                <InputText class="form-control" @bind-Value="_model.DangerousCode" />
-                                <FieldMessage Field="DangerousCode" Errors="_validationErrors" />
-                            </div>
-                        }
-                    </div>
-                </div>
-            </div>
+        @* ── 3. Unidades y medidas ────────────────────────────────────── *@
+        <RadzenFieldset Text="Unidades y medidas" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Peso por unidad (kg)" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenNumeric TValue="decimal?" Name="WeightPerUnitKg" @bind-Value="_model.WeightPerUnitKg"
+                                           Min="0" Format="0.000" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Unidad de medida defecto" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="DefaultMeasureUnit" @bind-Value="_model.DefaultMeasureUnit" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
-            @* ── 3. Unidades y medidas ────────────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-rulers me-2"></i>Unidades y medidas
-                    </div>
-                    <div class="card-body row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label">Peso por unidad (kg)</label>
-                            <InputNumber class="form-control" @bind-Value="_model.WeightPerUnitKg" />
-                            <FieldMessage Field="WeightPerUnitKg" Errors="_validationErrors" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Unidad de medida defecto</label>
-                            <InputText class="form-control" @bind-Value="_model.DefaultMeasureUnit" />
-                        </div>
-                    </div>
-                </div>
-            </div>
+        @* ── 4. Productor (solo ProductSpec) ──────────────────────────── *@
+        @if (_model.ResidueType == "ProductSpec")
+        {
+            <RadzenFieldset Text="Productor" class="rz-mb-4">
+                <RadzenRow Gap="1rem">
+                    <RadzenColumn SizeMD="6">
+                        <RadzenFormField Text="Productor *" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenDropDown TValue="Guid?" Name="IdProducer" @bind-Value="_model.IdProducer"
+                                                Data="@_producers" TextProperty="Name" ValueProperty="Id"
+                                                AllowFiltering="true" AllowClear="true"
+                                                Placeholder="— Seleccionar productor —" Style="width:100%" />
+                            </ChildContent>
+                            <Helper><RadzenRequiredValidator Component="IdProducer" Text="Obligatorio" /></Helper>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="6">
+                        <RadzenFormField Text="Referencia del productor" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenTextBox Name="ProducerRef" @bind-Value="_model.ProducerRef" Style="width:100%" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                </RadzenRow>
+            </RadzenFieldset>
 
-            @* ── 4. Productor (solo ProductSpec) ──────────────────────────── *@
-            @if (_model.ResidueType == "ProductSpec")
-            {
-                <div class="col-12">
-                    <div class="card border-info">
-                        <div class="card-header fw-semibold text-info">
-                            <i class="bi bi-building me-2"></i>Productor
-                        </div>
-                        <div class="card-body row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Productor <span class="text-danger">*</span></label>
-                                <select class="form-select" @bind="_model.IdProducerStr">
-                                    <option value="">— Seleccionar productor —</option>
-                                    @foreach (var p in _producers)
-                                    {
-                                        <option value="@p.Id">@p.Name</option>
-                                    }
-                                </select>
-                                <FieldMessage Field="IdProducer" Errors="_validationErrors" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Referencia del productor</label>
-                                <InputText class="form-control" @bind-Value="_model.ProducerRef" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            }
-
-            @* ── 5. Ecodiseño (solo ProductSpec) ──────────────────────────── *@
-            @if (_model.ResidueType == "ProductSpec")
-            {
-                <div class="col-12">
-                    <div class="card border-info">
-                        <div class="card-header fw-semibold text-info">
-                            <i class="bi bi-leaf me-2"></i>Ecodiseño
-                        </div>
-                        <div class="card-body row g-3">
-                            <div class="col-md-3">
-                                <label class="form-label">Índice reparabilidad (0–10)</label>
-                                <InputNumber class="form-control" @bind-Value="_model.ReparabilityIndex" />
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Facilidad desmontaje</label>
-                                <InputSelect class="form-select" @bind-Value="_model.DisassemblyEase">
-                                    <option value="">— Seleccionar —</option>
-                                    <option value="Easy">Fácil</option>
-                                    <option value="Medium">Media</option>
-                                    <option value="Hard">Difícil</option>
-                                </InputSelect>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Contenido reciclado (%)</label>
-                                <InputNumber class="form-control" @bind-Value="_model.RecycledContentPercent" />
-                                <FieldMessage Field="RecycledContentPercent" Errors="_validationErrors" />
-                            </div>
-                            <div class="col-md-3 d-flex align-items-end pb-1">
-                                <div class="form-check">
-                                    <InputCheckbox class="form-check-input" id="chkHazardous"
-                                                   @bind-Value="_model.ContainsHazardousVal" />
-                                    <label class="form-check-label" for="chkHazardous">
-                                        Contiene sustancias peligrosas
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Composición (JSON)</label>
-                                <InputTextArea class="form-control font-monospace" rows="3"
-                                               @bind-Value="_model.CompositionJson" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Códigos LER potenciales (JSON)</label>
-                                <InputTextArea class="form-control font-monospace" rows="3"
-                                               @bind-Value="_model.PotentialLERCodesJson" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Materiales (JSON)</label>
-                                <InputTextArea class="form-control font-monospace" rows="3"
-                                               @bind-Value="_model.MaterialsJson" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            }
-
-        </div>
+            @* ── 5. Ecodiseño ──────────────────────────────────────────── *@
+            <RadzenFieldset Text="Ecodiseño" class="rz-mb-4">
+                <RadzenRow Gap="1rem">
+                    <RadzenColumn SizeMD="3">
+                        <RadzenFormField Text="Índice reparabilidad (0–10)" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenNumeric TValue="int?" Name="ReparabilityIndex" @bind-Value="_model.ReparabilityIndex"
+                                               Min="0" Max="10" Style="width:100%" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="3">
+                        <RadzenFormField Text="Facilidad desmontaje" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenDropDown TValue="string?" Name="DisassemblyEase" @bind-Value="_model.DisassemblyEase"
+                                                Data="@(new[]{new{V="Easy",L="Fácil"},new{V="Medium",L="Media"},new{V="Hard",L="Difícil"}})"
+                                                TextProperty="L" ValueProperty="V"
+                                                AllowClear="true" Placeholder="— Seleccionar —" Style="width:100%" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="3">
+                        <RadzenFormField Text="Contenido reciclado (%)" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenNumeric TValue="decimal?" Name="RecycledContentPercent" @bind-Value="_model.RecycledContentPercent"
+                                               Min="0" Max="100" Format="0.00" Style="width:100%" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="3" class="d-flex align-items-center rz-mt-4">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenCheckBox TValue="bool" Name="ContainsHazardousVal" @bind-Value="_model.ContainsHazardousVal" />
+                            <RadzenLabel Text="Contiene sustancias peligrosas" Component="ContainsHazardousVal" />
+                        </RadzenStack>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="4">
+                        <RadzenFormField Text="Composición (JSON)" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenTextArea Name="CompositionJson" @bind-Value="_model.CompositionJson" Rows="3" class="rz-text-monospace" Style="width:100%" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="4">
+                        <RadzenFormField Text="Códigos LER potenciales (JSON)" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenTextArea Name="PotentialLERCodesJson" @bind-Value="_model.PotentialLERCodesJson" Rows="3" class="rz-text-monospace" Style="width:100%" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="4">
+                        <RadzenFormField Text="Materiales (JSON)" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenTextArea Name="MaterialsJson" @bind-Value="_model.MaterialsJson" Rows="3" class="rz-text-monospace" Style="width:100%" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                </RadzenRow>
+            </RadzenFieldset>
+        }
 
         @if (!string.IsNullOrEmpty(_errorMessage))
         {
-            <div class="alert alert-danger mt-3">@_errorMessage</div>
+            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mt-4">@_errorMessage</RadzenAlert>
         }
 
-        <div class="d-flex gap-2 mt-4">
-            <button type="submit" class="btn btn-primary" disabled="@_saving">
-                @if (_saving)
-                {
-                    <span class="spinner-border spinner-border-sm me-1"></span>
-                }
-                Guardar
-            </button>
-            <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancelar</button>
-        </div>
-    </EditForm>
-}
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" class="rz-mt-4">
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Guardar" Icon="save"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@_saving" IsBusy="@_saving" />
+            <RadzenButton Text="Cancelar" Icon="cancel" ButtonStyle="ButtonStyle.Light"
+                          ButtonType="ButtonType.Button" Click="@(_ => Cancel())" />
+        </RadzenStack>
 
+    </RadzenTemplateForm>
+}
 @code {
     [Parameter] public Guid? ResidueId { get; set; }
 
@@ -313,6 +311,13 @@ else
 
     private void OnTypeChanged() => StateHasChanged();
 
+    private void OnFlowTypeChangedRadzen(string? value)
+    {
+        _model.FlowType = value;
+        if (!CategoriesForFlow(_model.FlowType).Contains(_model.ProductCategory ?? string.Empty))
+            _model.ProductCategory = null;
+    }
+
     private void OnFlowTypeChanged(ChangeEventArgs e)
     {
         _model.FlowType = e.Value?.ToString();
@@ -322,14 +327,16 @@ else
 
     // ── Catálogos estáticos ───────────────────────────────────────────────────
 
-    private static readonly (string Code, string Label)[] FlowTypes =
+    private sealed record FlowTypeItem(string Code, string Label);
+
+    private static readonly FlowTypeItem[] FlowTypes =
     [
-        ("RAEE", "RAEE - Aparatos eléctricos y electrónicos"),
-        ("ENV",  "ENV - Envases"),
-        ("BAT",  "BAT - Pilas y acumuladores"),
-        ("NFU",  "NFU - Neumáticos fuera de uso"),
-        ("OIL",  "OIL - Aceites industriales"),
-        ("VFU",  "VFU - Vehículos fuera de uso")
+        new("RAEE", "RAEE - Aparatos eléctricos y electrónicos"),
+        new("ENV",  "ENV - Envases"),
+        new("BAT",  "BAT - Pilas y acumuladores"),
+        new("NFU",  "NFU - Neumáticos fuera de uso"),
+        new("OIL",  "OIL - Aceites industriales"),
+        new("VFU",  "VFU - Vehículos fuera de uso")
     ];
 
     private static readonly Dictionary<string, string[]> CategoriesByFlow = new(StringComparer.OrdinalIgnoreCase)

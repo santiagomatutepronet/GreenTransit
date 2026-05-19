@@ -1,4 +1,6 @@
-﻿@page "/ler-codes"
+﻿@using Radzen
+@using Radzen.Blazor
+@page "/ler-codes"
 @attribute [Authorize]
 @rendermode InteractiveServer
 
@@ -63,89 +65,56 @@
 </div>
 
 @* ── Contenido ─────────────────────────────────────────────────────────────── *@
-@if (_loading)
-{
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
-}
-else if (_pagedResult is null || _pagedResult.Items.Count == 0)
-{
-    <div class="alert alert-info">No se encontraron codigos LER con los filtros aplicados.</div>
-}
-else
-{
-    <div class="table-responsive mt-3">
-        <table class="table table-hover table-sm align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th style="width:100px">Codigo</th>
-                    <th style="width:100px">Capitulo</th>
-                    <th style="width:120px">Subcapitulo</th>
-                    <th>Descripcion</th>
-                    <th style="width:80px" class="text-center">Peligroso</th>
-                    <th style="width:60px" class="text-center">RAEE</th>
-                    <th style="width:80px" class="text-center">Estado</th>
-                    @if (_isAdmin)
-                    {
-                        <th style="width:100px" class="text-end">Acciones</th>
-                    }
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var lerCode in _pagedResult.Items)
-                {
-                    <tr>
-                        <td><code class="fw-semibold">@lerCode.Code</code></td>
-                        <td class="text-muted small">@(lerCode.Chapter ?? "---")</td>
-                        <td class="text-muted small">@(lerCode.SubChapter ?? "---")</td>
-                        <td>@lerCode.Description</td>
-                        <td class="text-center">
-                            @if (lerCode.IsDangerous) { <span class="badge bg-danger">Si</span> }
-                            else { <span class="text-muted">---</span> }
-                        </td>
-                        <td class="text-center">
-                            @if (lerCode.IsRAEE) { <span class="badge bg-warning text-dark">Si</span> }
-                            else { <span class="text-muted">---</span> }
-                        </td>
-                        <td class="text-center">
-                            @if (lerCode.IsActive) { <span class="badge bg-success">Activo</span> }
-                            else { <span class="badge bg-secondary">Inactivo</span> }
-                        </td>
-                        @if (_isAdmin)
-                        {
-                            <td class="text-end">
-                                <button class="btn btn-outline-primary btn-sm py-0 px-1 me-1"
-                                        title="Editar" @onclick="() => EditCode(lerCode.Id)">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <button class="btn btn-outline-secondary btn-sm py-0 px-1"
-                                        @onclick="() => ToggleActiveAsync(lerCode.Id)">
-                                    <i class="bi @(lerCode.IsActive ? "bi-toggle-on" : "bi-toggle-off")"></i>
-                                </button>
-                            </td>
-                        }
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-    @if (_pagedResult.TotalPages > 1)
-    {
-        <div class="d-flex justify-content-between align-items-center mt-2">
-            <small class="text-muted">@_pagedResult.TotalCount codigos LER</small>
-            <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary" disabled="@(!_pagedResult.HasPrevious)"
-                        @onclick="() => GoPageAsync(_currentPage - 1)">
-                    <i class="bi bi-chevron-left"></i>
-                </button>
-                <span class="btn btn-outline-secondary disabled">@_currentPage / @_pagedResult.TotalPages</span>
-                <button class="btn btn-outline-secondary" disabled="@(!_pagedResult.HasNext)"
-                        @onclick="() => GoPageAsync(_currentPage + 1)">
-                    <i class="bi bi-chevron-right"></i>
-                </button>
-            </div>
-        </div>
-    }
-}
+<RadzenDataGrid @ref="_grid" TItem="LerCodeDto"
+                Data="@(_pagedResult?.Items ?? [])" Count="@(_pagedResult?.TotalCount ?? 0)"
+                LoadData="@OnLoadData"
+                AllowPaging="true" PageSize="PageSize"
+                AllowSorting="true" AllowFiltering="false"
+                IsLoading="@_loading"
+                EmptyText="No se encontraron codigos LER con los filtros aplicados."
+                PagerHorizontalAlign="HorizontalAlign.Right">
+    <Columns>
+        <RadzenDataGridColumn TItem="LerCodeDto" Property="Code" Title="Código" Width="110px" Frozen="true">
+            <Template Context="l"><code class="rz-text-weight-bold">@l.Code</code></Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="LerCodeDto" Property="Chapter" Title="Capítulo" Width="90px">
+            <Template Context="l"><span class="rz-text-secondary-color rz-text-sm">@(l.Chapter ?? "---")</span></Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="LerCodeDto" Property="SubChapter" Title="Subcapítulo" Width="110px">
+            <Template Context="l"><span class="rz-text-secondary-color rz-text-sm">@(l.SubChapter ?? "---")</span></Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="LerCodeDto" Property="Description" Title="Descripción" />
+        <RadzenDataGridColumn TItem="LerCodeDto" Property="IsDangerous" Title="Peligroso" Width="90px" TextAlign="TextAlign.Center">
+            <Template Context="l">
+                @if (l.IsDangerous) { <RadzenBadge Text="Sí" BadgeStyle="BadgeStyle.Danger" /> }
+                else { <span class="rz-text-disabled">—</span> }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="LerCodeDto" Property="IsRAEE" Title="RAEE" Width="70px" TextAlign="TextAlign.Center">
+            <Template Context="l">
+                @if (l.IsRAEE) { <RadzenBadge Text="Sí" BadgeStyle="BadgeStyle.Warning" /> }
+                else { <span class="rz-text-disabled">—</span> }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="LerCodeDto" Property="IsActive" Title="Estado" Width="90px" TextAlign="TextAlign.Center">
+            <Template Context="l">
+                @if (l.IsActive) { <RadzenBadge Text="Activo" BadgeStyle="BadgeStyle.Success" /> }
+                else { <RadzenBadge Text="Inactivo" BadgeStyle="BadgeStyle.Secondary" /> }
+            </Template>
+        </RadzenDataGridColumn>
+        @if (_isAdmin)
+        {
+            <RadzenDataGridColumn TItem="LerCodeDto" Title="" Width="90px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                <Template Context="l">
+                    <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => EditCode(l.Id))" title="Editar" />
+                    <RadzenButton Icon="@(l.IsActive ? "toggle_on" : "toggle_off")" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => ToggleActiveAsync(l.Id))" />
+                </Template>
+            </RadzenDataGridColumn>
+        }
+    </Columns>
+</RadzenDataGrid>
 @* ── Modal formulario Crear / Editar ───────────────────────────────────────── *@
 @if (_showForm)
 {
@@ -238,6 +207,7 @@ else
 @code {
     private const int PageSize = 15;
 
+    private RadzenDataGrid<LerCodeDto> _grid = default!;
     private GreenTransit.Application.Common.Models.PaginatedResult<LerCodeDto>? _pagedResult;
     private bool    _loading         = true;
     private bool    _isAdmin         = false;
@@ -271,7 +241,13 @@ else
         _loading = false;
     }
 
-    private async Task ApplyFilters() { _currentPage = 1; await LoadAsync(); }
+    private async Task OnLoadData(LoadDataArgs args)
+    {
+        _currentPage = args.Skip.HasValue ? (args.Skip.Value / PageSize) + 1 : 1;
+        await LoadAsync();
+    }
+
+    private async Task ApplyFilters() { _currentPage = 1; await LoadAsync(); if (_grid is not null) await _grid.Reload(); }
 
     private async Task ResetFilters()
     {
@@ -280,6 +256,7 @@ else
         _filterRaee      = "";
         _currentPage     = 1;
         await LoadAsync();
+        if (_grid is not null) await _grid.Reload();
     }
 
     private async Task GoPageAsync(int page) { _currentPage = page; await LoadAsync(); }

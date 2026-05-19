@@ -9,6 +9,8 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator        Mediator
 @inject NavigationManager Nav
@@ -24,258 +26,228 @@
 
 @if (_loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div class="text-center py-5"><RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else
 {
-    <EditForm Model="_model" OnValidSubmit="SaveAsync">
-        <div class="row g-3">
+    <RadzenTemplateForm TItem="FormModel" Data="@_model" Submit="@SaveAsync">
 
-            @* ── 1. Datos de identificación ──────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-person-vcard me-2"></i>Datos de identificación
-                    </div>
-                    <div class="card-body row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Nombre <span class="text-danger">*</span></label>
-                            <InputText class="form-control" @bind-Value="_model.Name" />
-                            <FieldMessage Field="Name" Errors="_validationErrors" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">NIF / NationalId</label>
-                            <InputText class="form-control" @bind-Value="_model.NationalId" />
-                            <FieldMessage Field="NationalId" Errors="_validationErrors" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">NIMA / CenterCode</label>
-                            <InputText class="form-control" @bind-Value="_model.CenterCode" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Rol de la entidad <span class="text-danger">*</span></label>
-                            <InputSelect class="form-select" @bind-Value="_model.EntityRole"
-                                         @bind-Value:after="OnRoleChanged">
-                                <option value="">— Seleccionar —</option>
-                                @foreach (var r in EntityRoles.All)
-                                {
-                                    <option value="@r">@EntityRoles.Label(r)</option>
-                                }
-                            </InputSelect>
-                            <FieldMessage Field="EntityRole" Errors="_validationErrors" />
-
-                            @* Mensaje informativo sobre provisión de usuario ──────── *@
-                            @if (!string.IsNullOrEmpty(_model.EntityRole))
-                            {
-                                @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is string autoProfile)
-                                {
-                                    <div class="alert alert-info py-2 px-3 mt-2 mb-0 d-flex align-items-start gap-2"
-                                         style="font-size:0.85rem;">
-                                        <i class="bi bi-person-check-fill mt-1 flex-shrink-0"></i>
-                                        <span>
-                                            Al crear esta entidad se generará automáticamente un usuario
-                                            con perfil <strong>@autoProfile</strong>.
-                                            El email de la entidad se usará como Login del usuario.
-                                        </span>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <div class="alert alert-secondary py-2 px-3 mt-2 mb-0 d-flex align-items-start gap-2"
-                                         style="font-size:0.85rem;">
-                                        <i class="bi bi-person-dash-fill mt-1 flex-shrink-0"></i>
-                                        <span>Este rol no genera un usuario de acceso al sistema.</span>
-                                    </div>
-                                }
-                            }
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Tipo de entidad</label>
-                            <InputText class="form-control" @bind-Value="_model.EntityType" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Actividad económica</label>
-                            <InputText class="form-control" @bind-Value="_model.EconomicActivity" />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            @* ── 2. Clasificación normativa ──────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-shield-check me-2"></i>Clasificación normativa
-                    </div>
-                    <div class="card-body row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Tipo de tercero</label>
-                            <InputText class="form-control" @bind-Value="_model.TypeThirdParty" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">
-                                Tipo de inscripción
-                                @if (EntityRoles.RequiresInscriptionNumber(_model.EntityRole))
-                                { <span class="text-danger">*</span> }
-                            </label>
-                            <InputText class="form-control" @bind-Value="_model.InscriptionType" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">
-                                Nº de inscripción (RAT)
-                                @if (EntityRoles.RequiresInscriptionNumber(_model.EntityRole))
-                                { <span class="text-danger">*</span> }
-                            </label>
-                            <InputText class="form-control" @bind-Value="_model.InscriptionNumber" />
-                            <FieldMessage Field="InscriptionNumber" Errors="_validationErrors" />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            @* ── 3. Localización ─────────────────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-geo-alt me-2"></i>Localización
-                        @if (EntityRoles.RequiresCoordinates(_model.EntityRole))
-                        { <small class="text-muted ms-2">(Coordenadas obligatorias para este rol)</small> }
-                    </div>
-                    <div class="card-body row g-3">
-                        <div class="col-12">
-                            <GeographySelector
-                                @bind-CountryCode="_model.CountryCode"
-                                @bind-StateCode="_model.StateCode"
-                                @bind-ProvinceCode="_model.ProvinceCode"
-                                @bind-MunicipalityCode="_model.MunicipalityCode"
-                                @bind-ZipCode="_model.ZipCode" />
-                        </div>
-                        <div class="col-md-12">
-                            <label class="form-label">Dirección</label>
-                            <InputText class="form-control" @bind-Value="_model.Address" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">
-                                Latitud
-                                @if (EntityRoles.RequiresCoordinates(_model.EntityRole))
-                                { <span class="text-danger">*</span> }
-                            </label>
-                            <InputText class="form-control" @bind-Value="_model.Latitude"
-                                       placeholder="41.3825" />
-                            <FieldMessage Field="Latitude" Errors="_validationErrors" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">
-                                Longitud
-                                @if (EntityRoles.RequiresCoordinates(_model.EntityRole))
-                                { <span class="text-danger">*</span> }
-                            </label>
-                            <InputText class="form-control" @bind-Value="_model.Longitude"
-                                       placeholder="2.1769" />
-                            <FieldMessage Field="Longitude" Errors="_validationErrors" />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            @* ── 4. Contacto ─────────────────────────────────────────────── *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-telephone me-2"></i>Contacto
-                    </div>
-                    <div class="card-body row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">
-                                Email
-                                @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is not null)
-                                { <span class="text-danger">*</span> }
-                            </label>
-                            <InputText class="form-control" type="email"
-                                       @bind-Value="_model.Email"
-                                       @bind-Value:after="SuggestLogin" />
-                            <FieldMessage Field="Email" Errors="_validationErrors" />
-                            @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is not null
-                                 && string.IsNullOrWhiteSpace(_model.Email))
-                            {
-                                <div class="form-text text-warning">
-                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                                    El email es obligatorio para este rol porque se creará un usuario.
-                                </div>
-                            }
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Teléfono</label>
-                            <InputText class="form-control" @bind-Value="_model.PhoneNumber" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Persona de contacto</label>
-                            <InputText class="form-control" @bind-Value="_model.ContactPerson" />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            @* ── 5. Acceso al sistema (colapsable, solo si el rol genera usuario) *@
-            @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is string profileRef)
-            {
-                <div class="col-12">
-                    <div class="card border-info">
-                        <div class="card-header bg-info bg-opacity-10 fw-semibold"
-                             style="cursor:pointer" @onclick="ToggleAccessSection">
-                            <i class="bi bi-person-lock me-2"></i>
-                            Acceso al sistema — Perfil: <strong>@profileRef</strong>
-                            <i class="bi @(_accessOpen ? "bi-chevron-up" : "bi-chevron-down") float-end"></i>
-                        </div>
-                        @if (_accessOpen)
+        @* ── 1. Datos de identificación ──────────────────────────────── *@
+        <RadzenFieldset Text="Datos de identificación" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="6">
+                    <RadzenFormField Text="Nombre *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Name" @bind-Value="_model.Name" Style="width:100%" MaxLength="256" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="Name" Text="El nombre es obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="NIF / CIF" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="NationalId" @bind-Value="_model.NationalId" Style="width:100%" MaxLength="32" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="NIMA" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="CenterCode" @bind-Value="_model.CenterCode" Style="width:100%" MaxLength="64" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+            <RadzenRow Gap="1rem" class="rz-mt-4">
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Rol de la entidad *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string" Name="EntityRole" @bind-Value="_model.EntityRole"
+                                            Data="@EntityRoles.All"
+                                            Change="@(_ => OnRoleChanged())"
+                                            Style="width:100%" Placeholder="— Seleccionar —" AllowClear="true" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="EntityRole" Text="El rol es obligatorio" /></Helper>
+                    </RadzenFormField>
+                    @if (!string.IsNullOrEmpty(_model.EntityRole))
+                    {
+                        @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is string autoProfile)
                         {
-                            <div class="card-body row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">Login sugerido</label>
-                                    <InputText class="form-control"
-                                               @bind-Value="_model.SuggestedLogin"
-                                               placeholder="Se usará el email si se deja vacío" />
-                                    <small class="text-muted">
-                                        Se creará automáticamente un usuario con perfil
-                                        <strong>@profileRef</strong>.
-                                    </small>
-                                </div>
-                            </div>
+                            <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Lighter" Size="AlertSize.Small" class="rz-mt-2">
+                                Se generará usuario con perfil <strong>@autoProfile</strong> usando el email de la entidad.
+                            </RadzenAlert>
                         }
-                    </div>
-                </div>
-            }
+                        else
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Base" Shade="Shade.Lighter" Size="AlertSize.Small" class="rz-mt-2">
+                                Este rol no genera un usuario de acceso al sistema.
+                            </RadzenAlert>
+                        }
+                    }
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Tipo de entidad" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="EntityType" @bind-Value="_model.EntityType" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Actividad económica" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="EconomicActivity" @bind-Value="_model.EconomicActivity" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
-        </div>
+        @* ── 2. Clasificación normativa ──────────────────────────────── *@
+        <RadzenFieldset Text="Clasificación normativa" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Tipo de tercero" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="TypeThirdParty" @bind-Value="_model.TypeThirdParty" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="@($"Tipo de inscripción{(EntityRoles.RequiresInscriptionNumber(_model.EntityRole) ? " *" : "")}")" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="InscriptionType" @bind-Value="_model.InscriptionType" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="@($"Nº inscripción (RAT){(EntityRoles.RequiresInscriptionNumber(_model.EntityRole) ? " *" : "")}")" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="InscriptionNumber" @bind-Value="_model.InscriptionNumber" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
+
+        @* ── 3. Localización ─────────────────────────────────────────── *@
+        <RadzenFieldset Text="@($"Localización{(EntityRoles.RequiresCoordinates(_model.EntityRole) ? " (coordenadas obligatorias)" : "")}")" class="rz-mb-4">
+            <div class="rz-mb-4">
+                <GeographySelector
+                    @bind-CountryCode="_model.CountryCode"
+                    @bind-StateCode="_model.StateCode"
+                    @bind-ProvinceCode="_model.ProvinceCode"
+                    @bind-MunicipalityCode="_model.MunicipalityCode"
+                    @bind-ZipCode="_model.ZipCode" />
+            </div>
+            <RadzenRow Gap="1rem">
+                <RadzenColumn Size="12">
+                    <RadzenFormField Text="Dirección" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Address" @bind-Value="_model.Address" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+            <RadzenRow Gap="1rem" class="rz-mt-4">
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="@($"Latitud{(EntityRoles.RequiresCoordinates(_model.EntityRole) ? " *" : "")}")" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Latitude" @bind-Value="_model.Latitude" Placeholder="41.3825" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="@($"Longitud{(EntityRoles.RequiresCoordinates(_model.EntityRole) ? " *" : "")}")" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Longitude" @bind-Value="_model.Longitude" Placeholder="2.1769" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
+
+        @* ── 4. Contacto ─────────────────────────────────────────────── *@
+        <RadzenFieldset Text="Contacto" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="@($"Email{(EntityRoles.GetAutoUserProfile(_model.EntityRole) is not null ? " *" : "")}")" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Email" @bind-Value="_model.Email" InputType="InputType.Email"
+                                           Change="@(_ => SuggestLogin())" Style="width:100%" />
+                        </ChildContent>
+                        <Helper>
+                            @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is not null && string.IsNullOrWhiteSpace(_model.Email))
+                            {
+                                <span class="rz-color-warning">El email es obligatorio para este rol (se creará un usuario).</span>
+                            }
+                        </Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Teléfono" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="PhoneNumber" @bind-Value="_model.PhoneNumber" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Persona de contacto" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="ContactPerson" @bind-Value="_model.ContactPerson" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
+
+        @* ── 5. Acceso al sistema (solo si el rol genera usuario) ─────── *@
+        @if (EntityRoles.GetAutoUserProfile(_model.EntityRole) is string profileRef)
+        {
+            <RadzenFieldset Text="@($"Acceso al sistema — Perfil: {profileRef}")" AllowCollapse="true" Collapsed="@(!_accessOpen)" class="rz-mb-4">
+                <RadzenRow Gap="1rem">
+                    <RadzenColumn SizeMD="6">
+                        <RadzenFormField Text="Login sugerido" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenTextBox Name="SuggestedLogin" @bind-Value="_model.SuggestedLogin"
+                                               Placeholder="Se usará el email si se deja vacío" Style="width:100%" />
+                            </ChildContent>
+                            <Helper>
+                                <span class="rz-text-secondary-color rz-text-sm">
+                                    Se creará automáticamente un usuario con perfil <strong>@profileRef</strong>.
+                                </span>
+                            </Helper>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                </RadzenRow>
+            </RadzenFieldset>
+        }
 
         @* ── Errores y acciones ──────────────────────────────────────────── *@
         @if (_validationErrors.Any())
         {
-            <div class="alert alert-danger mt-3">
+            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mt-4">
                 <ul class="mb-0">
                     @foreach (var err in _validationErrors.Values.SelectMany(v => v))
                     {
                         <li>@err</li>
                     }
                 </ul>
-            </div>
+            </RadzenAlert>
         }
 
         @if (!string.IsNullOrEmpty(_serverError))
         {
-            <div class="alert alert-danger mt-3">@_serverError</div>
+            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mt-4">@_serverError</RadzenAlert>
         }
 
-        <div class="d-flex gap-2 mt-4">
-            <button type="submit" class="btn btn-primary" disabled="@_saving">
-                @if (_saving)
-                { <span class="spinner-border spinner-border-sm me-1"></span> }
-                <i class="bi bi-floppy me-1"></i>Guardar
-            </button>
-            <button type="button" class="btn btn-outline-secondary"
-                    @onclick="Cancel">Cancelar</button>
-        </div>
-    </EditForm>
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" class="rz-mt-4">
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Guardar" Icon="save"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@_saving" IsBusy="@_saving" />
+            <RadzenButton Text="Cancelar" Icon="cancel" ButtonStyle="ButtonStyle.Light"
+                          ButtonType="ButtonType.Button" Click="@(_ => Cancel())" />
+        </RadzenStack>
+
+    </RadzenTemplateForm>
 }
 
 @code {
@@ -365,9 +337,7 @@ else
             _model.SuggestedLogin = _model.Email;
     }
 
-    private void ToggleAccessSection() => _accessOpen = !_accessOpen;
-
-    // ── Guardar ───────────────────────────────────────────────────────────────
+    // ── Guardar
     private async Task SaveAsync()
     {
         _validationErrors = new();

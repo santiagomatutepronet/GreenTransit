@@ -291,7 +291,7 @@ else if (_searched)
         Stroke = new Stroke { Curve   = Curve.Smooth, Width = [3, 3, 0] },
         Colors = ["#2E7D32", "#1565C0", "#FFA726"],
         Yaxis  = [new YAxis { Labels = new YAxisLabels { Formatter = "function(v){return v.toFixed(1)}" } }],
-        Theme  = new Theme { Mode = Mode.Light }
+        Theme  = new ApexCharts.Theme { Mode = ApexCharts.Mode.Light }
     };
 
     protected override async Task OnInitializedAsync() => await LoadAsync();

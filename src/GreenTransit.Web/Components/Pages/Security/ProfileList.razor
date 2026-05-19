@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/profiles"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -17,29 +19,23 @@
 
 @if (_loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div class="gt-loading"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else
 {
-    <div class="table-responsive">
-        <table class="table table-sm align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th>Referencia</th>
-                    <th>Descripción</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var p in _profiles)
-                {
-                    <tr>
-                        <td><span class="badge bg-secondary">@p.Reference</span></td>
-                        <td>@(p.Description ?? "—")</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+    <RadzenDataGrid TItem="ProfileDto"
+                    Data="@_profiles"
+                    AllowPaging="false" AllowSorting="true" AllowFiltering="false"
+                    EmptyText="No hay perfiles registrados.">
+        <Columns>
+            <RadzenDataGridColumn TItem="ProfileDto" Property="Reference" Title="Referencia" Width="180px">
+                <Template Context="p"><RadzenBadge Text="@p.Reference" BadgeStyle="BadgeStyle.Secondary" /></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ProfileDto" Property="Description" Title="Descripción">
+                <Template Context="p">@(p.Description ?? "—")</Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
 }
 
 @code {

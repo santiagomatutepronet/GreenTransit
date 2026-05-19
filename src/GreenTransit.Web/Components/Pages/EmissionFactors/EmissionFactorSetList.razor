@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/emission-factor-sets"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -120,29 +122,22 @@ else
                         </span>
                     </div>
                     <div class="card-body p-0" style="overflow-y:auto; max-height:520px;">
-                        <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
-                            <thead class="table-light sticky-top">
-                                <tr>
-                                    <th>Vehículo</th>
-                                    <th>Combustible</th>
-                                    <th>Euro Class</th>
-                                    <th class="text-end">Valor</th>
-                                    <th>Unidad</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var f in _detail.Factors)
-                                {
-                                    <tr>
-                                        <td>@f.VehicleType</td>
-                                        <td>@f.FuelType</td>
-                                        <td class="text-muted">@(f.EuroClass ?? "—")</td>
-                                        <td class="text-end fw-semibold">@f.Value.ToString("F4")</td>
-                                        <td class="text-muted">@f.Unit</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+                        <RadzenDataGrid TItem="EmissionFactorDto"
+                                        Data="@_detail.Factors"
+                                        AllowPaging="false" AllowSorting="true" AllowFiltering="false"
+                                        Style="font-size:.8rem">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="EmissionFactorDto" Property="VehicleType" Title="Vehículo" Width="120px" />
+                                <RadzenDataGridColumn TItem="EmissionFactorDto" Property="FuelType" Title="Combustible" Width="110px" />
+                                <RadzenDataGridColumn TItem="EmissionFactorDto" Property="EuroClass" Title="Euro Class" Width="100px">
+                                    <Template Context="f">@(f.EuroClass ?? "—")</Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EmissionFactorDto" Property="Value" Title="Valor" Width="90px" TextAlign="TextAlign.Right">
+                                    <Template Context="f"><strong>@f.Value.ToString("F4")</strong></Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EmissionFactorDto" Property="Unit" Title="Unidad" />
+                            </Columns>
+                        </RadzenDataGrid>
                     </div>
                     <div class="card-footer py-1 text-muted small">
                         @_detail.Factors.Count factor(es)

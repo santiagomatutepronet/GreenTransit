@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using FluentValidation;
+using Radzen;
 using GreenTransit.Application.Common;
 using GreenTransit.Application.Common.Behaviours;
 using GreenTransit.Application.Common.Interfaces;
@@ -660,6 +661,9 @@ try
     builder.Services.AddScoped<IPolicyEvaluator, GreenTransit.Web.Services.PolicyEvaluator>();
     // Estado del menú de navegación: persiste entre navegaciones en el circuito Blazor Server
     builder.Services.AddScoped<GreenTransit.Web.Services.NavMenuStateService>();
+
+    // ── Radzen Blazor components ──────────────────────────────────────────────
+    builder.Services.AddRadzenComponents();
 
     // ── EF Core: AppDbContext con SQL Server ──────────────────────────────────
     // AddDbContextFactory registra el factory como Scoped.

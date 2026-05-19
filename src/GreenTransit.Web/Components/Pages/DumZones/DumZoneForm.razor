@@ -3,6 +3,8 @@
 @using GreenTransit.Application.Features.DumZones.Queries
 @using MediatR
 @using System.Text.Json
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator         Mediator
 @inject NavigationManager Nav
@@ -10,14 +12,11 @@
 @* Componente reutilizable: alta y edición de una zona DUM.
    Puede usarse embebido en modal (DumZoneMap) o como página /dum-zones/new y /dum-zones/{id}/edit. *@
 
-<EditForm Model="_model" OnValidSubmit="SubmitAsync">
-    <DataAnnotationsValidator />
+<RadzenTemplateForm TItem="ZoneFormModel" Data="@_model" Submit="@SubmitAsync">
 
     @if (!string.IsNullOrWhiteSpace(_errorMessage))
     {
-        <div class="alert alert-danger small py-2">
-            <i class="bi bi-exclamation-circle me-1"></i>@_errorMessage
-        </div>
+        <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mb-3">@_errorMessage</RadzenAlert>
     }
 
     @* ── Código y estado ─────────────────────────────────────────────────── *@
@@ -61,10 +60,9 @@
                   placeholder='{"type":"Polygon","coordinates":[[[lng,lat],…]]}'
                   @bind="_model.GeometryJson"></textarea>
         <div class="d-flex gap-2 mt-1 align-items-center">
-            <button type="button" class="btn btn-outline-secondary btn-sm"
-                    @onclick="ValidateGeoJsonAsync">
-                <i class="bi bi-check2-square me-1"></i>Validar GeoJSON
-            </button>
+            <RadzenButton Text="Validar GeoJSON" Icon="check_circle" ButtonStyle="ButtonStyle.Light"
+                           ButtonType="ButtonType.Button" Size="ButtonSize.Small"
+                           Click="@(_ => ValidateGeoJsonAsync())" />
             @if (_geoJsonValid == true)
             {
                 <span class="text-success small"><i class="bi bi-check-circle-fill me-1"></i>GeoJSON válido</span>
@@ -127,10 +125,9 @@
     @* ── Añadir regla ─────────────────────────────────────────────────────── *@
     @if (ZoneId.HasValue)
     {
-        <button type="button" class="btn btn-outline-primary btn-sm mb-3"
-                @onclick="ToggleAddRule">
-            <i class="bi bi-plus-circle me-1"></i>Añadir regla de restricción
-        </button>
+        <RadzenButton Text="Añadir regla de restricción" Icon="add_circle" ButtonStyle="ButtonStyle.Light"
+                       ButtonType="ButtonType.Button" Size="ButtonSize.Small" class="rz-mb-3"
+                       Click="@(_ => ToggleAddRule())" />
 
         @if (_showAddRule)
         {
@@ -187,38 +184,30 @@
                     {
                         <div class="alert alert-danger small py-1">@_ruleError</div>
                     }
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-primary btn-sm"
-                                @onclick="SaveRuleAsync" disabled="@_savingRule">
-                            @if (_savingRule)
-                            {
-                                <span class="spinner-border spinner-border-sm me-1"></span>
-                            }
-                            <i class="bi bi-save me-1"></i>Guardar regla
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm"
-                                @onclick="ToggleAddRule">Cancelar</button>
-                    </div>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        <RadzenButton Text="Guardar regla" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                      ButtonType="ButtonType.Button" Size="ButtonSize.Small"
+                                      Disabled="@_savingRule" IsBusy="@_savingRule"
+                                      Click="@(_ => SaveRuleAsync())" />
+                        <RadzenButton Text="Cancelar" ButtonStyle="ButtonStyle.Light"
+                                      ButtonType="ButtonType.Button" Size="ButtonSize.Small"
+                                      Click="@(_ => ToggleAddRule())" />
+                    </RadzenStack>
                 </div>
             </div>
         }
     }
 
     @* ── Botones ──────────────────────────────────────────────────────────── *@
-    <div class="d-flex gap-2 justify-content-end mt-3">
-        <button type="button" class="btn btn-outline-neutral btn-sm" @onclick="OnCancelled">
-            Cancelar
-        </button>
-        <button type="submit" class="btn btn-primary btn-sm" disabled="@_saving">
-            @if (_saving)
-            {
-                <span class="spinner-border spinner-border-sm me-1"></span>
-            }
-            <i class="bi bi-save me-1"></i>@(ZoneId.HasValue ? "Guardar cambios" : "Crear zona")
-        </button>
-    </div>
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem" class="rz-mt-3">
+        <RadzenButton Text="Cancelar" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button"
+                      Size="ButtonSize.Small" Click="@(_ => OnCancelled.InvokeAsync())" />
+        <RadzenButton Text="@(ZoneId.HasValue ? "Guardar cambios" : "Crear zona")" Icon="save"
+                      ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Submit"
+                      Size="ButtonSize.Small" Disabled="@_saving" IsBusy="@_saving" />
+    </RadzenStack>
 
-</EditForm>
+</RadzenTemplateForm>
 
 @code {
     [Parameter] public Guid?             ZoneId              { get; set; }

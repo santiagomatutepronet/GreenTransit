@@ -1,4 +1,4 @@
-@page "/waste-moves/new"
+﻿@page "/waste-moves/new"
 @attribute [Authorize]
 @rendermode InteractiveServer
 
@@ -17,6 +17,8 @@
 @using GreenTransit.Application.Common.Interfaces
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator              Mediator
 @inject NavigationManager      Nav
@@ -27,35 +29,27 @@
 <div class="page-header">
     <div class="page-header-info">
         <h1><i class="bi bi-truck me-2"></i>Nuevo Traslado de Residuos</h1>
-        <p>Agrupa una o varias Órdenes de Servicio. Define residuo y cantidad por cada línea.</p>
+        <p>Agrupa una o varias Ã“rdenes de Servicio. Define residuo y cantidad por cada lÃ­nea.</p>
     </div>
 </div>
 
 @if (_loading)
 {
-    <div class="text-center" style="padding:3rem 0">
-        <div class="spinner spinner-lg"></div>
+    <div class="gt-loading">
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
     </div>
 }
 else
 {
-    <EditForm Model="_formModel" OnValidSubmit="SaveAsync">
+    <RadzenTemplateForm TItem="HeaderModel" Data="@_formModel" Submit="@SaveAsync">
 
-        @* ── 1. Órdenes de Servicio ──────────────────────────────────────── *@
-        <div class="form-section">
-            <div class="form-section-title">
-                <i class="bi bi-clipboard2-check form-section-title-icon"></i>
-                Órdenes de Servicio a agrupar
-            </div>
-
+        @* â”€â”€ 1. Ã“rdenes de Servicio â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
+        <RadzenFieldset Text="Ã“rdenes de Servicio a agrupar" class="rz-mb-4">
             @if (_eligibleSOs.Count == 0)
             {
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle-fill alert-icon"></i>
-                    <div class="alert-content">
-                        No hay Órdenes de Servicio disponibles (Pendiente/Planificada sin traslado asignado).
-                    </div>
-                </div>
+                <RadzenAlert AlertStyle="AlertStyle.Warning">
+                    No hay Ã“rdenes de Servicio disponibles (Pendiente/Planificada sin traslado asignado).
+                </RadzenAlert>
             }
             else
             {
@@ -64,11 +58,10 @@ else
                         <thead>
                             <tr>
                                 <th style="width:40px"></th>
-                                <th>Nº Orden</th>
+                                <th>NÂº Orden</th>
                                 <th>Estado</th>
-                                <th>Código LER</th>
+                                <th>CÃ³digo LER</th>
                                 <th class="cell-number">Peso est.</th>
-                                <th>Unid. medida</th>
                                 <th>Recogida planif.</th>
                                 <th>Punto recogida</th>
                             </tr>
@@ -77,323 +70,243 @@ else
                             @foreach (var so in _eligibleSOs)
                             {
                                 var isSelected = _lines.Any(l => l.SoId == so.Id);
-                                <tr class="@(isSelected ? "selected" : "")"
-                                    style="cursor:pointer"
+                                <tr class="@(isSelected ? "selected" : "")" style="cursor:pointer"
                                     @onclick="async () => await ToggleSoAsync(so)">
                                     <td @onclick:stopPropagation>
-                                        <input type="checkbox" checked="@isSelected"
-                                               @onchange="async () => await ToggleSoAsync(so)" />
+                                        <RadzenCheckBox TValue="bool" Value="@isSelected"
+                                                        Change="@(async _ => await ToggleSoAsync(so))" />
                                     </td>
                                     <td class="font-semibold">@so.ServiceOrderNumber</td>
-                                    <td>
-                                        <span class="@ServiceOrderStatuses.BadgeCss(so.Status)">
-                                            @ServiceOrderStatuses.Label(so.Status)
-                                        </span>
-                                    </td>
+                                    <td><span class="@ServiceOrderStatuses.BadgeCss(so.Status)">@ServiceOrderStatuses.Label(so.Status)</span></td>
                                     <td class="cell-muted">
-                                        @if (!string.IsNullOrEmpty(so.LerCodesDisplay))
-                                        {
-                                            <span>@so.LerCodesDisplay</span>
-                                        }
-                                        else if (so.LerCodeCode != null)
-                                        {
-                                            <span title="@so.LerCodeDescription">@so.LerCodeCode</span>
-                                        }
-                                        else
-                                        {
-                                            <span>—</span>
-                                        }
+                                        @if (!string.IsNullOrEmpty(so.LerCodesDisplay)) { <span>@so.LerCodesDisplay</span> }
+                                        else if (so.LerCodeCode != null) { <span title="@so.LerCodeDescription">@so.LerCodeCode</span> }
+                                        else { <span>â€”</span> }
                                     </td>
-                                    <td class="cell-number">
-                                        @(so.EstimatedWeight.HasValue ? $"{so.EstimatedWeight:N0} kg" : "—")
-                                    </td>
-                                    <td class="cell-muted">@(so.MeasureUnit?.ToString() ?? "—")</td>
-                                    <td class="cell-muted">
-                                        @(so.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "—")
-                                    </td>
-                                    <td class="cell-muted">@(so.PickupPointName ?? "—")</td>
+                                    <td class="cell-number">@(so.EstimatedWeight.HasValue ? $"{so.EstimatedWeight:N0} kg" : "â€”")</td>
+                                    <td class="cell-muted">@(so.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "â€”")</td>
+                                    <td class="cell-muted">@(so.PickupPointName ?? "â€”")</td>
                                 </tr>
                             }
                         </tbody>
                     </table>
                 </div>
-
                 @if (_lines.Count == 0)
                 {
-                    <div class="field-error">Selecciona al menos una Orden de Servicio.</div>
+                    <small class="rz-color-danger">Selecciona al menos una Orden de Servicio.</small>
                 }
             }
-        </div>
+        </RadzenFieldset>
 
-        @* ── 2. Líneas de residuos (agrupadas por SO) ───────────────────── *@
+        @* â”€â”€ 2. LÃ­neas de residuos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
         @if (_lines.Count > 0)
         {
             var includedCount = _lines.Count(l => l.IsIncluded);
-            <div class="form-section">
-                <div class="form-section-title">
-                    <i class="bi bi-list-ul form-section-title-icon"></i>
-                    Líneas de residuos
-                    <span class="badge badge-neutral ms-2">@includedCount incluida@(includedCount == 1 ? "" : "s")</span>
-                </div>
-                <p class="cell-muted mb-3">
-                    Marca las líneas que deseas incluir en el traslado. Para cada línea activa,
-                    selecciona el residuo concreto y ajusta la cantidad.
-                    Los residuos disponibles están filtrados por el código LER de la línea.
+            <RadzenFieldset Text="@($"LÃ­neas de residuos ({includedCount} incluida{(includedCount == 1 ? "" : "s")})")" class="rz-mb-4">
+                <p class="rz-text-secondary-color rz-mb-4">
+                    Marca las lÃ­neas que deseas incluir. Para cada lÃ­nea activa, selecciona el residuo y ajusta la cantidad.
                 </p>
 
                 @foreach (var soGroup in _lines.GroupBy(l => l.SoId))
                 {
-                    var soLines     = soGroup.ToList();
-                    var soNumber    = soLines[0].SoNumber;
-                    var multiLine   = soLines.Count > 1;
+                    var soLines   = soGroup.ToList();
+                    var soNumber  = soLines[0].SoNumber;
+                    var multiLine = soLines.Count > 1;
 
-                    <div class="card mb-3">
+                    <div class="card rz-mb-3">
                         <div class="card-header d-flex align-items-center gap-3">
                             <span class="font-semibold"><i class="bi bi-clipboard2-check me-1"></i>@soNumber</span>
-                            @if (multiLine)
-                            {
-                                <span class="badge badge-neutral">@soLines.Count líneas</span>
-                            }
+                            @if (multiLine) { <RadzenBadge Text="@($"{soLines.Count} lÃ­neas")" /> }
                         </div>
 
                         @foreach (var line in soLines)
                         {
                             <div class="card-body border-top py-3 @(!line.IsIncluded ? "opacity-50" : "")">
-                                <div class="row g-3 align-items-center">
-
-                                    @* Checkbox incluir línea *@
+                                <RadzenRow Gap="1rem" AlignItems="AlignItems.Center">
                                     @if (multiLine)
                                     {
-                                        <div class="col-auto d-flex align-items-center">
-                                            <input type="checkbox"
-                                                   checked="@line.IsIncluded"
-                                                   @onchange="e => line.IsIncluded = (bool)(e.Value ?? true)" />
-                                            <span class="ms-2 cell-muted" style="white-space:nowrap">
-                                                Línea @(line.SortOrder + 1)
-                                            </span>
-                                        </div>
+                                        <RadzenColumn Size="12" SizeMD="1">
+                                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                                <RadzenCheckBox TValue="bool" @bind-Value="line.IsIncluded" />
+                                                <span class="cell-muted">LÃ­nea @(line.SortOrder + 1)</span>
+                                            </RadzenStack>
+                                        </RadzenColumn>
                                     }
-
-                                    @* Código LER *@
                                     @if (line.LerCodeCode != null)
                                     {
-                                        <div class="col-auto">
-                                            <span class="badge badge-neutral" title="@line.LerCodeDescription">
-                                                <i class="bi bi-tag me-1"></i>@line.LerCodeCode
-                                            </span>
-                                        </div>
+                                        <RadzenColumn Size="12" SizeMD="2">
+                                            <RadzenBadge Text="@line.LerCodeCode" Title="@line.LerCodeDescription" />
+                                        </RadzenColumn>
                                     }
-
-                                    @* Selector de residuo *@
-                                    <div class="col-md-4">
-                                        <label>Residuo</label>
-                                        @if (line.LoadingResidues)
-                                        {
-                                            <div class="d-flex align-items-center gap-2 mt-1">
-                                                <div class="spinner spinner-sm"></div>
-                                                <span class="cell-muted">Cargando residuos…</span>
-                                            </div>
-                                        }
-                                        else if (line.AvailableResidues.Count == 0)
-                                        {
-                                            <div class="alert alert-info py-1 px-2 mt-1">
-                                                No hay residuos con el código LER
-                                                <strong>@(line.LerCodeCode ?? "—")</strong>.
-                                                Puedes continuar sin asignar residuo.
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <select class="form-control"
-                                                    value="@(line.IdResidue?.ToString() ?? "")"
-                                                    disabled="@(!line.IsIncluded)"
-                                                    @onchange="e => OnResidueChanged(line, e.Value?.ToString())">
-                                                <option value="">— Sin especificar —</option>
-                                                @foreach (var r in line.AvailableResidues)
+                                    <RadzenColumn Size="12" SizeMD="4">
+                                        <RadzenFormField Text="Residuo" Variant="Variant.Outlined" Style="width:100%">
+                                            <ChildContent>
+                                                @if (line.LoadingResidues)
                                                 {
-                                                    <option value="@r.Id">
-                                                        @r.Name
-                                                        @(r.IsDangerous ? " ⚠️ Peligroso" : "")
-                                                        @(r.IsRAEE ? " ♻️ RAEE" : "")
-                                                    </option>
+                                                    <RadzenTextBox Value="Cargando residuosâ€¦" ReadOnly="true" Style="width:100%" />
                                                 }
-                                            </select>
-                                        }
-                                    </div>
-
-                                    @* Peso *@
-                                    <div class="col-md-2">
-                                        <label>Peso (kg)</label>
-                                        <input type="number" class="form-control"
-                                               min="0" step="0.001"
-                                               placeholder="0,000"
-                                               disabled="@(!line.IsIncluded)"
-                                               value="@line.Weight"
-                                               @onchange="e => line.Weight = ParseDecimal(e.Value?.ToString())" />
-                                    </div>
-
-                                    @* Unidades *@
-                                    <div class="col-md-2">
-                                        <label>Unidades</label>
-                                        <input type="number" class="form-control"
-                                               min="0" step="1"
-                                               placeholder="0"
-                                               disabled="@(!line.IsIncluded)"
-                                               value="@line.Units"
-                                               @onchange="e => line.Units = ParseInt(e.Value?.ToString())" />
-                                    </div>
-
-                                </div>
+                                                else if (line.AvailableResidues.Count == 0)
+                                                {
+                                                    <RadzenTextBox Value="@($"Sin residuos para LER {line.LerCodeCode ?? "â€”"}")" ReadOnly="true" Style="width:100%" />
+                                                }
+                                                else
+                                                {
+                                                    <RadzenDropDown TValue="Guid?" @bind-Value="line.IdResidue"
+                                                                    Data="@line.AvailableResidues" TextProperty="Name" ValueProperty="Id"
+                                                                    Disabled="@(!line.IsIncluded)" AllowClear="true"
+                                                                    Placeholder="â€” Sin especificar â€”" Style="width:100%" />
+                                                }
+                                            </ChildContent>
+                                        </RadzenFormField>
+                                    </RadzenColumn>
+                                    <RadzenColumn Size="6" SizeMD="2">
+                                        <RadzenFormField Text="Peso (kg)" Variant="Variant.Outlined" Style="width:100%">
+                                            <ChildContent>
+                                                <RadzenNumeric TValue="decimal?" @bind-Value="line.Weight"
+                                                               Min="0" Format="0.000" Disabled="@(!line.IsIncluded)" Style="width:100%" />
+                                            </ChildContent>
+                                        </RadzenFormField>
+                                    </RadzenColumn>
+                                    <RadzenColumn Size="6" SizeMD="2">
+                                        <RadzenFormField Text="Unidades" Variant="Variant.Outlined" Style="width:100%">
+                                            <ChildContent>
+                                                <RadzenNumeric TValue="int?" @bind-Value="line.Units"
+                                                               Min="0" Step="1" Disabled="@(!line.IsIncluded)" Style="width:100%" />
+                                            </ChildContent>
+                                        </RadzenFormField>
+                                    </RadzenColumn>
+                                </RadzenRow>
                             </div>
                         }
                     </div>
                 }
-
                 @if (includedCount == 0)
                 {
-                    <div class="field-error">Debes incluir al menos una línea de residuo.</div>
+                    <small class="rz-color-danger">Debes incluir al menos una lÃ­nea de residuo.</small>
                 }
-            </div>
+            </RadzenFieldset>
         }
 
-        @* ── 3. Entidades implicadas ─────────────────────────────────────── *@
-        <div class="form-section">
-            <div class="form-section-title">
-                <i class="bi bi-building form-section-title-icon"></i>
-                Entidades del traslado
-            </div>
-
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label>
-                        Origen <span class="required">*</span>
-                        <span class="field-help">Roles: @string.Join(", ", WasteMoveSourceRoles.Valid)</span>
-                    </label>
-                    <select class="form-control" @bind="_formModel.IdSource">
-                        <option value="">— Seleccionar —</option>
-                        @foreach (var e in _sourceEntities)
-                        {
-                            <option value="@e.Id">@e.Name (@EntityRoles.Label(e.EntityRole))</option>
-                        }
-                    </select>
-                    <FieldMessage Field="IdSource" Errors="_validationErrors" />
-                </div>
-
-                <div class="col-md-4">
-                    <label>
-                        Destino <span class="required">*</span>
-                        <span class="field-help">Roles: @string.Join(", ", WasteMoveDestinationRoles.Valid)</span>
-                    </label>
-                    <select class="form-control" @bind="_formModel.IdDestination">
-                        <option value="">— Seleccionar —</option>
-                        @foreach (var e in _destinationEntities)
-                        {
-                            <option value="@e.Id">@e.Name (@EntityRoles.Label(e.EntityRole))</option>
-                        }
-                    </select>
-                    <FieldMessage Field="IdDestination" Errors="_validationErrors" />
-                </div>
-
-                <div class="col-md-4">
-                    <label>SCRAP <span class="required">*</span></label>
-                    @if (_isScrapProfile)
-                    {
-                        <input class="form-control" readonly
-                               value="@(_scrapEntities.FirstOrDefault(e => e.Id == _formModel.IdScrap)?.Name ?? "—")" />
-                    }
-                    else
-                    {
-                        <select class="form-control" @bind="_formModel.IdScrap">
-                            <option value="">— Seleccionar —</option>
-                            @foreach (var e in _scrapEntities)
+        @* â”€â”€ 3. Entidades implicadas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
+        <RadzenFieldset Text="Entidades del traslado" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Origen *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="Guid?" Name="IdSource" @bind-Value="_formModel.IdSource"
+                                            Data="@_sourceEntities" TextProperty="Name" ValueProperty="Id"
+                                            AllowFiltering="true" AllowClear="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="â€” Seleccionar â€”" Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="IdSource" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Destino *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="Guid?" Name="IdDestination" @bind-Value="_formModel.IdDestination"
+                                            Data="@_destinationEntities" TextProperty="Name" ValueProperty="Id"
+                                            AllowFiltering="true" AllowClear="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="â€” Seleccionar â€”" Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="IdDestination" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="SCRAP *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            @if (_isScrapProfile)
                             {
-                                <option value="@e.Id">@e.Name</option>
+                                <RadzenTextBox Style="width:100%" ReadOnly="true"
+                                               Value="@(_scrapEntities.FirstOrDefault(e => e.Id == _formModel.IdScrap)?.Name ?? "â€”")" />
                             }
-                        </select>
-                    }
-                    <FieldMessage Field="IdScrap" Errors="_validationErrors" />
-                </div>
+                            else
+                            {
+                                <RadzenDropDown TValue="Guid?" Name="IdScrap" @bind-Value="_formModel.IdScrap"
+                                                Data="@_scrapEntities" TextProperty="Name" ValueProperty="Id"
+                                                AllowClear="true" Placeholder="â€” Seleccionar â€”" Style="width:100%" />
+                            }
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="IdScrap" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="SCRAP secundario (opcional)" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="Guid?" Name="IdScrap2" @bind-Value="_formModel.IdScrap2"
+                                            Data="@_scrapEntities" TextProperty="Name" ValueProperty="Id"
+                                            AllowClear="true" Placeholder="â€” Ninguno â€”" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
-                <div class="col-md-4">
-                    <label>SCRAP secundario (opcional)</label>
-                    <select class="form-control" @bind="_formModel.IdScrap2">
-                        <option value="">— Ninguno —</option>
-                        @foreach (var e in _scrapEntities)
-                        {
-                            <option value="@e.Id">@e.Name</option>
-                        }
-                    </select>
-                </div>
-            </div>
-        </div>
+        @* â”€â”€ 4. Fechas planificadas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
+        <RadzenFieldset Text="Fechas planificadas (opcionales)" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Inicio recogida" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="_formModel.PlannedPickupStart"
+                                              ShowTime="true" HourFormat="24" DateFormat="dd/MM/yyyy HH:mm" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Fin recogida" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="_formModel.PlannedPickupEnd"
+                                              ShowTime="true" HourFormat="24" DateFormat="dd/MM/yyyy HH:mm" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Inicio entrega" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="_formModel.PlannedDeliveryStart"
+                                              ShowTime="true" HourFormat="24" DateFormat="dd/MM/yyyy HH:mm" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Fin entrega" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="_formModel.PlannedDeliveryEnd"
+                                              ShowTime="true" HourFormat="24" DateFormat="dd/MM/yyyy HH:mm" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
-        @* ── 4. Fechas planificadas ──────────────────────────────────────── *@
-        <div class="form-section">
-            <div class="form-section-title">
-                <i class="bi bi-calendar3 form-section-title-icon"></i>
-                Fechas planificadas (opcionales)
-            </div>
-
-            <div class="row g-3">
-                <div class="col-md-3">
-                    <label>Inicio recogida</label>
-                    <input type="datetime-local" class="form-control"
-                           value="@(_formModel.PlannedPickupStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
-                           @onchange="e => _formModel.PlannedPickupStart = ParseDate(e.Value?.ToString())" />
-                </div>
-                <div class="col-md-3">
-                    <label>Fin recogida</label>
-                    <input type="datetime-local" class="form-control"
-                           value="@(_formModel.PlannedPickupEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
-                           @onchange="e => _formModel.PlannedPickupEnd = ParseDate(e.Value?.ToString())" />
-                    <FieldMessage Field="PlannedPickupEnd" Errors="_validationErrors" />
-                </div>
-                <div class="col-md-3">
-                    <label>Inicio entrega</label>
-                    <input type="datetime-local" class="form-control"
-                           value="@(_formModel.PlannedDeliveryStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
-                           @onchange="e => _formModel.PlannedDeliveryStart = ParseDate(e.Value?.ToString())" />
-                    <FieldMessage Field="PlannedDeliveryStart" Errors="_validationErrors" />
-                </div>
-                <div class="col-md-3">
-                    <label>Fin entrega</label>
-                    <input type="datetime-local" class="form-control"
-                           value="@(_formModel.PlannedDeliveryEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
-                           @onchange="e => _formModel.PlannedDeliveryEnd = ParseDate(e.Value?.ToString())" />
-                </div>
-            </div>
-        </div>
-
-        @* ── Errores y acciones ──────────────────────────────────────────── *@
+        @* â”€â”€ Errores y acciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
         @if (_validationErrors.Any())
         {
-            <div class="alert alert-danger mt-3">
+            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mt-4">
                 <ul class="mb-0">
                     @foreach (var err in _validationErrors.Values.SelectMany(v => v))
                     {
                         <li>@err</li>
                     }
                 </ul>
-            </div>
+            </RadzenAlert>
         }
-
         @if (!string.IsNullOrEmpty(_serverError))
         {
-            <div class="alert alert-danger mt-3">@_serverError</div>
+            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mt-4">@_serverError</RadzenAlert>
         }
 
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary" disabled="@_saving">
-                @if (_saving) { <span class="spinner spinner-sm me-1"></span> }
-                <i class="bi bi-truck me-1"></i>Crear Traslado
-            </button>
-            <button type="button" class="btn btn-outline-neutral"
-                    @onclick='() => Nav.NavigateTo("/waste-moves")'>
-                Cancelar
-            </button>
-        </div>
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" class="rz-mt-4">
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Crear Traslado" Icon="local_shipping"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@_saving" IsBusy="@_saving" />
+            <RadzenButton Text="Cancelar" Icon="cancel" ButtonStyle="ButtonStyle.Light"
+                          ButtonType="ButtonType.Button" Click="@(_ => Nav.NavigateTo("/waste-moves"))" />
+        </RadzenStack>
 
-    </EditForm>
+    </RadzenTemplateForm>
 }
 
 @code {
@@ -402,7 +315,7 @@ else
     private string? _serverError;
     private Dictionary<string, List<string>> _validationErrors = new();
 
-    // ── Modelo de cabecera del formulario ─────────────────────────────────────
+    // â”€â”€ Modelo de cabecera del formulario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     private sealed class HeaderModel
     {
         public Guid?     IdSource             { get; set; }
@@ -415,12 +328,12 @@ else
         public DateTime? PlannedDeliveryEnd   { get; set; }
     }
 
-    // ── Modelo de línea de residuo ────────────────────────────────────────────
+    // â”€â”€ Modelo de lÃ­nea de residuo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     private sealed class LineModel
     {
         public Guid     SoId               { get; init; }
         public string   SoNumber           { get; init; } = "";
-        public Guid?    SoResidueId        { get; init; }   // ID de la línea de residuo de la SO (null si no procede de una línea concreta)
+        public Guid?    SoResidueId        { get; init; }   // ID de la lÃ­nea de residuo de la SO (null si no procede de una lÃ­nea concreta)
         public int      SortOrder          { get; init; }
         public Guid?    IdLerCode          { get; init; }
         public string?  LerCodeCode        { get; init; }
@@ -438,7 +351,7 @@ else
     private readonly HeaderModel _formModel = new();
     private readonly List<LineModel> _lines = [];
 
-    // Caché de residuos por LER code para no recargar si ya se cargaron
+    // CachÃ© de residuos por LER code para no recargar si ya se cargaron
     private readonly Dictionary<Guid, List<ResidueDto>> _residueCache = new();
 
     private bool _isScrapProfile;
@@ -448,7 +361,7 @@ else
     private IReadOnlyList<EntitySelectorDto> _destinationEntities = [];
     private IReadOnlyList<EntitySelectorDto> _scrapEntities       = [];
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // â”€â”€ Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     protected override async Task OnInitializedAsync()
     {
         var allSOs = await Mediator.Send(new GetServiceOrdersQuery(PageSize: 500));
@@ -471,11 +384,11 @@ else
         _loading = false;
     }
 
-    // ── Eventos ───────────────────────────────────────────────────────────────
+    // â”€â”€ Eventos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async Task ToggleSoAsync(ServiceOrderDto so)
     {
-        // Si ya está seleccionada, eliminar todas sus líneas
+        // Si ya estÃ¡ seleccionada, eliminar todas sus lÃ­neas
         var existingLines = _lines.Where(l => l.SoId == so.Id).ToList();
         if (existingLines.Count > 0)
         {
@@ -487,13 +400,13 @@ else
         if (_formModel.IdSource is null && so.IdPickupPoint.HasValue)
             _formModel.IdSource = so.IdPickupPoint.Value;
 
-        // Obtener el detalle de la SO para acceder a todas sus líneas de residuo
+        // Obtener el detalle de la SO para acceder a todas sus lÃ­neas de residuo
         var detail = await Mediator.Send(new GetServiceOrderByIdQuery(so.Id));
 
         if (detail is not null && detail.Residues.Count > 0)
         {
-            // Crear una LineModel por cada línea de residuo de la SO.
-            // Carga secuencial para evitar race conditions en la caché y
+            // Crear una LineModel por cada lÃ­nea de residuo de la SO.
+            // Carga secuencial para evitar race conditions en la cachÃ© y
             // llamadas concurrentes a StateHasChanged en Blazor Server.
             foreach (var residue in detail.Residues)
             {
@@ -518,7 +431,7 @@ else
         }
         else
         {
-            // Fallback: SO sin líneas de residuo — crear una línea desde la cabecera
+            // Fallback: SO sin lÃ­neas de residuo â€” crear una lÃ­nea desde la cabecera
             var line = new LineModel
             {
                 SoId               = so.Id,
@@ -599,10 +512,10 @@ else
             return;
         }
 
-        // Validar que haya al menos una línea incluida
+        // Validar que haya al menos una lÃ­nea incluida
         if (!_lines.Any(l => l.IsIncluded))
         {
-            _validationErrors["Lines"] = ["Debes incluir al menos una línea de residuo."];
+            _validationErrors["Lines"] = ["Debes incluir al menos una lÃ­nea de residuo."];
             return;
         }
 
@@ -654,7 +567,7 @@ else
         }
     }
 
-    // ── Helpers de parsing ────────────────────────────────────────────────────
+    // â”€â”€ Helpers de parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private static DateTime? ParseDate(string? value)
         => DateTime.TryParse(value, out var dt) ? dt : null;

@@ -15,6 +15,8 @@
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.Extensions.Caching.Memory
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator           Mediator
 @inject NavigationManager   Nav
@@ -32,7 +34,9 @@
 
 @if (_loading)
 {
-    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+    <div class="gt-loading">
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+    </div>
 }
 else
 {
@@ -128,10 +132,9 @@ else
         <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-list-ul me-2"></i>Líneas de producto</span>
-                <button type="button" class="btn btn-outline-primary btn-sm"
-                        @onclick="AddEmptyLine">
-                    <i class="bi bi-plus-lg me-1"></i>Añadir línea
-                </button>
+                <RadzenButton Text="Añadir línea" Icon="add" ButtonStyle="ButtonStyle.Light"
+                              ButtonType="ButtonType.Button" Size="ButtonSize.Small"
+                              Click="@(_ => AddEmptyLine())" />
             </div>
             <div class="card-body p-0">
                 @if (_lines.Count == 0)
@@ -231,11 +234,9 @@ else
                                         @(((line.Quantity ?? 0) * (line.Price ?? 0)).ToString("N2"))
                                     </td>
                                     <td>
-                                        <button type="button"
-                                                class="btn btn-outline-danger btn-sm btn-icon-only"
-                                                @onclick="() => RemoveLineAsync(idx)">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
+                                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger"
+                                                      ButtonType="ButtonType.Button" Size="ButtonSize.Small"
+                                                      Click="@(_ => RemoveLineAsync(idx))" />
                                     </td>
                                 </tr>
                             }
@@ -262,28 +263,22 @@ else
     @* ── Acciones ───────────────────────────────────────────────────────────── *@
     @if (!string.IsNullOrEmpty(_errorMessage))
     {
-        <div class="alert alert-danger">@_errorMessage</div>
+        <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mb-3">@_errorMessage</RadzenAlert>
     }
 
-    <div class="d-flex gap-2">
-        <button type="button" class="btn btn-primary" @onclick="SaveDraftAsync" disabled="@_saving">
-            @if (_saving)
-            {
-                <span class="spinner-border spinner-border-sm me-1"></span>
-            }
-            <i class="bi bi-floppy me-1"></i>Guardar borrador
-        </button>
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+        <RadzenButton Text="Guardar borrador" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                      ButtonType="ButtonType.Button" Disabled="@_saving" IsBusy="@_saving"
+                      Click="@(_ => SaveDraftAsync())" />
         @if (_isEdit && _lines.Count > 0 && _state == ProductDeclaration.States.Draft)
         {
-            <button type="button" class="btn btn-success" @onclick="SaveAndEmitAsync" disabled="@_saving">
-                <i class="bi bi-send me-1"></i>Guardar y emitir
-            </button>
+            <RadzenButton Text="Guardar y emitir" Icon="send" ButtonStyle="ButtonStyle.Success"
+                          ButtonType="ButtonType.Button" Disabled="@_saving"
+                          Click="@(_ => SaveAndEmitAsync())" />
         }
-        <button type="button" class="btn btn-ghost"
-                @onclick='() => Nav.NavigateTo("/product-declarations")'>
-            Cancelar
-        </button>
-    </div>
+        <RadzenButton Text="Cancelar" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button"
+                      Click="@(_ => Nav.NavigateTo("/product-declarations"))" />
+    </RadzenStack>
 }
 
 @code {

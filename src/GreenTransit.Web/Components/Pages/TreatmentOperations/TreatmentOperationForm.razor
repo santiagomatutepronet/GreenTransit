@@ -8,6 +8,8 @@
 @using GreenTransit.Application.Features.TreatmentOperations.Queries
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator        Mediator
 @inject NavigationManager Nav
@@ -23,117 +25,99 @@
 
 @if (_loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div class="gt-loading"><RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else
 {
-    <EditForm Model="_model" OnValidSubmit="SaveAsync">
-        <div class="row g-3">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header fw-semibold">
-                        <i class="bi bi-info-circle me-2"></i>Datos de la operación
-                    </div>
-                    <div class="card-body row g-3">
-
-                        @* Tipo *@
-                        <div class="col-md-3">
-                            <label class="form-label">Tipo <span class="text-danger">*</span></label>
-                            <InputSelect class="form-select" @bind-Value="_model.OperationType">
-                                <option value="">— Seleccionar —</option>
-                                <option value="Recovery">R — Valorización</option>
-                                <option value="Disposal">D — Eliminación</option>
-                            </InputSelect>
-                            @if (_validationErrors.TryGetValue("OperationType", out var opErrors))
-                            {
-                                <div class="text-danger small">@string.Join(", ", opErrors)</div>
-                            }
-                        </div>
-
-                        @* Código *@
-                        <div class="col-md-2">
-                            <label class="form-label">Código <span class="text-danger">*</span></label>
-                            <InputText class="form-control text-uppercase" @bind-Value="_model.Code"
-                                       placeholder="R1, D5…" maxlength="8" />
-                            @if (_validationErrors.TryGetValue("Code", out var codeErrors))
-                            {
-                                <div class="text-danger small">@string.Join(", ", codeErrors)</div>
-                            }
-                        </div>
-
-                        @* Orden *@
-                        <div class="col-md-2">
-                            <label class="form-label">Orden</label>
-                            <InputNumber class="form-control" @bind-Value="_model.SortOrder" />
-                        </div>
-
-                        @* Estado (solo en edición) *@
-                        @if (_isEdit)
-                        {
-                            <div class="col-md-2 d-flex align-items-end pb-1">
-                                <div class="form-check">
-                                    <InputCheckbox class="form-check-input" @bind-Value="_model.IsActive" id="chkActive" />
-                                    <label class="form-check-label" for="chkActive">Activo</label>
-                                </div>
-                            </div>
-                        }
-
-                        @* Descripción *@
-                        <div class="col-12">
-                            <label class="form-label">Descripción <span class="text-danger">*</span></label>
-                            <InputText class="form-control" @bind-Value="_model.Description" maxlength="512" />
-                            @if (_validationErrors.TryGetValue("Description", out var descErrors))
-                            {
-                                <div class="text-danger small">@string.Join(", ", descErrors)</div>
-                            }
-                        </div>
-
-                        @* Descripción corta *@
-                        <div class="col-md-6">
-                            <label class="form-label">Descripción corta</label>
-                            <InputText class="form-control" @bind-Value="_model.ShortDescription" maxlength="128" />
-                        </div>
-
-                        @* Flags de clasificación *@
-                        <div class="col-12">
-                            <label class="form-label d-block">Clasificación</label>
-                            <div class="d-flex gap-4">
-                                <div class="form-check">
-                                    <InputCheckbox class="form-check-input" @bind-Value="_model.IsRecycling" id="chkRecycling" />
-                                    <label class="form-check-label" for="chkRecycling">♻ Reciclaje</label>
-                                </div>
-                                <div class="form-check">
-                                    <InputCheckbox class="form-check-input" @bind-Value="_model.IsEnergyRecovery" id="chkEnergy" />
-                                    <label class="form-check-label" for="chkEnergy">⚡ Recuperación energética</label>
-                                </div>
-                                <div class="form-check">
-                                    <InputCheckbox class="form-check-input" @bind-Value="_model.IsPreparationForReuse" id="chkReuse" />
-                                    <label class="form-check-label" for="chkReuse">🔄 Preparación para reutilización</label>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-            </div>
-        </div>
+    <RadzenTemplateForm TItem="FormModel" Data="@_model" Submit="@SaveAsync">
+        <RadzenFieldset Text="Datos de la operación" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Tipo *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string?" Name="OperationType" @bind-Value="_model.OperationType"
+                                            Data="@(new[]{new{V="Recovery",L="R — Valorización"},new{V="Disposal",L="D — Eliminación"}})"
+                                            TextProperty="L" ValueProperty="V"
+                                            Placeholder="— Seleccionar —" AllowClear="true" Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="OperationType" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="2">
+                    <RadzenFormField Text="Código *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Code" @bind-Value="_model.Code" Placeholder="R1, D5…" MaxLength="8" Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="Code" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="2">
+                    <RadzenFormField Text="Orden" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenNumeric TValue="int?" Name="SortOrder" @bind-Value="_model.SortOrder" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                @if (_isEdit)
+                {
+                    <RadzenColumn SizeMD="2" class="d-flex align-items-center rz-mt-4">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenCheckBox TValue="bool" Name="IsActive" @bind-Value="_model.IsActive" />
+                            <RadzenLabel Text="Activo" Component="IsActive" />
+                        </RadzenStack>
+                    </RadzenColumn>
+                }
+            </RadzenRow>
+            <RadzenRow Gap="1rem" class="rz-mt-4">
+                <RadzenColumn Size="12">
+                    <RadzenFormField Text="Descripción *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="Description" @bind-Value="_model.Description" MaxLength="512" Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="Description" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="6">
+                    <RadzenFormField Text="Descripción corta" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="ShortDescription" @bind-Value="_model.ShortDescription" MaxLength="128" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+            <RadzenRow Gap="2rem" class="rz-mt-4">
+                <RadzenColumn Size="12">
+                    <RadzenText TextStyle="TextStyle.Subtitle2">Clasificación</RadzenText>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" class="rz-mt-2">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenCheckBox TValue="bool" Name="IsRecycling" @bind-Value="_model.IsRecycling" />
+                            <RadzenLabel Text="♻ Reciclaje" Component="IsRecycling" />
+                        </RadzenStack>
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenCheckBox TValue="bool" Name="IsEnergyRecovery" @bind-Value="_model.IsEnergyRecovery" />
+                            <RadzenLabel Text="⚡ Recuperación energética" Component="IsEnergyRecovery" />
+                        </RadzenStack>
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenCheckBox TValue="bool" Name="IsPreparationForReuse" @bind-Value="_model.IsPreparationForReuse" />
+                            <RadzenLabel Text="🔄 Preparación para reutilización" Component="IsPreparationForReuse" />
+                        </RadzenStack>
+                    </RadzenStack>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
         @if (_errorMessage is not null)
         {
-            <div class="alert alert-danger mt-3">@_errorMessage</div>
+            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mt-4">@_errorMessage</RadzenAlert>
         }
 
-        <div class="mt-3 d-flex gap-2">
-            <button type="submit" class="btn btn-primary" disabled="@_saving">
-                @if (_saving)
-                {
-                    <span class="spinner-border spinner-border-sm me-1"></span>
-                }
-                Guardar
-            </button>
-            <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancelar</button>
-        </div>
-    </EditForm>
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" class="rz-mt-4">
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Guardar" Icon="save"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@_saving" IsBusy="@_saving" />
+            <RadzenButton Text="Cancelar" Icon="cancel" ButtonStyle="ButtonStyle.Light"
+                          ButtonType="ButtonType.Button" Click="@(_ => Cancel())" />
+        </RadzenStack>
+    </RadzenTemplateForm>
 }
 
 @code {

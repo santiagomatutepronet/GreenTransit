@@ -1,859 +1,458 @@
-@using System.Collections.Immutable
+ï»¿@using System.Collections.Immutable
 @using Microsoft.Extensions.Logging
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Domain.Authorization
 @using GreenTransit.Web.Components.Authorization
+@using Radzen
+@using Radzen.Blazor
 @inject ICurrentUserService CurrentUser
 @inject GreenTransit.Web.Services.NavMenuStateService NavMenuState
 @inject IPagePermissionService PagePermissions
 @inject ILogger<NavMenu> Logger
 
-<nav class="nav-groups">
+<RadzenPanelMenu Multiple="true" Style="height: 100%; overflow-y: auto;">
 
-    @* -- Inicio ------------------------------------------------------------ *@
-    <div class="nav-group">
-        <NavLink class="nav-item" href="/" Match="NavLinkMatch.All">
-            <i class="bi bi-house-door-fill nav-icon"></i>
-            <span class="nav-label">Inicio</span>
-        </NavLink>
-    </div>
+    @* ?? Inicio ???????????????????????????????????????????????????????????? *@
+    <RadzenPanelMenuItem Text="Inicio" Icon="home" Path="/"
+                         Match="NavLinkMatch.All"
+                         Visible="@Allow("/")" />
 
-    @* -- Configuración: visible para cualquier perfil con al menos un permiso en la sección *@
+    @* ?? ConfiguraciÃ³n ????????????????????????????????????????????????????? *@
     @if (AllowAny("/entities", "/ler-codes", "/residues", "/treatment-operations", "/admin/dictionaries/product-declarations"))
     {
-        <div class="nav-group">
-            <div class="nav-group-title" @onclick='() => ToggleGroup("config")'>
-                <i class="bi bi-book-fill nav-icon"></i>
-                <span class="nav-label">Configuración</span>
-                <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("config") ? "rotated" : "")"></i>
-            </div>
-            @if (!NavMenuState.IsCollapsed("config"))
-            {
-            @if (Allow("/entities"))
-            {
-            <NavLink class="nav-item nav-item--child" href="/entities">
-                <i class="bi bi-building nav-icon"></i>
-                <span class="nav-label">Entidades</span>
-            </NavLink>
-            }
-            @if (Allow("/ler-codes"))
-            {
-            <NavLink class="nav-item nav-item--child" href="/ler-codes">
-                <i class="bi bi-list-ol nav-icon"></i>
-                <span class="nav-label">LER</span>
-            </NavLink>
-            }
-            @if (Allow("/residues"))
-            {
-            <NavLink class="nav-item nav-item--child" href="/residues">
-                <i class="bi bi-recycle nav-icon"></i>
-                <span class="nav-label">Residuos</span>
-            </NavLink>
-            }
-            @if (Allow("/treatment-operations"))
-            {
-            <NavLink class="nav-item nav-item--child" href="/treatment-operations">
-                <i class="bi bi-gear-fill nav-icon"></i>
-                <span class="nav-label">Operaciones R/D</span>
-            </NavLink>
-            }
-            @if (Allow("/admin/dictionaries/product-declarations"))
-            {
-            <NavLink class="nav-item nav-item--child"
-                     href="/admin/dictionaries/product-declarations">
-                <i class="bi bi-sliders nav-icon"></i>
-                <span class="nav-label">Diccionarios Declaración</span>
-            </NavLink>
-            }
-            }
-        </div>
+        <RadzenPanelMenuItem Text="ConfiguraciÃ³n" Icon="book"
+                             Expanded="@IsGroupExpanded("config")"
+                             ExpandedChanged="@(e => OnGroupExpandedChanged("config", e))">
+            <RadzenPanelMenuItem Text="Entidades" Icon="business" Path="/entities"
+                                 Visible="@Allow("/entities")" />
+            <RadzenPanelMenuItem Text="LER" Icon="format_list_numbered" Path="/ler-codes"
+                                 Visible="@Allow("/ler-codes")" />
+            <RadzenPanelMenuItem Text="Residuos" Icon="recycling" Path="/residues"
+                                 Visible="@Allow("/residues")" />
+            <RadzenPanelMenuItem Text="Operaciones R/D" Icon="settings" Path="/treatment-operations"
+                                 Visible="@Allow("/treatment-operations")" />
+            <RadzenPanelMenuItem Text="Diccionarios DeclaraciÃ³n" Icon="tune" Path="/admin/dictionaries/product-declarations"
+                                 Visible="@Allow("/admin/dictionaries/product-declarations")" />
+        </RadzenPanelMenuItem>
     }
 
-    @* -- Operaciones ---------------------------------------------- *@
-    <div class="nav-group">
-        <div class="nav-group-title" @onclick='() => ToggleGroup("operaciones")'>
-            <i class="bi bi-truck nav-icon"></i>
-            <span class="nav-label">Operaciones</span>
-            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("operaciones") ? "rotated" : "")"></i>
-        </div>
-        @if (!NavMenuState.IsCollapsed("operaciones"))
-        {
-        @if (Allow("/service-orders"))
-        {
-        <NavLink class="nav-item nav-item--child" href="/service-orders">
-            <i class="bi bi-clipboard2-check nav-icon"></i>
-            <span class="nav-label">Órdenes de Servicio</span>
-        </NavLink>
-        }
+    @* ?? Operaciones ??????????????????????????????????????????????????????? *@
+    <RadzenPanelMenuItem Text="Operaciones" Icon="local_shipping"
+                         Expanded="@IsGroupExpanded("operaciones")"
+                         ExpandedChanged="@(e => OnGroupExpandedChanged("operaciones", e))">
 
-        @* Traslados: todos excepto PRODUCER (ve los suyos en reporting) *@
+        <RadzenPanelMenuItem Text="Ã“rdenes de Servicio" Icon="assignment" Path="/service-orders"
+                             Visible="@Allow("/service-orders")" />
+
         <ProfileAuthorizeView Profiles="@_profilesWasteMoves">
             <Authorized>
-                @if (Allow("/waste-moves"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/waste-moves">
-                    <i class="bi bi-arrow-left-right nav-icon"></i>
-                    <span class="nav-label">Traslados</span>
-                </NavLink>
-                }
+                <RadzenPanelMenuItem Text="Traslados" Icon="swap_horiz" Path="/waste-moves"
+                                     Visible="@Allow("/waste-moves")" />
             </Authorized>
         </ProfileAuthorizeView>
 
-        @* Entradas Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesEntryPlants">
             <Authorized>
-                @if (Allow("/entry-plants"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/entry-plants">
-                    <i class="bi bi-box-arrow-in-down nav-icon"></i>
-                    <span class="nav-label">Entradas Planta</span>
-                </NavLink>
-                }
+                <RadzenPanelMenuItem Text="Entradas Planta" Icon="factory" Path="/entry-plants"
+                                     Visible="@Allow("/entry-plants")" />
             </Authorized>
         </ProfileAuthorizeView>
 
-        @* Entradas CAC: CAC_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesEntryCACs">
             <Authorized>
-                @if (Allow("/entry-cacs"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/entry-cacs">
-                    <i class="bi bi-collection nav-icon"></i>
-                    <span class="nav-label">Entradas CAC</span>
-                </NavLink>
-                }
+                <RadzenPanelMenuItem Text="Entradas CAC" Icon="warehouse" Path="/entry-cacs"
+                                     Visible="@Allow("/entry-cacs")" />
             </Authorized>
         </ProfileAuthorizeView>
 
-        @* Tratamiento: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesTreatments">
             <Authorized>
-                @if (Allow("/treatment-plants"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/treatment-plants">
-                    <i class="bi bi-arrow-repeat nav-icon"></i>
-                    <span class="nav-label">Tratamiento</span>
-                </NavLink>
-                }
+                <RadzenPanelMenuItem Text="Tratamiento" Icon="autorenew" Path="/treatment-plants"
+                                     Visible="@Allow("/treatment-plants")" />
             </Authorized>
         </ProfileAuthorizeView>
-        }
-    </div>
 
-    @* -- Economía ---------------------------------------------- *@
+    </RadzenPanelMenuItem>
+
+    @* ?? EconomÃ­a ??????????????????????????????????????????????????????????? *@
     <ProfileAuthorizeView Profiles="@(new[]{ ProfileConstants.Scrap, ProfileConstants.Admin, ProfileConstants.PublicEnt, ProfileConstants.Coordinator })">
         <Authorized>
-            <div class="nav-group">
-                <div class="nav-group-title" @onclick='() => ToggleGroup("economia")'>
-                    <i class="bi bi-currency-euro nav-icon"></i>
-                    <span class="nav-label">Economía</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("economia") ? "rotated" : "")"></i>
-                </div>
-                @if (!NavMenuState.IsCollapsed("economia"))
-                {
-                @if (Allow("/agreements"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/agreements">
-                    <i class="bi bi-file-earmark-text nav-icon"></i>
-                    <span class="nav-label">Acuerdos</span>
-                </NavLink>
-                }
-                @if (Allow("/settlements"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/settlements">
-                    <i class="bi bi-receipt nav-icon"></i>
-                    <span class="nav-label">Liquidaciones</span>
-                </NavLink>
-                }
-                @if (Allow("/market-shares"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/market-shares">
-                    <i class="bi bi-pie-chart-fill nav-icon"></i>
-                    <span class="nav-label">Cuotas</span>
-                </NavLink>
-                }
-                }
-            </div>
+            @if (AllowAny("/agreements", "/settlements", "/market-shares"))
+            {
+                <RadzenPanelMenuItem Text="EconomÃ­a" Icon="euro_symbol"
+                                     Expanded="@IsGroupExpanded("economia")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("economia", e))">
+                    <RadzenPanelMenuItem Text="Acuerdos" Icon="description" Path="/agreements"
+                                         Visible="@Allow("/agreements")" />
+                    <RadzenPanelMenuItem Text="Liquidaciones" Icon="receipt_long" Path="/settlements"
+                                         Visible="@Allow("/settlements")" />
+                    <RadzenPanelMenuItem Text="Cuotas" Icon="pie_chart" Path="/market-shares"
+                                         Visible="@Allow("/market-shares")" />
+                </RadzenPanelMenuItem>
+            }
         </Authorized>
     </ProfileAuthorizeView>
 
-    @* -- Declaraciones de Producción -------------------------------- *@
+    @* ?? Declaraciones ????????????????????????????????????????????????????? *@
     <ProfileAuthorizeView Profiles="@_profilesDeclarations">
         <Authorized>
-            <div class="nav-group">
-                <div class="nav-group-title" @onclick='() => ToggleGroup("declaraciones")'>
-                    <i class="bi bi-box-seam-fill nav-icon"></i>
-                    <span class="nav-label">Declaraciones</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("declaraciones") ? "rotated" : "")"></i>
-                </div>
-                @if (!NavMenuState.IsCollapsed("declaraciones"))
-                {
-                @if (Allow("/product-declarations"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/product-declarations">
-                    <i class="bi bi-list-check nav-icon"></i>
-                    <span class="nav-label">Listado</span>
-                </NavLink>
-                }
-                @if (Allow("/product-declarations/dashboard"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/product-declarations/dashboard">
-                    <i class="bi bi-bar-chart-line nav-icon"></i>
-                    <span class="nav-label">Dashboard</span>
-                </NavLink>
-                }
-                <ProfileAuthorizeView Profiles="@_profilesManageDeclarations">
-                    <Authorized>
-                        @if (Allow("/product-declarations/new"))
-                        {
-                        <NavLink class="nav-item nav-item--child" href="/product-declarations/new">
-                            <i class="bi bi-plus-circle nav-icon"></i>
-                            <span class="nav-label">Nueva declaración</span>
-                        </NavLink>
-                        }
-                    </Authorized>
-                </ProfileAuthorizeView>
-                }
-            </div>
+            @if (AllowAny("/product-declarations", "/product-declarations/dashboard", "/product-declarations/new"))
+            {
+                <RadzenPanelMenuItem Text="Declaraciones" Icon="inventory_2"
+                                     Expanded="@IsGroupExpanded("declaraciones")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("declaraciones", e))">
+                    <RadzenPanelMenuItem Text="Listado" Icon="list" Path="/product-declarations"
+                                         Visible="@Allow("/product-declarations")" />
+                    <RadzenPanelMenuItem Text="Dashboard" Icon="bar_chart" Path="/product-declarations/dashboard"
+                                         Visible="@Allow("/product-declarations/dashboard")" />
+                    <ProfileAuthorizeView Profiles="@_profilesManageDeclarations">
+                        <Authorized>
+                            <RadzenPanelMenuItem Text="Nueva declaraciÃ³n" Icon="add_circle" Path="/product-declarations/new"
+                                                 Visible="@Allow("/product-declarations/new")" />
+                        </Authorized>
+                    </ProfileAuthorizeView>
+                </RadzenPanelMenuItem>
+            }
         </Authorized>
     </ProfileAuthorizeView>
 
-    @* -- Sostenibilidad --------------------------------------------- *@
-    <div class="nav-group">
-        <div class="nav-group-title" @onclick='() => ToggleGroup("sostenibilidad")'>
-            <i class="bi bi-tree-fill nav-icon"></i>
-            <span class="nav-label">Sostenibilidad</span>
-            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("sostenibilidad") ? "rotated" : "")"></i>
-        </div>
-        @if (!NavMenuState.IsCollapsed("sostenibilidad"))
-        {
-        @if (Allow("/incidents"))
-        {
-        <NavLink class="nav-item nav-item--child" href="/incidents">
-            <i class="bi bi-exclamation-triangle-fill nav-icon"></i>
-            <span class="nav-label">Incidencias</span>
-        </NavLink>
-        }
+    @* ?? Sostenibilidad ????????????????????????????????????????????????????? *@
+    <RadzenPanelMenuItem Text="Sostenibilidad" Icon="eco"
+                         Expanded="@IsGroupExpanded("sostenibilidad")"
+                         ExpandedChanged="@(e => OnGroupExpandedChanged("sostenibilidad", e))">
 
-        @* Zonas DUM: todos excepto CAC_OP y PLANT_OP *@
+        <RadzenPanelMenuItem Text="Incidencias" Icon="report_problem" Path="/incidents"
+                             Visible="@Allow("/incidents")" />
+
         <ProfileAuthorizeView Profiles="@_profilesDumZones">
             <Authorized>
-                @if (Allow("/dum-zones"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/dum-zones">
-                    <i class="bi bi-geo-alt-fill nav-icon"></i>
-                    <span class="nav-label">Zonas DUM</span>
-                </NavLink>
-                }
-                @if (Allow("/dum-zones/simulator"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/dum-zones/simulator">
-                    <i class="bi bi-geo-fill nav-icon"></i>
-                    <span class="nav-label">Simulador DUM</span>
-                </NavLink>
-                }
+                <RadzenPanelMenuItem Text="Zonas DUM" Icon="location_on" Path="/dum-zones"
+                                     Visible="@Allow("/dum-zones")" />
+                <RadzenPanelMenuItem Text="Simulador DUM" Icon="map" Path="/dum-zones/simulator"
+                                     Visible="@Allow("/dum-zones/simulator")" />
             </Authorized>
         </ProfileAuthorizeView>
 
-        @* Emisiones: todos excepto CAC_OP *@
         <ProfileAuthorizeView Profiles="@_profilesEmissions">
             <Authorized>
-                @if (Allow("/emissions"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/emissions">
-                    <i class="bi bi-cloud-haze2-fill nav-icon"></i>
-                    <span class="nav-label">Emisiones</span>
-                </NavLink>
-                }
+                <RadzenPanelMenuItem Text="Emisiones" Icon="cloud" Path="/emissions"
+                                     Visible="@Allow("/emissions")" />
             </Authorized>
         </ProfileAuthorizeView>
 
-        @* Energía Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesPlantEnergy">
             <Authorized>
-                @if (Allow("/plant-energies"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/plant-energies">
-                    <i class="bi bi-lightning-charge-fill nav-icon"></i>
-                    <span class="nav-label">Energía Planta</span>
-                </NavLink>
-                }
+                <RadzenPanelMenuItem Text="EnergÃ­a Planta" Icon="bolt" Path="/plant-energies"
+                                     Visible="@Allow("/plant-energies")" />
             </Authorized>
         </ProfileAuthorizeView>
 
-        @* Factores de Emisión: ADMIN, SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE *@
         <ProfileAuthorizeView Profiles="@_profilesEmissionFactors">
             <Authorized>
-                @if (Allow("/emission-factor-sets"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/emission-factor-sets">
-                    <i class="bi bi-cloud-haze2-fill nav-icon"></i>
-                    <span class="nav-label">Factores Emisión</span>
-                </NavLink>
-                }
+                <RadzenPanelMenuItem Text="Factores EmisiÃ³n" Icon="science" Path="/emission-factor-sets"
+                                     Visible="@Allow("/emission-factor-sets")" />
             </Authorized>
         </ProfileAuthorizeView>
-        }
-    </div>
 
-    @* -- Reporting ----------------------------------------------- *@
-    <div class="nav-group">
-        <div class="nav-group-title" @onclick='() => ToggleGroup("reporting")'>
-            <i class="bi bi-bar-chart-fill nav-icon"></i>
-            <span class="nav-label">Reporting</span>
-            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting") ? "rotated" : "")"></i>
-        </div>
-        @if (!NavMenuState.IsCollapsed("reporting"))
-        {
-        @* Trazabilidad: oculto del menú (accesible desde otras ventanas)
-        @if (Allow("/traceability"))
-        {
-        <NavLink class="nav-item nav-item--child" href="/traceability">
-            <i class="bi bi-diagram-3-fill nav-icon"></i>
-            <span class="nav-label">Trazabilidad</span>
-        </NavLink>
-        }
-        *@
-        @* Vista 360 Traslado: oculto del menú (accesible desde otras ventanas)
-        @if (Allow("/waste-moves"))
-        {
-        <NavLink class="nav-item nav-item--child" href="/waste-moves">
-            <i class="bi bi-search-heart nav-icon"></i>
-            <span class="nav-label">Vista 360º Traslado</span>
-        </NavLink>
-        }
-        *@
+    </RadzenPanelMenuItem>
 
-        @* KPIs: oculto del menú (accesible desde otras ventanas)
-        <ProfileAuthorizeView Profiles="@_profilesKPIs">
-            <Authorized>
-                @if (Allow("/kpis"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/kpis">
-                    <i class="bi bi-graph-up-arrow nav-icon"></i>
-                    <span class="nav-label">KPIs</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        *@
+    @* ?? Reporting ?????????????????????????????????????????????????????????? *@
+    <RadzenPanelMenuItem Text="Reporting" Icon="bar_chart_4_bars"
+                         Expanded="@IsGroupExpanded("reporting")"
+                         ExpandedChanged="@(e => OnGroupExpandedChanged("reporting", e))">
 
-        @* -- Dashboards de Optimización Logística: SCRAP, COORDINATOR, PUBLIC_ENT, ADMIN *@
+        @* -- Dashboards LogÃ­stica -- *@
         <ProfileAuthorizeView Profiles="@_profilesAnyLogisticsDashboard">
             <Authorized>
-                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-logistics")'>
-                    <i class="bi bi-truck-flatbed nav-icon"></i>
-                    <span class="nav-label">Dashboards Logística</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-logistics") ? "rotated" : "")"></i>
-                </div>
-            </Authorized>
-        </ProfileAuthorizeView>
-        @if (!NavMenuState.IsCollapsed("reporting-logistics"))
-        {
-        <ProfileAuthorizeView Profiles="@_profilesLogisticsOptimization">
-            <Authorized>
-                @if (Allow("/logistics/optimization"))
+                @if (AllowAny("/logistics/optimization", "/logistics/public-monitoring", "/logistics/operations"))
                 {
-                <NavLink class="nav-item nav-item--grandchild" href="/logistics/optimization">
-                    <i class="bi bi-truck nav-icon"></i>
-                    <span class="nav-label">Optimización SCRAP</span>
-                </NavLink>
+                    <RadzenPanelMenuItem Text="Dashboards LogÃ­stica" Icon="local_shipping"
+                                         Expanded="@IsGroupExpanded("reporting-logistics")"
+                                         ExpandedChanged="@(e => OnGroupExpandedChanged("reporting-logistics", e))">
+                        <ProfileAuthorizeView Profiles="@_profilesLogisticsOptimization">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="OptimizaciÃ³n SCRAP" Icon="route" Path="/logistics/optimization"
+                                                     Visible="@Allow("/logistics/optimization")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesPublicMonitoring">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="MonitorizaciÃ³n PÃºblica" Icon="visibility" Path="/logistics/public-monitoring"
+                                                     Visible="@Allow("/logistics/public-monitoring")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesOperationalDashboard">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Panel Operativo" Icon="speed" Path="/logistics/operations"
+                                                     Visible="@Allow("/logistics/operations")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                    </RadzenPanelMenuItem>
                 }
             </Authorized>
         </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesPublicMonitoring">
-            <Authorized>
-                @if (Allow("/logistics/public-monitoring"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/logistics/public-monitoring">
-                    <i class="bi bi-building-check nav-icon"></i>
-                    <span class="nav-label">Monitorización Pública</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesOperationalDashboard">
-            <Authorized>
-                @if (Allow("/logistics/operations"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/logistics/operations">
-                    <i class="bi bi-speedometer2 nav-icon"></i>
-                    <span class="nav-label">Panel Operativo</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        }
 
-        @* -- Dashboards de Movilidad Urbana (UC3): COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN *@
+        @* -- Movilidad Urbana (UC3) -- *@
         @if (AllowAny("/mobility/coordinator-analysis", "/mobility/municipal-monitoring", "/mobility/dispatch-data"))
         {
-        <ProfileAuthorizeView Profiles="@_profilesAnyMobilityDashboard">
-            <Authorized>
-                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-mobility")'>
-                    <i class="bi bi-signpost-2-fill nav-icon"></i>
-                    <span class="nav-label">Movilidad Urbana</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-mobility") ? "rotated" : "")"></i>
-                </div>
-            </Authorized>
-        </ProfileAuthorizeView>
-        @if (!NavMenuState.IsCollapsed("reporting-mobility"))
-        {
-        <ProfileAuthorizeView Profiles="@_profilesMobilityCoordinator">
-            <Authorized>
-                @if (Allow("/mobility/coordinator-analysis"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/mobility/coordinator-analysis">
-                    <i class="bi bi-diagram-3-fill nav-icon"></i>
-                    <span class="nav-label">Análisis Coordinador</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesMobilityMunicipal">
-            <Authorized>
-                @if (Allow("/mobility/municipal-monitoring"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/mobility/municipal-monitoring">
-                    <i class="bi bi-building-check nav-icon"></i>
-                    <span class="nav-label">Monitorización Municipio</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesMobilityDispatch">
-            <Authorized>
-                @if (Allow("/mobility/dispatch-data"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/mobility/dispatch-data">
-                    <i class="bi bi-database-fill-gear nav-icon"></i>
-                    <span class="nav-label">Datos Oficina Asignación</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        }
+            <ProfileAuthorizeView Profiles="@_profilesAnyMobilityDashboard">
+                <Authorized>
+                    <RadzenPanelMenuItem Text="Movilidad Urbana" Icon="signpost"
+                                         Expanded="@IsGroupExpanded("reporting-mobility")"
+                                         ExpandedChanged="@(e => OnGroupExpandedChanged("reporting-mobility", e))">
+                        <ProfileAuthorizeView Profiles="@_profilesMobilityCoordinator">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="AnÃ¡lisis Coordinador" Icon="account_tree" Path="/mobility/coordinator-analysis"
+                                                     Visible="@Allow("/mobility/coordinator-analysis")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesMobilityMunicipal">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="MonitorizaciÃ³n Municipio" Icon="domain" Path="/mobility/municipal-monitoring"
+                                                     Visible="@Allow("/mobility/municipal-monitoring")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesMobilityDispatch">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Datos Oficina AsignaciÃ³n" Icon="storage" Path="/mobility/dispatch-data"
+                                                     Visible="@Allow("/mobility/dispatch-data")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                    </RadzenPanelMenuItem>
+                </Authorized>
+            </ProfileAuthorizeView>
         }
 
-        @* -- Dashboards Tratamiento y Reciclaje (TR): SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE, ADMIN *@
+        @* -- Tratamiento y Reciclaje (TR) -- *@
         @if (AllowAny("/reporting/tratamiento-reciclaje/scrap-analysis",
                       "/reporting/tratamiento-reciclaje/municipal-monitoring",
                       "/reporting/tratamiento-reciclaje/coordinator-validation",
                       "/reporting/tratamiento-reciclaje/dispatch-data"))
         {
-        <ProfileAuthorizeView Profiles="@_profilesAnyTRDashboard">
-            <Authorized>
-                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-tr")'>
-                    <i class="bi bi-recycle nav-icon"></i>
-                    <span class="nav-label">Tratamiento y Reciclaje</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-tr") ? "rotated" : "")"></i>
-                </div>
-            </Authorized>
-        </ProfileAuthorizeView>
-        @if (!NavMenuState.IsCollapsed("reporting-tr"))
-        {
-        <ProfileAuthorizeView Profiles="@_profilesTRScrap">
-            <Authorized>
-                @if (Allow("/reporting/tratamiento-reciclaje/scrap-analysis"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/tratamiento-reciclaje/scrap-analysis">
-                    <i class="bi bi-recycle nav-icon"></i>
-                    <span class="nav-label">Análisis Revalorización SCRAP</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesTRMunicipal">
-            <Authorized>
-                @if (Allow("/reporting/tratamiento-reciclaje/municipal-monitoring"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/tratamiento-reciclaje/municipal-monitoring">
-                    <i class="bi bi-building-check nav-icon"></i>
-                    <span class="nav-label">Monitorización Reciclaje Municipal</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesTRCoordinator">
-            <Authorized>
-                @if (Allow("/reporting/tratamiento-reciclaje/coordinator-validation"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/tratamiento-reciclaje/coordinator-validation">
-                    <i class="bi bi-diagram-3-fill nav-icon"></i>
-                    <span class="nav-label">Validación Multi-SCRAP</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesTRDispatch">
-            <Authorized>
-                @if (Allow("/reporting/tratamiento-reciclaje/dispatch-data"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/tratamiento-reciclaje/dispatch-data">
-                    <i class="bi bi-database-fill-gear nav-icon"></i>
-                    <span class="nav-label">Datos Operativos TR</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        }
+            <ProfileAuthorizeView Profiles="@_profilesAnyTRDashboard">
+                <Authorized>
+                    <RadzenPanelMenuItem Text="Tratamiento y Reciclaje" Icon="recycling"
+                                         Expanded="@IsGroupExpanded("reporting-tr")"
+                                         ExpandedChanged="@(e => OnGroupExpandedChanged("reporting-tr", e))">
+                        <ProfileAuthorizeView Profiles="@_profilesTRScrap">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="AnÃ¡lisis Revalorizacion SCRAP" Icon="recycling" Path="/reporting/tratamiento-reciclaje/scrap-analysis"
+                                                     Visible="@Allow("/reporting/tratamiento-reciclaje/scrap-analysis")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesTRMunicipal">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="MonitorizaciÃ³n Reciclaje Municipal" Icon="domain" Path="/reporting/tratamiento-reciclaje/municipal-monitoring"
+                                                     Visible="@Allow("/reporting/tratamiento-reciclaje/municipal-monitoring")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesTRCoordinator">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="ValidaciÃ³n Multi-SCRAP" Icon="account_tree" Path="/reporting/tratamiento-reciclaje/coordinator-validation"
+                                                     Visible="@Allow("/reporting/tratamiento-reciclaje/coordinator-validation")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesTRDispatch">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Datos Operativos TR" Icon="storage" Path="/reporting/tratamiento-reciclaje/dispatch-data"
+                                                     Visible="@Allow("/reporting/tratamiento-reciclaje/dispatch-data")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                    </RadzenPanelMenuItem>
+                </Authorized>
+            </ProfileAuthorizeView>
         }
 
-        @* -- Dashboards Ecomodulación (UC5): SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE, ADMIN *@
+        @* -- EcomodulaciÃ³n (UC5) -- *@
         @if (AllowAny("/reporting/ecomodulation/scrap-overview",
                       "/reporting/ecomodulation/regulatory-view",
                       "/reporting/ecomodulation/dpp-readiness"))
         {
-        <ProfileAuthorizeView Profiles="@_profilesAnyEcomodulation">
-            <Authorized>
-                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-eco")'>
-                    <i class="bi bi-tree-fill nav-icon"></i>
-                    <span class="nav-label">Ecomodulación</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-eco") ? "rotated" : "")"></i>
-                </div>
-            </Authorized>
-        </ProfileAuthorizeView>
-        @if (!NavMenuState.IsCollapsed("reporting-eco"))
-        {
-        <ProfileAuthorizeView Profiles="@_profilesEcoScrap">
-            <Authorized>
-                @if (Allow("/reporting/ecomodulation/scrap-overview"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/ecomodulation/scrap-overview">
-                    <i class="bi bi-recycle nav-icon"></i>
-                    <span class="nav-label">Panel SCRAP</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesEcoRegulatory">
-            <Authorized>
-                @if (Allow("/reporting/ecomodulation/regulatory-view"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/ecomodulation/regulatory-view">
-                    <i class="bi bi-shield-check nav-icon"></i>
-                    <span class="nav-label">Vista Regulatoria</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesEcoDpp">
-            <Authorized>
-                @if (Allow("/reporting/ecomodulation/dpp-readiness"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/ecomodulation/dpp-readiness">
-                    <i class="bi bi-passport nav-icon"></i>
-                    <span class="nav-label">Preparación DPP</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
+            <ProfileAuthorizeView Profiles="@_profilesAnyEcomodulation">
+                <Authorized>
+                    <RadzenPanelMenuItem Text="EcomodulaciÃ³n" Icon="park"
+                                         Expanded="@IsGroupExpanded("reporting-eco")"
+                                         ExpandedChanged="@(e => OnGroupExpandedChanged("reporting-eco", e))">
+                        <ProfileAuthorizeView Profiles="@_profilesEcoScrap">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Panel SCRAP" Icon="recycling" Path="/reporting/ecomodulation/scrap-overview"
+                                                     Visible="@Allow("/reporting/ecomodulation/scrap-overview")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesEcoRegulatory">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Vista Regulatoria" Icon="shield" Path="/reporting/ecomodulation/regulatory-view"
+                                                     Visible="@Allow("/reporting/ecomodulation/regulatory-view")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesEcoDpp">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="PreparaciÃ³n DPP" Icon="badge" Path="/reporting/ecomodulation/dpp-readiness"
+                                                     Visible="@Allow("/reporting/ecomodulation/dpp-readiness")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                    </RadzenPanelMenuItem>
+                </Authorized>
+            </ProfileAuthorizeView>
         }
-        }
-        @* -- Dashboards Mapas de Calor (HM): SCRAP, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN *@
+
+        @* -- Mapas de Calor (HM) -- *@
         @if (AllowAny("/reporting/heat-maps/waste-density",
                       "/reporting/heat-maps/pattern-analysis",
                       "/reporting/heat-maps/public-view"))
         {
-        <ProfileAuthorizeView Profiles="@_profilesAnyHeatMap">
-            <Authorized>
-                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-hm")'>
-                    <i class="bi bi-geo-alt-fill nav-icon"></i>
-                    <span class="nav-label">Mapas de Calor</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-hm") ? "rotated" : "")"></i>
-                </div>
-            </Authorized>
-        </ProfileAuthorizeView>
-        @if (!NavMenuState.IsCollapsed("reporting-hm"))
-        {
-        <ProfileAuthorizeView Profiles="@_profilesHeatMapDensity">
-            <Authorized>
-                @if (Allow("/reporting/heat-maps/waste-density"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/heat-maps/waste-density">
-                    <i class="bi bi-geo-alt nav-icon"></i>
-                    <span class="nav-label">Densidad de Residuos</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesHeatMapPattern">
-            <Authorized>
-                @if (Allow("/reporting/heat-maps/pattern-analysis"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/heat-maps/pattern-analysis">
-                    <i class="bi bi-calendar3 nav-icon"></i>
-                    <span class="nav-label">Patrones y Estacionalidad</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesHeatMapPublic">
-            <Authorized>
-                @if (Allow("/reporting/heat-maps/public-view"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/heat-maps/public-view">
-                    <i class="bi bi-building-check nav-icon"></i>
-                    <span class="nav-label">Vista Entidad Pública</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        }
+            <ProfileAuthorizeView Profiles="@_profilesAnyHeatMap">
+                <Authorized>
+                    <RadzenPanelMenuItem Text="Mapas de Calor" Icon="location_on"
+                                         Expanded="@IsGroupExpanded("reporting-hm")"
+                                         ExpandedChanged="@(e => OnGroupExpandedChanged("reporting-hm", e))">
+                        <ProfileAuthorizeView Profiles="@_profilesHeatMapDensity">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Densidad de Residuos" Icon="layers" Path="/reporting/heat-maps/waste-density"
+                                                     Visible="@Allow("/reporting/heat-maps/waste-density")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesHeatMapPattern">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Patrones y Estacionalidad" Icon="trending_up" Path="/reporting/heat-maps/pattern-analysis"
+                                                     Visible="@Allow("/reporting/heat-maps/pattern-analysis")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesHeatMapPublic">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Vista Entidad PÃºblica" Icon="domain" Path="/reporting/heat-maps/public-view"
+                                                     Visible="@Allow("/reporting/heat-maps/public-view")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                    </RadzenPanelMenuItem>
+                </Authorized>
+            </ProfileAuthorizeView>
         }
 
-        @* -- Dashboards Huella de Carbono (HC): SCRAP, PUBLIC_ENT, PLANT_OP, PRODUCER, COORDINATOR, DISPATCH_OFFICE, CARRIER, ADMIN *@
+        @* -- Huella de Carbono (HC) -- *@
         @if (AllowAny("/reporting/carbon-footprint/overview",
                       "/reporting/carbon-footprint/transport-emissions",
                       "/reporting/carbon-footprint/plant-energy",
                       "/reporting/carbon-footprint/producer-report",
                       "/reporting/carbon-footprint/public-view"))
         {
-        <ProfileAuthorizeView Profiles="@_profilesAnyCarbonDashboard">
-            <Authorized>
-                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-carbon")'>
-                    <i class="bi bi-cloud-haze2-fill nav-icon"></i>
-                    <span class="nav-label">Huella de Carbono</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-carbon") ? "rotated" : "")"></i>
-                </div>
-            </Authorized>
-        </ProfileAuthorizeView>
-        @if (!NavMenuState.IsCollapsed("reporting-carbon"))
-        {
-        <ProfileAuthorizeView Profiles="@_profilesCarbonOverview">
-            <Authorized>
-                @if (Allow("/reporting/carbon-footprint/overview"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/overview">
-                    <i class="bi bi-cloud-haze2-fill nav-icon"></i>
-                    <span class="nav-label">Visi&oacute;n Consolidada</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesCarbonTransport">
-            <Authorized>
-                @if (Allow("/reporting/carbon-footprint/transport-emissions"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/transport-emissions">
-                    <i class="bi bi-truck-front-fill nav-icon"></i>
-                    <span class="nav-label">Emisiones Transporte</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesCarbonPlantEnergy">
-            <Authorized>
-                @if (Allow("/reporting/carbon-footprint/plant-energy"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/plant-energy">
-                    <i class="bi bi-lightning-charge-fill nav-icon"></i>
-                    <span class="nav-label">Huella Energ&eacute;tica Plantas</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesCarbonProducer">
-            <Authorized>
-                @if (Allow("/reporting/carbon-footprint/producer-report"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/producer-report">
-                    <i class="bi bi-person-fill-gear nav-icon"></i>
-                    <span class="nav-label">Reporte Productor</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesCarbonPublic">
-            <Authorized>
-                @if (Allow("/reporting/carbon-footprint/public-view"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/carbon-footprint/public-view">
-                    <i class="bi bi-building-check nav-icon"></i>
-                    <span class="nav-label">Vista Entidad P&uacute;blica</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        }
+            <ProfileAuthorizeView Profiles="@_profilesAnyCarbonDashboard">
+                <Authorized>
+                    <RadzenPanelMenuItem Text="Huella de Carbono" Icon="co2"
+                                         Expanded="@IsGroupExpanded("reporting-carbon")"
+                                         ExpandedChanged="@(e => OnGroupExpandedChanged("reporting-carbon", e))">
+                        <ProfileAuthorizeView Profiles="@_profilesCarbonOverview">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="VisiÃ³n Consolidada" Icon="analytics" Path="/reporting/carbon-footprint/overview"
+                                                     Visible="@Allow("/reporting/carbon-footprint/overview")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesCarbonTransport">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Emisiones Transporte" Icon="local_shipping" Path="/reporting/carbon-footprint/transport-emissions"
+                                                     Visible="@Allow("/reporting/carbon-footprint/transport-emissions")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesCarbonPlantEnergy">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Huella EnergÃ©tica Plantas" Icon="bolt" Path="/reporting/carbon-footprint/plant-energy"
+                                                     Visible="@Allow("/reporting/carbon-footprint/plant-energy")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesCarbonProducer">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Reporte Productor" Icon="person" Path="/reporting/carbon-footprint/producer-report"
+                                                     Visible="@Allow("/reporting/carbon-footprint/producer-report")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesCarbonPublic">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Vista Entidad PÃºblica" Icon="account_balance" Path="/reporting/carbon-footprint/public-view"
+                                                     Visible="@Allow("/reporting/carbon-footprint/public-view")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                    </RadzenPanelMenuItem>
+                </Authorized>
+            </ProfileAuthorizeView>
         }
 
-        @* -- Dashboards An&aacute;lisis y Cumplimiento Normativo (CN): SCRAP, COORDINATOR, PUBLIC_ENT, DISPATCH_OFFICE, ADMIN *@
+        @* -- AnÃ¡lisis Cumplimiento Normativo (CN) -- *@
         @if (AllowAny("/reporting/regulatory-compliance/scrap-overview",
                       "/reporting/regulatory-compliance/market-share-audit",
                       "/reporting/regulatory-compliance/agreement-monitoring",
                       "/reporting/regulatory-compliance/public-view",
                       "/reporting/regulatory-compliance/dispatch-data"))
         {
-        <ProfileAuthorizeView Profiles="@_profilesAnyCNDashboard">
-            <Authorized>
-                <div class="nav-group-title nav-group-title--sub" @onclick='() => ToggleGroup("reporting-cn")'>
-                    <i class="bi bi-shield-check nav-icon"></i>
-                    <span class="nav-label">An&aacute;lisis Cumplimiento</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("reporting-cn") ? "rotated" : "")"></i>
-                </div>
-            </Authorized>
-        </ProfileAuthorizeView>
-        @if (!NavMenuState.IsCollapsed("reporting-cn"))
-        {
-        <ProfileAuthorizeView Profiles="@_profilesCNScrap">
-            <Authorized>
-                @if (Allow("/reporting/regulatory-compliance/scrap-overview"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/scrap-overview">
-                    <i class="bi bi-shield-check nav-icon"></i>
-                    <span class="nav-label">Panel SCRAP CN-A</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesCNAudit">
-            <Authorized>
-                @if (Allow("/reporting/regulatory-compliance/market-share-audit"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/market-share-audit">
-                    <i class="bi bi-pie-chart-fill nav-icon"></i>
-                    <span class="nav-label">Auditor&iacute;a Cuotas CN-B</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesCNAgreement">
-            <Authorized>
-                @if (Allow("/reporting/regulatory-compliance/agreement-monitoring"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/agreement-monitoring">
-                    <i class="bi bi-file-earmark-check-fill nav-icon"></i>
-                    <span class="nav-label">Convenios CN-C</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesCNPublic">
-            <Authorized>
-                @if (Allow("/reporting/regulatory-compliance/public-view"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/public-view">
-                    <i class="bi bi-building-check nav-icon"></i>
-                    <span class="nav-label">Entidad P&uacute;blica CN-D</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        <ProfileAuthorizeView Profiles="@_profilesCNDispatch">
-            <Authorized>
-                @if (Allow("/reporting/regulatory-compliance/dispatch-data"))
-                {
-                <NavLink class="nav-item nav-item--grandchild" href="/reporting/regulatory-compliance/dispatch-data">
-                    <i class="bi bi-database-fill-gear nav-icon"></i>
-                    <span class="nav-label">Oficina Asignaci&oacute;n CN-E</span>
-                </NavLink>
-                }
-            </Authorized>
-        </ProfileAuthorizeView>
-        }
+            <ProfileAuthorizeView Profiles="@_profilesAnyCNDashboard">
+                <Authorized>
+                    <RadzenPanelMenuItem Text="AnÃ¡lisis Cumplimiento" Icon="gavel"
+                                         Expanded="@IsGroupExpanded("reporting-cn")"
+                                         ExpandedChanged="@(e => OnGroupExpandedChanged("reporting-cn", e))">
+                        <ProfileAuthorizeView Profiles="@_profilesCNScrap">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Panel SCRAP CN-A" Icon="fact_check" Path="/reporting/regulatory-compliance/scrap-overview"
+                                                     Visible="@Allow("/reporting/regulatory-compliance/scrap-overview")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesCNAudit">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="AuditorÃ­a Cuotas CN-B" Icon="pie_chart" Path="/reporting/regulatory-compliance/market-share-audit"
+                                                     Visible="@Allow("/reporting/regulatory-compliance/market-share-audit")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesCNAgreement">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Convenios CN-C" Icon="handshake" Path="/reporting/regulatory-compliance/agreement-monitoring"
+                                                     Visible="@Allow("/reporting/regulatory-compliance/agreement-monitoring")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesCNPublic">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Entidad PÃºblica CN-D" Icon="domain" Path="/reporting/regulatory-compliance/public-view"
+                                                     Visible="@Allow("/reporting/regulatory-compliance/public-view")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                        <ProfileAuthorizeView Profiles="@_profilesCNDispatch">
+                            <Authorized>
+                                <RadzenPanelMenuItem Text="Oficina AsignaciÃ³n CN-E" Icon="storage" Path="/reporting/regulatory-compliance/dispatch-data"
+                                                     Visible="@Allow("/reporting/regulatory-compliance/dispatch-data")" />
+                            </Authorized>
+                        </ProfileAuthorizeView>
+                    </RadzenPanelMenuItem>
+                </Authorized>
+            </ProfileAuthorizeView>
         }
 
-        @if (Allow("/documents"))
-        {
-        <NavLink class="nav-item nav-item--child" href="/documents">
-            <i class="bi bi-folder2-open nav-icon"></i>
-            <span class="nav-label">Documentos</span>
-        </NavLink>
-        }
-        }
-    </div>
+        <RadzenPanelMenuItem Text="Documentos" Icon="folder_open" Path="/documents"
+                             Visible="@Allow("/documents")" />
 
-    @* -- EcoDataNet
-    <div class="nav-group">
-        <div class="nav-group-title" @onclick='() => ToggleGroup("ecodatanet")'>
-            <i class="bi bi-broadcast nav-icon"></i>
-            <span class="nav-label">EcoDataNet</span>
-            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("ecodatanet") ? "rotated" : "")"></i>
-        </div>
-        @if (!NavMenuState.IsCollapsed("ecodatanet"))
-        {
-        <NavLink class="nav-item nav-item--child" href="/ecodatanet/publish">
-            <i class="bi bi-cloud-upload-fill nav-icon"></i>
-            <span class="nav-label">Publicar Datos</span>
-        </NavLink>
-        }
-    </div>
+    </RadzenPanelMenuItem>
 
-    @* -- EcoDataNet ---------------------------------------------------- *@
-    <div class="nav-group">
-        <div class="nav-group-title" @onclick='() => ToggleGroup("ecodatanet")'>
-            <i class="bi bi-broadcast nav-icon"></i>
-            <span class="nav-label">EcoDataNet</span>
-            <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("ecodatanet") ? "rotated" : "")"></i>
-        </div>
-        @if (!NavMenuState.IsCollapsed("ecodatanet"))
-        {
-        <NavLink class="nav-item nav-item--child" href="/ecodatanet/publish">
-            <i class="bi bi-cloud-upload-fill nav-icon"></i>
-            <span class="nav-label">Publicar Datos</span>
-        </NavLink>
-        }
-    </div>
-
-    @* -- Seguridad: solo ADMIN y SCRAP ------------------------------------ *@
+    @* ?? Seguridad ?????????????????????????????????????????????????????????? *@
     <ProfileAuthorizeView Profiles="@_profilesSecurity">
         <Authorized>
-            <div class="nav-group">
-                <div class="nav-group-title" @onclick='() => ToggleGroup("seguridad")'>
-                    <i class="bi bi-shield-lock-fill nav-icon"></i>
-                    <span class="nav-label">Seguridad</span>
-                    <i class="bi bi-chevron-down nav-chevron @(NavMenuState.IsCollapsed("seguridad") ? "rotated" : "")"></i>
-                </div>
-                @if (!NavMenuState.IsCollapsed("seguridad"))
-                {
-                @if (Allow("/users"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/users">
-                    <i class="bi bi-people-fill nav-icon"></i>
-                    <span class="nav-label">Usuarios</span>
-                </NavLink>
-                }
-                @if (Allow("/profiles"))
-                {
-                <NavLink class="nav-item nav-item--child" href="/profiles">
-                    <i class="bi bi-person-badge-fill nav-icon"></i>
-                    <span class="nav-label">Perfiles</span>
-                </NavLink>
-                }
+            <RadzenPanelMenuItem Text="Seguridad" Icon="security"
+                                 Expanded="@IsGroupExpanded("seguridad")"
+                                 ExpandedChanged="@(e => OnGroupExpandedChanged("seguridad", e))">
+                <RadzenPanelMenuItem Text="Usuarios" Icon="people" Path="/users"
+                                     Visible="@Allow("/users")" />
+                <RadzenPanelMenuItem Text="Perfiles" Icon="admin_panel_settings" Path="/profiles"
+                                     Visible="@Allow("/profiles")" />
                 <ProfileAuthorizeView Profiles="@(new[]{ ProfileConstants.Admin })">
                     <Authorized>
-                        @if (Allow("/security/page-permissions"))
-                        {
-                        <NavLink class="nav-item nav-item--child" href="/security/page-permissions">
-                            <i class="bi bi-shield-lock nav-icon"></i>
-                            <span class="nav-label">Permisos por Pantalla</span>
-                        </NavLink>
-                        }
+                        <RadzenPanelMenuItem Text="Permisos por Pantalla" Icon="lock" Path="/security/page-permissions"
+                                             Visible="@Allow("/security/page-permissions")" />
+                        <RadzenPanelMenuItem Text="Sandbox" Icon="storage" Path="/admin/sandbox"
+                                             Visible="@Allow("/admin/sandbox")" />
                     </Authorized>
                 </ProfileAuthorizeView>
-                <ProfileAuthorizeView Profiles="@(new[]{ ProfileConstants.Admin })">
-                    <Authorized>
-                        @if (Allow("/admin/sandbox"))
-                        {
-                        <NavLink class="nav-item nav-item--child" href="/admin/sandbox">
-                            <i class="bi bi-database-fill-gear nav-icon"></i>
-                            <span class="nav-label">Sandbox</span>
-                        </NavLink>
-                        }
-                    </Authorized>
-                </ProfileAuthorizeView>
-                }
-                        </div>
-                    </Authorized>
-                </ProfileAuthorizeView>
+            </RadzenPanelMenuItem>
+        </Authorized>
+    </ProfileAuthorizeView>
 
-</nav>
+</RadzenPanelMenu>
 
 @code {
-    // ?? Permisos de página ????????????????????????????????????????????????????
-    // Se cargan en OnAfterRenderAsync (no corre durante SSR pre-rendering) para
-    // evitar concurrencia con otros componentes sobre el mismo DbContext scoped.
     private IReadOnlySet<string> _allowed = ImmutableHashSet<string>.Empty;
     private bool _permissionsLoaded;
 
@@ -867,7 +466,6 @@
         try
         {
             var routes = await PagePermissions.GetAllowedRoutesAsync();
-            // Solo re-renderizar si el conjunto cambió respecto al estado inicial vacío
             if (routes.Count > 0)
             {
                 _allowed = routes;
@@ -876,23 +474,27 @@
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error cargando permisos de navegación para perfil {ProfileId}",
+            Logger.LogError(ex, "Error cargando permisos de navegaciÃ³n para perfil {ProfileId}",
                 CurrentUser.ProfileId);
         }
     }
 
-    /// <summary>Devuelve true si el usuario tiene acceso a la ruta según PagePermissions.</summary>
     private bool Allow(string route) => _allowed.Contains(route);
-
-    /// <summary>Devuelve true si el usuario tiene acceso a al menos una de las rutas indicadas.</summary>
     private bool AllowAny(params string[] routes) => routes.Any(r => _allowed.Contains(r));
 
     private void ToggleGroup(string key) => NavMenuState.Toggle(key);
+    private bool IsGroupExpanded(string key) => !NavMenuState.IsCollapsed(key);
 
-    // Perfiles permitidos para cada sección del menú.
-    // Se definen aquí para evitar new[] inline en el markup y facilitar el mantenimiento.
+    private void OnGroupExpandedChanged(string key, bool expanded)
+    {
+        if (expanded)
+            NavMenuState.Expand(key);
+        else
+            NavMenuState.Collapse(key);
+    }
 
-    // Traslados: todos excepto PRODUCER
+    // ?? Perfiles por secciÃ³n ?????????????????????????????????????????????????
+
     private static readonly string[] _profilesWasteMoves =
     [
         ProfileConstants.Carrier, ProfileConstants.Scrap, ProfileConstants.PlantOp,
@@ -900,28 +502,24 @@
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Entradas Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE
     private static readonly string[] _profilesEntryPlants =
     [
         ProfileConstants.PlantOp, ProfileConstants.Admin, ProfileConstants.Scrap,
         ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
     ];
 
-    // Entradas CAC: CAC_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE
     private static readonly string[] _profilesEntryCACs =
     [
         ProfileConstants.CacOp, ProfileConstants.Admin, ProfileConstants.Scrap,
         ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
     ];
 
-    // Tratamiento: igual que Entradas Planta
     private static readonly string[] _profilesTreatments =
     [
         ProfileConstants.PlantOp, ProfileConstants.Admin, ProfileConstants.Scrap,
         ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
     ];
 
-    // Zonas DUM: todos excepto CAC_OP y PLANT_OP
     private static readonly string[] _profilesDumZones =
     [
         ProfileConstants.Producer, ProfileConstants.Carrier, ProfileConstants.Scrap,
@@ -929,7 +527,6 @@
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Emisiones: todos excepto CAC_OP
     private static readonly string[] _profilesEmissions =
     [
         ProfileConstants.Producer, ProfileConstants.Carrier, ProfileConstants.Scrap,
@@ -937,40 +534,28 @@
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Energía Planta: PLANT_OP, ADMIN, SCRAP, PUBLIC_ENT, COORDINATOR, DISPATCH_OFFICE
     private static readonly string[] _profilesPlantEnergy =
     [
         ProfileConstants.PlantOp, ProfileConstants.Admin, ProfileConstants.Scrap,
         ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
     ];
 
-    // Factores de Emisión: ADMIN, SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE
     private static readonly string[] _profilesEmissionFactors =
     [
         ProfileConstants.Admin, ProfileConstants.Scrap, ProfileConstants.PublicEnt,
         ProfileConstants.PlantOp, ProfileConstants.Coordinator, ProfileConstants.DispatchOffice
     ];
 
-    // KPIs: SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN
-    private static readonly string[] _profilesKPIs =
-    [
-        ProfileConstants.Scrap, ProfileConstants.PublicEnt, ProfileConstants.PlantOp,
-        ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
-    ];
-
-    // Optimización Logística: SCRAP, COORDINATOR, ADMIN
     private static readonly string[] _profilesLogisticsOptimization =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.Admin
     ];
 
-    // Monitorización Pública: PUBLIC_ENT, ADMIN
     private static readonly string[] _profilesPublicMonitoring =
     [
         ProfileConstants.PublicEnt, ProfileConstants.Admin
     ];
 
-    // Sub-título Dashboards Logística: cualquiera de los dos grupos anteriores
     private static readonly string[] _profilesAnyLogisticsDashboard =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator,
@@ -979,179 +564,146 @@
         ProfileConstants.Admin
     ];
 
-    // Panel Operativo: DISPATCH_OFFICE, CAC_OP, PLANT_OP, ADMIN
     private static readonly string[] _profilesOperationalDashboard =
     [
         ProfileConstants.DispatchOffice, ProfileConstants.CacOp,
         ProfileConstants.PlantOp, ProfileConstants.Admin
     ];
 
-    // Configuración: DISPATCH_OFFICE, SCRAP, ADMIN
-    private static readonly string[] _profilesConfig =
-    [
-        ProfileConstants.DispatchOffice, ProfileConstants.Scrap, ProfileConstants.Admin
-    ];
-
-    // Seguridad: solo ADMIN y SCRAP
     private static readonly string[] _profilesSecurity =
     [
         ProfileConstants.Admin, ProfileConstants.Scrap
     ];
 
-    // Declaraciones: ADMIN, PRODUCER, SCRAP, COORDINATOR
     private static readonly string[] _profilesDeclarations =
     [
         ProfileConstants.Admin, ProfileConstants.Producer,
         ProfileConstants.Scrap, ProfileConstants.Coordinator
     ];
 
-    // Crear/editar declaraciones: PRODUCER, ADMIN
     private static readonly string[] _profilesManageDeclarations =
     [
         ProfileConstants.Producer, ProfileConstants.Admin
     ];
 
-    // Movilidad UC3-A — Coordinador: COORDINATOR, ADMIN
     private static readonly string[] _profilesMobilityCoordinator =
     [
         ProfileConstants.Coordinator, ProfileConstants.Admin
     ];
 
-    // Movilidad UC3-B — Ayuntamiento: PUBLIC_ENT, ADMIN
     private static readonly string[] _profilesMobilityMunicipal =
     [
         ProfileConstants.PublicEnt, ProfileConstants.Admin
     ];
 
-    // Movilidad UC3-C — Oficina de Asignación: DISPATCH_OFFICE, ADMIN
     private static readonly string[] _profilesMobilityDispatch =
     [
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Sub-título Movilidad Urbana: cualquiera de los tres grupos anteriores
     private static readonly string[] _profilesAnyMobilityDashboard =
     [
         ProfileConstants.Coordinator, ProfileConstants.PublicEnt,
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // TR-A — Análisis Revalorización SCRAP: SCRAP y ADMIN
     private static readonly string[] _profilesTRScrap =
     [
         ProfileConstants.Scrap, ProfileConstants.Admin
     ];
 
-    // TR-B — Monitorización Reciclaje Municipal: PUBLIC_ENT y ADMIN
     private static readonly string[] _profilesTRMunicipal =
     [
         ProfileConstants.PublicEnt, ProfileConstants.Admin
     ];
 
-    // TR-C — Validación Multi-SCRAP — Coordinador: COORDINATOR y ADMIN
     private static readonly string[] _profilesTRCoordinator =
     [
         ProfileConstants.Coordinator, ProfileConstants.Admin
     ];
 
-    // TR-D — Datos Operativos TR — Oficina de Asignación: DISPATCH_OFFICE y ADMIN
     private static readonly string[] _profilesTRDispatch =
     [
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Sub-título Tratamiento y Reciclaje: cualquiera de los cuatro grupos
     private static readonly string[] _profilesAnyTRDashboard =
     [
         ProfileConstants.Scrap, ProfileConstants.PublicEnt,
         ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // UC5-A — Panel SCRAP Ecomodulación: SCRAP, DISPATCH_OFFICE y ADMIN
     private static readonly string[] _profilesEcoScrap =
     [
         ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // UC5-B — Vista Regulatoria: PUBLIC_ENT, COORDINATOR y ADMIN
     private static readonly string[] _profilesEcoRegulatory =
     [
         ProfileConstants.PublicEnt, ProfileConstants.Coordinator, ProfileConstants.Admin
     ];
 
-    // UC5-C — Preparación DPP: todos los perfiles con acceso a ecomodulación
     private static readonly string[] _profilesEcoDpp =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator,
         ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Sub-título Ecomodulación: cualquiera con acceso a algún dashboard UC5
     private static readonly string[] _profilesAnyEcomodulation =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator,
         ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // HM-A — Densidad de Residuos: SCRAP, DISPATCH_OFFICE y ADMIN
     private static readonly string[] _profilesHeatMapDensity =
     [
         ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // HM-B — Patrones y Estacionalidad: SCRAP, DISPATCH_OFFICE y ADMIN
     private static readonly string[] _profilesHeatMapPattern =
     [
         ProfileConstants.Scrap, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // HM-C — Vista Entidad Pública: PUBLIC_ENT, DISPATCH_OFFICE y ADMIN
     private static readonly string[] _profilesHeatMapPublic =
     [
         ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Sub-título Mapas de Calor: cualquiera con acceso a algún dashboard HM
     private static readonly string[] _profilesAnyHeatMap =
     [
         ProfileConstants.Scrap, ProfileConstants.PublicEnt,
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // HC-A — Visión Consolidada: SCRAP, COORDINATOR, DISPATCH_OFFICE, ADMIN
     private static readonly string[] _profilesCarbonOverview =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator,
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // HC-B — Emisiones Transporte: SCRAP, COORDINATOR, DISPATCH_OFFICE, CARRIER, ADMIN
     private static readonly string[] _profilesCarbonTransport =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator,
         ProfileConstants.DispatchOffice, ProfileConstants.Carrier, ProfileConstants.Admin
     ];
 
-    // HC-C — Huella Energética Plantas: PLANT_OP, SCRAP, DISPATCH_OFFICE, ADMIN
     private static readonly string[] _profilesCarbonPlantEnergy =
     [
         ProfileConstants.PlantOp, ProfileConstants.Scrap,
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // HC-D — Reporte Productor: PRODUCER, ADMIN
     private static readonly string[] _profilesCarbonProducer =
     [
         ProfileConstants.Producer, ProfileConstants.Admin
     ];
 
-    // HC-E — Vista Entidad Pública: PUBLIC_ENT, DISPATCH_OFFICE, ADMIN
     private static readonly string[] _profilesCarbonPublic =
     [
         ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Sub-título Huella de Carbono: cualquiera con acceso a algún dashboard HC
     private static readonly string[] _profilesAnyCarbonDashboard =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.PublicEnt,
@@ -1159,37 +711,31 @@
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // CN-A — Panel Cumplimiento Normativo — Visión SCRAP: SCRAP, ADMIN
     private static readonly string[] _profilesCNScrap =
     [
         ProfileConstants.Scrap, ProfileConstants.Admin
     ];
 
-    // CN-B — Auditoría Cuotas: COORDINATOR, DISPATCH_OFFICE, ADMIN
     private static readonly string[] _profilesCNAudit =
     [
         ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // CN-C — Convenios: COORDINATOR, DISPATCH_OFFICE, ADMIN
     private static readonly string[] _profilesCNAgreement =
     [
         ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // CN-D — Entidad Pública: PUBLIC_ENT, ADMIN
     private static readonly string[] _profilesCNPublic =
     [
         ProfileConstants.PublicEnt, ProfileConstants.Admin
     ];
 
-    // CN-E — Oficina de Asignación: DISPATCH_OFFICE, ADMIN
     private static readonly string[] _profilesCNDispatch =
     [
         ProfileConstants.DispatchOffice, ProfileConstants.Admin
     ];
 
-    // Sub-título Análisis Cumplimiento: cualquiera con acceso a algún dashboard CN
     private static readonly string[] _profilesAnyCNDashboard =
     [
         ProfileConstants.Scrap, ProfileConstants.Coordinator, ProfileConstants.PublicEnt,

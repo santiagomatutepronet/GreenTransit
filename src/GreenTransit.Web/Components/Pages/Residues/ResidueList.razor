@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/residues"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -76,134 +78,65 @@
 </div>
 
 @* ── Tabla ─────────────────────────────────────────────────────────────────── *@
-@if (_loading)
-{
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
-}
-else if (_result is null || _result.Items.Count == 0)
-{
-    <div class="alert alert-info">No se encontraron registros con los filtros aplicados.</div>
-}
-else
-{
-    <div class="table-responsive">
-        <table class="table table-hover table-sm align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th>Nombre</th>
-                    <th>Referencia</th>
-                    <th>Tipo</th>
-                    @if (string.IsNullOrEmpty(_activeTab) || _activeTab == "Waste")
-                    {
-                        <th>LER</th>
-                    }
-                    @if (string.IsNullOrEmpty(_activeTab) || _activeTab == "ProductSpec")
-                    {
-                        <th>Productor</th>
-                    }
-                    <th style="width:80px" class="text-center">Peligroso</th>
-                    <th style="width:60px" class="text-center">RAEE</th>
-                    <th style="width:80px" class="text-center">Estado</th>
-                    <th class="text-end">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var r in _result.Items)
-                {
-                    <tr>
-                        <td>
-                            <a class="fw-semibold text-decoration-none"
-                               href="/residues/@r.Id">@r.Name</a>
-                        </td>
-                        <td><code>@(r.Reference ?? "—")</code></td>
-                        <td>
-                            <span class="badge @TypeBadgeClass(r.ResidueType)">@r.ResidueType</span>
-                        </td>
-                        @if (string.IsNullOrEmpty(_activeTab) || _activeTab == "Waste")
-                        {
-                            <td>
-                                @if (!string.IsNullOrEmpty(r.LerCode))
-                                {
-                                    <code>@r.LerCode</code>
-                                    <span class="text-muted small ms-1">@r.LerDescription</span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">—</span>
-                                }
-                            </td>
-                        }
-                        @if (string.IsNullOrEmpty(_activeTab) || _activeTab == "ProductSpec")
-                        {
-                            <td>@(r.ProducerName ?? "—")</td>
-                        }
-                        <td class="text-center">
-                            @if (r.IsDangerous)
-                            {
-                                <span class="badge bg-danger">Sí</span>
-                            }
-                            else
-                            {
-                                <span class="text-muted">—</span>
-                            }
-                        </td>
-                        <td class="text-center">
-                            @if (r.IsRAEE)
-                            {
-                                <span class="badge bg-warning text-dark">Sí</span>
-                            }
-                            else
-                            {
-                                <span class="text-muted">—</span>
-                            }
-                        </td>
-                        <td class="text-center">
-                            @if (r.IsActive)
-                            {
-                                <span class="badge bg-success">Activo</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">Inactivo</span>
-                            }
-                        </td>
-                        <td class="text-end">
-                            <a class="btn btn-outline-primary btn-sm py-0 px-1 me-1"
-                               href="/residues/@r.Id/edit" title="Editar">
-                                <i class="bi bi-pencil"></i>
-                            </a>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-
-    @* ── Paginación ───────────────────────────────────────────────────────── *@
-    @if (_result.TotalPages > 1)
-    {
-        <nav>
-            <ul class="pagination pagination-sm justify-content-center">
-                <li class="page-item @(!_result.HasPrevious ? "disabled" : "")">
-                    <button class="page-link" @onclick="() => GoToPage(_page - 1)">&laquo;</button>
-                </li>
-                @for (var p = 1; p <= _result.TotalPages; p++)
-                {
-                    var pg = p;
-                    <li class="page-item @(pg == _page ? "active" : "")">
-                        <button class="page-link" @onclick="() => GoToPage(pg)">@pg</button>
-                    </li>
-                }
-                <li class="page-item @(!_result.HasNext ? "disabled" : "")">
-                    <button class="page-link" @onclick="() => GoToPage(_page + 1)">&raquo;</button>
-                </li>
-            </ul>
-        </nav>
-    }
-}
+<RadzenDataGrid @ref="_grid" TItem="ResidueDto"
+                Data="@(_result?.Items ?? [])" Count="@(_result?.TotalCount ?? 0)"
+                LoadData="@OnLoadData"
+                AllowPaging="true" PageSize="20"
+                AllowSorting="true" AllowFiltering="false"
+                IsLoading="@_loading"
+                EmptyText="No se encontraron registros con los filtros aplicados."
+                PagerHorizontalAlign="HorizontalAlign.Right">
+    <Columns>
+        <RadzenDataGridColumn TItem="ResidueDto" Property="Name" Title="Nombre" Width="200px">
+            <Template Context="r"><a class="rz-link" href="/residues/@r.Id">@r.Name</a></Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="ResidueDto" Property="Reference" Title="Referencia" Width="120px">
+            <Template Context="r"><code>@(r.Reference ?? "—")</code></Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="ResidueDto" Property="ResidueType" Title="Tipo" Width="120px">
+            <Template Context="r">
+                <RadzenBadge Text="@r.ResidueType"
+                             BadgeStyle="@(r.ResidueType == "Waste" ? BadgeStyle.Secondary : r.ResidueType == "Product" ? BadgeStyle.Primary : BadgeStyle.Info)" />
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="ResidueDto" Property="LerCode" Title="LER" Width="130px">
+            <Template Context="r">
+                @if (!string.IsNullOrEmpty(r.LerCode))
+                { <code>@r.LerCode</code><span class="rz-text-secondary-color rz-text-sm ms-1">@r.LerDescription</span> }
+                else
+                { <span class="rz-text-disabled">—</span> }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="ResidueDto" Property="IsDangerous" Title="Peligroso" Width="90px" TextAlign="TextAlign.Center">
+            <Template Context="r">
+                @if (r.IsDangerous) { <RadzenBadge Text="Sí" BadgeStyle="BadgeStyle.Danger" /> }
+                else { <span class="rz-text-disabled">—</span> }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="ResidueDto" Property="IsRAEE" Title="RAEE" Width="70px" TextAlign="TextAlign.Center">
+            <Template Context="r">
+                @if (r.IsRAEE) { <RadzenBadge Text="Sí" BadgeStyle="BadgeStyle.Warning" /> }
+                else { <span class="rz-text-disabled">—</span> }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="ResidueDto" Property="IsActive" Title="Estado" Width="90px" TextAlign="TextAlign.Center">
+            <Template Context="r">
+                @if (r.IsActive) { <RadzenBadge Text="Activo" BadgeStyle="BadgeStyle.Success" /> }
+                else { <RadzenBadge Text="Inactivo" BadgeStyle="BadgeStyle.Secondary" /> }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="ResidueDto" Title="" Width="80px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+            <Template Context="r">
+                <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                              Click="@(() => Nav.NavigateTo($"/residues/{r.Id}/edit"))" title="Editar" />
+            </Template>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
 
 @code {
     private PaginatedResult<ResidueDto>? _result;
+    private RadzenDataGrid<ResidueDto> _grid = default!;
     private bool    _loading         = true;
     private string  _activeTab       = "";
     private string? _searchTerm;
@@ -225,17 +158,25 @@ else
         _loading = false;
     }
 
+    private async Task OnLoadData(LoadDataArgs args)
+    {
+        _page = args.Skip.HasValue ? (args.Skip.Value / 20) + 1 : 1;
+        await LoadAsync();
+    }
+
     private async Task SetTab(string tab)
     {
         _activeTab = tab;
         _page      = 1;
         await LoadAsync();
+        if (_grid is not null) await _grid.Reload();
     }
 
     private async Task ApplyFilters()
     {
         _page = 1;
         await LoadAsync();
+        if (_grid is not null) await _grid.Reload();
     }
 
     private async Task ResetFilters()
@@ -245,6 +186,7 @@ else
         _filterRaee      = "";
         _page            = 1;
         await LoadAsync();
+        if (_grid is not null) await _grid.Reload();
     }
 
     private async Task GoToPage(int page)

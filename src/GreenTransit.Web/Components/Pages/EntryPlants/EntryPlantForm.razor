@@ -10,6 +10,8 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator        Mediator
 @inject NavigationManager Nav
@@ -19,16 +21,14 @@
 @if (_loading)
 {
     <div class="text-center" style="padding:3rem 0">
-        <div class="spinner spinner-lg"></div>
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
     </div>
 }
 else if (_wasteMove is null)
 {
     <div class="alert alert-warning">Traslado no encontrado.</div>
-    <button class="btn btn-outline-neutral btn-sm"
-            @onclick='() => Nav.NavigateTo("/entry-plants")'>
-        <i class="bi bi-arrow-left me-1"></i>Volver al listado
-    </button>
+    <RadzenButton Text="Volver al listado" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+            Click="@(_ => Nav.NavigateTo("/entry-plants"))" />
 }
 else
 {
@@ -43,10 +43,8 @@ else
             </div>
         </div>
         <div class="page-header-actions">
-            <button class="btn btn-outline-neutral btn-sm"
-                    @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
-                <i class="bi bi-arrow-left me-1"></i>Volver
-            </button>
+            <RadzenButton Text="Volver" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                    Click="@(_ => Nav.NavigateTo("/waste-moves/" + WasteMoveId))" />
         </div>
     </div>
 
@@ -61,14 +59,11 @@ else
     }
     else
     {
-        <EditForm Model="_model" OnValidSubmit="HandleSubmit">
-            <DataAnnotationsValidator />
+        <RadzenTemplateForm TItem="FormModel" Data="@_model" Submit="@HandleSubmit">
 
             @if (!string.IsNullOrEmpty(_globalError))
             {
-                <div class="alert alert-danger mb-3">
-                    <i class="bi bi-x-circle me-1"></i>@_globalError
-                </div>
+                <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mb-4">@_globalError</RadzenAlert>
             }
 
             @* ── Ticket y datos de entrada ────────────────────────────── *@
@@ -467,23 +462,13 @@ else
             </div>
 
             @* ── Acciones ─────────────────────────────────────────────── *@
-            <div class="d-flex justify-content-end gap-2 mb-4">
-                <button type="button"
-                        class="btn btn-outline-neutral"
-                        @onclick='() => Nav.NavigateTo("/waste-moves/" + WasteMoveId)'>
-                    Cancelar
-                </button>
-                <button type="submit"
-                        class="btn btn-success btn-lg"
-                        disabled="@_saving">
-                    @if (_saving)
-                    {
-                        <span class="spinner-border spinner-border-sm me-2"></span>
-                    }
-                    <i class="bi bi-check-circle me-2"></i>Registrar pesaje
-                </button>
-            </div>
-        </EditForm>
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem" class="rz-mb-4">
+                <RadzenButton Text="Cancelar" Icon="cancel" ButtonStyle="ButtonStyle.Light"
+                              Click="@(_ => Nav.NavigateTo("/waste-moves/" + WasteMoveId))" />
+                <RadzenButton ButtonType="ButtonType.Submit" Text="Registrar pesaje" Icon="check_circle"
+                              ButtonStyle="ButtonStyle.Success" Disabled="@_saving" IsBusy="@_saving" />
+            </RadzenStack>
+        </RadzenTemplateForm>
     }
 }
 

@@ -1,3 +1,5 @@
+@using Radzen
+@using Radzen.Blazor
 @page "/entry-plants"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -197,78 +199,63 @@ else
 
     @* Vista escritorio *@
     <div class="d-none d-md-block">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>Ticket báscula</th>
-                        <th>Referencia traslado</th>
-                        <th>Fecha entrada</th>
-                        <th>Báscula</th>
-                        <th class="text-end">Bruto (kg)</th>
-                        <th class="text-end">Tara (kg)</th>
-                        <th class="text-end fw-bold text-success">Neto (kg)</th>
-                        <th class="text-center">Residuos</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var item in _result.Items)
-                    {
-                        <tr @onclick="() => GoToDetail(item.Id)" style="cursor:pointer">
-                            <td class="fw-semibold text-primary">
-                                <a href="/entry-plants/@item.Id"
-                                   @onclick:stopPropagation
-                                   class="text-decoration-none">
-                                    @(item.TicketScale ?? "—")
-                                </a>
-                            </td>
-                            <td>@(item.WasteMoveReference ?? item.IdWasteMove.ToString()[..8])</td>
-                            <td class="text-nowrap">
-                                @(item.PlantEntryDate?.ToString("dd/MM/yyyy HH:mm") ?? "—")
-                            </td>
-                            <td>@(item.WeighbridgeId ?? "—")</td>
-                            <td class="text-end">@(item.GrossWeight?.ToString("N2") ?? "—")</td>
-                            <td class="text-end">@(item.TareWeight?.ToString("N2") ?? "—")</td>
-                            <td class="text-end fw-bold text-success">
-                                @(item.NetWeight?.ToString("N2") ?? "—")
-                            </td>
-                            <td class="text-center">
-                                <span class="badge text-bg-secondary">
-                                    @item.ResidueLineCount
-                                </span>
-                            </td>
-                            <td class="text-end">
-                                <button class="btn btn-sm btn-outline-primary"
-                                        @onclick:stopPropagation
-                                        @onclick="() => GoToDetail(item.Id)">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+        <RadzenDataGrid TItem="EntryPlantDto"
+                        Data="@_result.Items" Count="@_result.TotalCount"
+                        AllowPaging="false" AllowSorting="true" AllowFiltering="false"
+                        EmptyText="No se encontraron entradas."
+                        RowClick="@(args => GoToDetail(args.Data.Id))"
+                        Style="cursor:pointer">
+            <Columns>
+                <RadzenDataGridColumn TItem="EntryPlantDto" Property="TicketScale" Title="Ticket báscula" Width="140px">
+                    <Template Context="item">
+                        <a href="/entry-plants/@item.Id" class="rz-link rz-text-weight-bold"
+                           @onclick:stopPropagation>@(item.TicketScale ?? "—")</a>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="EntryPlantDto" Property="WasteMoveReference" Title="Referencia traslado" Width="150px">
+                    <Template Context="item">@(item.WasteMoveReference ?? item.IdWasteMove.ToString()[..8])</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="EntryPlantDto" Property="PlantEntryDate" Title="Fecha entrada" Width="145px">
+                    <Template Context="item">@(item.PlantEntryDate?.ToString("dd/MM/yyyy HH:mm") ?? "—")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="EntryPlantDto" Property="WeighbridgeId" Title="Báscula" Width="100px">
+                    <Template Context="item">@(item.WeighbridgeId ?? "—")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="EntryPlantDto" Property="GrossWeight" Title="Bruto (kg)" Width="100px" TextAlign="TextAlign.Right">
+                    <Template Context="item">@(item.GrossWeight?.ToString("N2") ?? "—")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="EntryPlantDto" Property="TareWeight" Title="Tara (kg)" Width="100px" TextAlign="TextAlign.Right">
+                    <Template Context="item">@(item.TareWeight?.ToString("N2") ?? "—")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="EntryPlantDto" Property="NetWeight" Title="Neto (kg)" Width="100px" TextAlign="TextAlign.Right">
+                    <Template Context="item"><strong class="rz-color-success">@(item.NetWeight?.ToString("N2") ?? "—")</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="EntryPlantDto" Property="ResidueLineCount" Title="Residuos" Width="90px" TextAlign="TextAlign.Center">
+                    <Template Context="item"><RadzenBadge Text="@item.ResidueLineCount.ToString()" BadgeStyle="BadgeStyle.Secondary" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="EntryPlantDto" Title="" Width="70px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                    <Template Context="item">
+                        <RadzenButton Icon="visibility" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => GoToDetail(item.Id))" @onclick:stopPropagation />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
     </div>
 
     @if (_result.TotalPages > 1)
     {
         <div class="d-flex justify-content-between align-items-center mt-2">
-            <span class="text-muted small">
+            <span class="rz-text-secondary-color rz-text-sm">
                 Mostrando @((_page - 1) * PageSize + 1)–@(Math.Min(_page * PageSize, _result.TotalCount))
                 de @_result.TotalCount entradas
             </span>
             <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary"
-                        disabled="@(!_result.HasPrevious)"
-                        @onclick="PrevPage">
+                <button class="btn btn-outline-secondary" disabled="@(!_result.HasPrevious)" @onclick="PrevPage">
                     <i class="bi bi-chevron-left"></i>
                 </button>
                 <span class="btn btn-outline-secondary disabled">@_page / @_result.TotalPages</span>
-                <button class="btn btn-outline-secondary"
-                        disabled="@(!_result.HasNext)"
-                        @onclick="NextPage">
+                <button class="btn btn-outline-secondary" disabled="@(!_result.HasNext)" @onclick="NextPage">
                     <i class="bi bi-chevron-right"></i>
                 </button>
             </div>

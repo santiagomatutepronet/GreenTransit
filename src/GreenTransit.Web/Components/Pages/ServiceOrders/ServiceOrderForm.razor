@@ -1,4 +1,4 @@
-@page "/service-orders/new"
+﻿@page "/service-orders/new"
 @page "/service-orders/{ServiceOrderId:guid}/edit"
 @attribute [Authorize]
 @rendermode InteractiveServer
@@ -17,6 +17,8 @@
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using System.Text.Json
+@using Radzen
+@using Radzen.Blazor
 
 @inject IMediator           Mediator
 @inject NavigationManager   Nav
@@ -33,410 +35,327 @@
 
 @if (_loading)
 {
-    <div class="text-center" style="padding:3rem 0"><div class="spinner spinner-lg"></div></div>
+    <div class="gt-loading"><RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
 else
 {
-    <EditForm Model="_model" OnValidSubmit="SaveAsync">
-        <div class="accordion" id="soAccordion">
+    <RadzenTemplateForm TItem="FormModel" Data="@_model" Submit="@SaveAsync">
 
-            @* ── Sección 1: Identificación ───────────────────────────────── *@
-            <div class="accordion-item">
-                <h2 class="accordion-header">
-                    <button class="accordion-button @(_sec1Open ? "" : "collapsed")" type="button"
-                            @onclick='() => _sec1Open = !_sec1Open'>
-                        <i class="bi bi-123 me-2"></i>Identificación
-                    </button>
-                </h2>
-                @if (_sec1Open)
-                {
-                    <div class="accordion-collapse collapse show">
-                        <div class="accordion-body row g-3">
-                            <div class="col-md-5">
-                                <label class="form-label">Nº Orden de Servicio</label>
-                                <div class="input-group">
-                                    <InputText class="form-control" @bind-Value="_model.ServiceOrderNumber"
-                                               placeholder="Vacío = generar automáticamente" />
-                                    <button type="button" class="btn btn-outline-secondary btn-sm"
-                                            @onclick="ClearNumber" title="Generar automáticamente">
-                                        <i class="bi bi-magic"></i>
-                                    </button>
-                                </div>
-                                <FieldMessage Field="ServiceOrderNumber" Errors="_validationErrors" />
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Fecha de emisión <span class="text-danger">*</span></label>
-                                <input type="datetime-local" class="form-control"
-                                       value="@_model.IssuedAt.ToString("yyyy-MM-ddTHH:mm")"
-                                       @onchange="e => _model.IssuedAt = DateTime.Parse(e.Value?.ToString() ?? DateTime.UtcNow.ToString())" />
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Estado <span class="text-danger">*</span></label>
-                                <InputSelect class="form-select" @bind-Value="_model.Status">
-                                    @foreach (var s in ServiceOrderStatuses.All)
-                                    {
-                                        <option value="@s">@ServiceOrderStatuses.Label(s)</option>
-                                    }
-                                </InputSelect>
-                                <FieldMessage Field="Status" Errors="_validationErrors" />
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Prioridad <span class="text-danger">*</span></label>
-                                <InputSelect class="form-select" @bind-Value="_model.Priority">
-                                    @foreach (var p in ServiceOrderPriorities.All)
-                                    {
-                                        <option value="@p">@ServiceOrderPriorities.Label(p)</option>
-                                    }
-                                </InputSelect>
-                            </div>
-                        </div>
-                    </div>
-                }
+        @* ── Sección 1: Identificación ───────────────────────────────── *@
+        <RadzenFieldset Text="Identificación" AllowCollapse="true" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="5">
+                    <RadzenFormField Text="Nº Orden de Servicio" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="ServiceOrderNumber" @bind-Value="_model.ServiceOrderNumber"
+                                           Placeholder="Vacío = generar automáticamente" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Fecha de emisión *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDatePicker Name="IssuedAt" @bind-Value="_model.IssuedAt"
+                                              ShowTime="true" HourFormat="24" DateFormat="dd/MM/yyyy HH:mm"
+                                              Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="IssuedAt" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="2">
+                    <RadzenFormField Text="Estado *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string" Name="Status" @bind-Value="_model.Status"
+                                            Data="@ServiceOrderStatuses.All" Style="width:100%" />
+                        </ChildContent>
+                        <Helper><RadzenRequiredValidator Component="Status" Text="Obligatorio" /></Helper>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="2">
+                    <RadzenFormField Text="Prioridad *" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string" Name="Priority" @bind-Value="_model.Priority"
+                                            Data="@ServiceOrderPriorities.All" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
+
+        @* ── Sección 2: Emisor y punto de recogida ───────────────────── *@
+        <RadzenFieldset Text="Emisor y punto de recogida" AllowCollapse="true" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="6">
+                    @if (_issuedByReadOnly)
+                    {
+                        <RadzenFormField Text="Emisor (Entidad)" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenTextBox Style="width:100%" ReadOnly="true"
+                                               Value="@(_allEntities.FirstOrDefault(e => e.Id == _model.IdIssuedBy) is { } ent ? $"{ent.Name} ({ent.NationalId})" : "— Sin entidad vinculada —")" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    }
+                    else
+                    {
+                        <RadzenFormField Text="Emisor (Entidad)" Variant="Variant.Outlined" Style="width:100%">
+                            <ChildContent>
+                                <RadzenDropDown TValue="Guid?" Name="IdIssuedBy" @bind-Value="_model.IdIssuedBy"
+                                                Data="@_allEntities" TextProperty="Name" ValueProperty="Id"
+                                                AllowClear="true" AllowFiltering="true"
+                                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                Placeholder="— Sin asignar —" Style="width:100%" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    }
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Nombre emisor (texto libre)" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="IssuedByName" @bind-Value="_model.IssuedByName"
+                                           Placeholder="Si no está en el listado" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="NIF / NIMA emisor" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenTextBox Name="IssuedByNationalId" @bind-Value="_model.IssuedByNationalId" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+            <RadzenRow Gap="1rem" class="rz-mt-4">
+                <RadzenColumn SizeMD="6">
+                    <RadzenFormField Text="Punto de recogida" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="Guid?" Name="IdPickupPoint" @bind-Value="_model.IdPickupPoint"
+                                            Data="@_allEntities" TextProperty="Name" ValueProperty="Id"
+                                            AllowClear="true" AllowFiltering="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Change="@(_ => OnPickupPointChanged())"
+                                            Placeholder="— Sin asignar —" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+            <RadzenRow Gap="1rem" class="rz-mt-4">
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Recogida planificada — Inicio" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDatePicker TValue="DateTime?" Name="PlannedPickupStart" @bind-Value="_model.PlannedPickupStart"
+                                              ShowTime="true" HourFormat="24" DateFormat="dd/MM/yyyy HH:mm"
+                                              Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Recogida planificada — Fin" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDatePicker TValue="DateTime?" Name="PlannedPickupEnd" @bind-Value="_model.PlannedPickupEnd"
+                                              ShowTime="true" HourFormat="24" DateFormat="dd/MM/yyyy HH:mm"
+                                              Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Entrega planificada — Inicio" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDatePicker TValue="DateTime?" Name="PlannedDeliveryStart" @bind-Value="_model.PlannedDeliveryStart"
+                                              ShowTime="true" HourFormat="24" DateFormat="dd/MM/yyyy HH:mm"
+                                              Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="3">
+                    <RadzenFormField Text="Entrega planificada — Fin" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDatePicker TValue="DateTime?" Name="PlannedDeliveryEnd" @bind-Value="_model.PlannedDeliveryEnd"
+                                              ShowTime="true" HourFormat="24" DateFormat="dd/MM/yyyy HH:mm"
+                                              Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
+
+        @* ── Sección 3: Clasificación y líneas de residuo ────────────── *@
+        <RadzenFieldset Text="Clasificación del residuo" AllowCollapse="true" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Flujo de residuo" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string?" Name="WasteStream" @bind-Value="_model.WasteStream"
+                                            Data="@WasteFlowCatalog.All" TextProperty="Name" ValueProperty="Code"
+                                            AllowClear="true" Change="@(v => OnWasteStreamChanged(v?.ToString()))"
+                                            Placeholder="— Seleccionar flujo —" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="4">
+                    <RadzenFormField Text="Sub-flujo" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string?" Name="SubStream" @bind-Value="_model.SubStream"
+                                            Data="@_soSubflows" Disabled="@(string.IsNullOrEmpty(_model.WasteStream))"
+                                            AllowClear="true" Placeholder="— Seleccionar sub-flujo —" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+
+            @* ── Líneas de residuo ────────────────────────── *@
+            <div class="rz-mt-4">
+                <RadzenText TextStyle="TextStyle.Subtitle2">Líneas de residuo (@_residueLines.Count)</RadzenText>
+                <RadzenDataGrid @ref="_residueGrid" TItem="ResidueLineModel" Data="@_residueLines"
+                                EditMode="DataGridEditMode.Single"
+                                AllowPaging="false" AllowSorting="false" ShowPagingSummary="false"
+                                class="rz-mt-2" Style="width:100%">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="ResidueLineModel" Title="Código LER" Width="260px">
+                            <Template Context="line">
+                                @(_lerChapters.SelectMany(c => c.SubChapters).SelectMany(sc => sc.Codes)
+                                    .FirstOrDefault(x => x.Id == line.IdLERCode)?.Description ?? "—")
+                                @if (line.IsDangerous)
+                                { <br /><small class="rz-color-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i>Peligroso</small> }
+                            </Template>
+                            <EditTemplate Context="line">
+                                <RadzenDropDown TValue="Guid?" @bind-Value="line.IdLERCode"
+                                                Data="@_lerChapters.SelectMany(c => c.SubChapters).SelectMany(sc => sc.Codes)"
+                                                TextProperty="Description" ValueProperty="Id"
+                                                AllowFiltering="true" AllowClear="true"
+                                                Change="@(v => OnResidueLerChanged(line, v?.ToString()))"
+                                                Placeholder="— Sin asignar —" Style="width:100%" />
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ResidueLineModel" Title="Peso est. (kg)" Width="130px">
+                            <Template Context="line">@(line.EstimatedWeight?.ToString("N3") ?? "—")</Template>
+                            <EditTemplate Context="line">
+                                <RadzenNumeric TValue="decimal?" @bind-Value="line.EstimatedWeight"
+                                               Min="0" Format="0.000" Style="width:100%" />
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ResidueLineModel" Title="Unidades" Width="90px">
+                            <Template Context="line">@(line.Units?.ToString() ?? "—")</Template>
+                            <EditTemplate Context="line">
+                                <RadzenNumeric TValue="int?" @bind-Value="line.Units" Min="0" Step="1" Style="width:100%" />
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ResidueLineModel" Title="" Width="100px" TextAlign="TextAlign.Center">
+                            <Template Context="line">
+                                <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => _residueGrid.EditRow(line))" title="Editar" />
+                                <RadzenButton Icon="delete" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger"
+                                              Disabled="@(_residueLines.Count <= 1)"
+                                              Click="@(() => RemoveResidueLine(_residueLines.IndexOf(line)))" title="Eliminar" />
+                            </Template>
+                            <EditTemplate Context="line">
+                                <RadzenButton Icon="check" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Success"
+                                              Click="@(() => _residueGrid.UpdateRow(line))" />
+                                <RadzenButton Icon="close" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => _residueGrid.CancelEditRow(line))" />
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+                <RadzenButton Text="Añadir línea de residuo" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              class="rz-mt-2" Click="@(_ => AddResidueLine())" />
             </div>
 
-            @* ── Sección 2: Emisor y punto de recogida ───────────────────── *@
-            <div class="accordion-item">
-                <h2 class="accordion-header">
-                    <button class="accordion-button @(_sec2Open ? "" : "collapsed")" type="button"
-                            @onclick='() => _sec2Open = !_sec2Open'>
-                        <i class="bi bi-building me-2"></i>Emisor y punto de recogida
-                    </button>
-                </h2>
-                @if (_sec2Open)
-                {
-                    <div class="accordion-collapse collapse show">
-                        <div class="accordion-body row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Emisor (Entidad)</label>
-                                @if (_issuedByReadOnly)
-                                {
-                                    @* PRODUCER: emisor fijo — solo lectura *@
-                                    var issuedByEntity = _allEntities.FirstOrDefault(e => e.Id == _model.IdIssuedBy);
-                                    <input class="form-control" readonly
-                                           value="@(issuedByEntity is null ? "— Sin entidad vinculada —" : $"{issuedByEntity.Name} ({issuedByEntity.NationalId})")" />
-                                    <small class="text-muted">Asignado automáticamente a tu entidad.</small>
-                                }
-                                else
-                                {
-                                    <select class="form-select" @bind="_model.IdIssuedBy">
-                                        <option value="">— Sin asignar —</option>
-                                        @foreach (var e in _allEntities)
-                                        {
-                                            <option value="@e.Id">
-                                                @e.Name — @EntityRoles.Label(e.EntityRole)
-                                                @(e.NationalId is null ? "" : $" ({e.NationalId})")
-                                            </option>
-                                        }
-                                    </select>
-                                }
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Nombre emisor (texto libre)</label>
-                                <InputText class="form-control" @bind-Value="_model.IssuedByName"
-                                           placeholder="Si no está en el listado" />
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">NIF / NIMA emisor</label>
-                                <InputText class="form-control" @bind-Value="_model.IssuedByNationalId" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Punto de recogida</label>
-                                <select class="form-select" @bind="_model.IdPickupPoint"
-                                        @bind:after="OnPickupPointChanged">
-                                    <option value="">— Sin asignar —</option>
-                                    @foreach (var e in _allEntities)
-                                    {
-                                        <option value="@e.Id">
-                                            @e.Name — @EntityRoles.Label(e.EntityRole)
-                                            @(e.NationalId is null ? "" : $" ({e.NationalId})")
-                                        </option>
-                                    }
-                                </select>
-                                <FieldMessage Field="IdPickupPoint" Errors="_validationErrors" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Fechas planificadas de recogida</label>
-                                <div class="d-flex gap-2">
-                                    <div class="flex-fill">
-                                        <label class="form-label form-label-sm">Inicio</label>
-                                        <input type="datetime-local" class="form-control"
-                                               value="@(_model.PlannedPickupStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
-                                               @onchange="e => _model.PlannedPickupStart = ParseDate(e.Value?.ToString())" />
-                                    </div>
-                                    <div class="flex-fill">
-                                        <label class="form-label form-label-sm">Fin</label>
-                                        <input type="datetime-local" class="form-control"
-                                               value="@(_model.PlannedPickupEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
-                                               @onchange="e => _model.PlannedPickupEnd = ParseDate(e.Value?.ToString())" />
-                                        <FieldMessage Field="PlannedPickupEnd" Errors="_validationErrors" />
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Fechas planificadas de entrega</label>
-                                <div class="d-flex gap-2">
-                                    <div class="flex-fill">
-                                        <label class="form-label form-label-sm">Inicio</label>
-                                        <input type="datetime-local" class="form-control"
-                                               value="@(_model.PlannedDeliveryStart?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
-                                               @onchange="e => _model.PlannedDeliveryStart = ParseDate(e.Value?.ToString())" />
-                                        <FieldMessage Field="PlannedDeliveryStart" Errors="_validationErrors" />
-                                    </div>
-                                    <div class="flex-fill">
-                                        <label class="form-label form-label-sm">Fin</label>
-                                        <input type="datetime-local" class="form-control"
-                                               value="@(_model.PlannedDeliveryEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
-                                               @onchange="e => _model.PlannedDeliveryEnd = ParseDate(e.Value?.ToString())" />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                }
+            @* ── Contenedores ────────────────────────────── *@
+            <div class="rz-mt-4">
+                <RadzenText TextStyle="TextStyle.Subtitle2">Contenedores</RadzenText>
+                <RadzenDataGrid @ref="_containerGrid" TItem="ContainerRow" Data="@_containers"
+                                EditMode="DataGridEditMode.Single"
+                                AllowPaging="false" AllowSorting="false" ShowPagingSummary="false"
+                                class="rz-mt-2" Style="width:100%">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="ContainerRow" Title="Tipo">
+                            <Template Context="c">@(c.Type ?? "—")</Template>
+                            <EditTemplate Context="c">
+                                <RadzenDropDown TValue="string" @bind-Value="c.Type"
+                                                Data="@(new[]{"Bigbag","Contenedor","Palet","Granel","Otro"})"
+                                                Placeholder="— Seleccionar —" Style="width:100%" />
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ContainerRow" Title="Cantidad" Width="110px">
+                            <Template Context="c">@c.Qty</Template>
+                            <EditTemplate Context="c">
+                                <RadzenNumeric TValue="int" @bind-Value="c.Qty" Min="1" Style="width:100%" />
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ContainerRow" Title="" Width="100px" TextAlign="TextAlign.Center">
+                            <Template Context="c">
+                                <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => _containerGrid.EditRow(c))" />
+                                <RadzenButton Icon="delete" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger"
+                                              Click="@(() => RemoveContainer(_containers.IndexOf(c)))" />
+                            </Template>
+                            <EditTemplate Context="c">
+                                <RadzenButton Icon="check" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Success"
+                                              Click="@(() => _containerGrid.UpdateRow(c))" />
+                                <RadzenButton Icon="close" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => _containerGrid.CancelEditRow(c))" />
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+                <RadzenButton Text="Añadir contenedor" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              class="rz-mt-2" Click="@(_ => AddContainer())" />
             </div>
+        </RadzenFieldset>
 
-            @* ── Sección 3: Clasificación y líneas de residuo ────────────── *@
-            <div class="accordion-item">
-                <h2 class="accordion-header">
-                    <button class="accordion-button @(_sec3Open ? "" : "collapsed")" type="button"
-                            @onclick='() => _sec3Open = !_sec3Open'>
-                        <i class="bi bi-recycle me-2"></i>Clasificación del residuo
-                    </button>
-                </h2>
-                @if (_sec3Open)
-                {
-                    <div class="accordion-collapse collapse show">
-                        <div class="accordion-body row g-3">
-
-                            @* ── Clasificación a nivel de orden ──────────── *@
-                            <div class="col-md-4">
-                                <label class="form-label">Flujo de residuo</label>
-                                <select class="form-select" value="@_model.WasteStream"
-                                        @onchange="e => OnWasteStreamChanged(e.Value?.ToString())">
-                                    <option value="">— Seleccionar flujo —</option>
-                                    <optgroup label="RAP">
-                                        @foreach (var f in WasteFlowCatalog.All.Where(x => x.Type == WasteFlowCatalog.TypeRap))
-                                        {
-                                            <option value="@f.Code">@f.Name</option>
-                                        }
-                                    </optgroup>
-                                    <optgroup label="Operativos">
-                                        @foreach (var f in WasteFlowCatalog.All.Where(x => x.Type == WasteFlowCatalog.TypeOperativo))
-                                        {
-                                            <option value="@f.Code">@f.Name</option>
-                                        }
-                                    </optgroup>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Sub-flujo</label>
-                                <select class="form-select"
-                                        disabled="@(string.IsNullOrEmpty(_model.WasteStream))"
-                                        @bind="_model.SubStream">
-                                    <option value="">— Seleccionar sub-flujo —</option>
-                                    @foreach (var sf in _soSubflows)
-                                    {
-                                        <option value="@sf">@sf</option>
-                                    }
-                                </select>
-                            </div>
-
-                            @* ── Líneas de residuo ────────────────────────── *@
-                            <div class="col-12 mt-2">
-                                <label class="form-label fw-semibold">
-                                    Líneas de residuo
-                                    <span class="badge badge-neutral ms-1">@_residueLines.Count</span>
-                                </label>
-                                <div class="table-wrapper mb-2">
-                                    <table class="table table-sm">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th style="width:260px">Código LER</th>
-                                                <th style="width:120px">Peso est. (kg)</th>
-                                                <th style="width:80px">Unidades</th>
-                                                <th style="width:40px"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var (line, idx) in _residueLines.Select((x, i) => (x, i)))
-                                            {
-                                                <tr>
-                                                    <td>
-                                                        <select class="form-select form-select-sm"
-                                                                value="@(line.IdLERCode?.ToString() ?? "")"
-                                                                @onchange="e => OnResidueLerChanged(line, e.Value?.ToString())">
-                                                            <option value="">— Sin asignar —</option>
-                                                            @foreach (var chapter in _lerChapters)
-                                                            {
-                                                                <optgroup label="@chapter.Chapter — @chapter.ChapterDescription">
-                                                                    @foreach (var ler in chapter.SubChapters.SelectMany(sc => sc.Codes))
-                                                                    {
-                                                                        <option value="@ler.Id">
-                                                                            @ler.Code — @ler.Description
-                                                                            @(ler.IsDangerous ? " ⚠️" : "")
-                                                                        </option>
-                                                                    }
-                                                                </optgroup>
-                                                            }
-                                                        </select>
-                                                        @if (line.IsDangerous)
-                                                        {
-                                                            <small class="text-danger">
-                                                                <i class="bi bi-exclamation-triangle-fill me-1"></i>Peligroso — se requerirá NT/DI
-                                                            </small>
-                                                        }
-                                                    </td>
-                                                    <td>
-                                                        <input type="number" class="form-control form-control-sm"
-                                                               min="0" step="0.001" placeholder="0,000"
-                                                               value="@line.EstimatedWeight?.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-                                                               @onchange="e => line.EstimatedWeight = decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var dv) ? dv : null" />
-                                                    </td>
-                                                    <td>
-                                                        <input type="number" class="form-control form-control-sm"
-                                                               min="0" step="1" placeholder="0"
-                                                               value="@line.Units"
-                                                               @onchange="e => line.Units = int.TryParse(e.Value?.ToString(), out var uv) ? uv : null" />
-                                                    </td>
-                                                    <td class="text-center">
-                                                        <button type="button" class="btn btn-outline-danger btn-sm"
-                                                                disabled="@(_residueLines.Count <= 1)"
-                                                                @onclick="() => RemoveResidueLine(idx)">
-                                                            <i class="bi bi-trash"></i>
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <button type="button" class="btn btn-outline-neutral btn-sm"
-                                        @onclick="AddResidueLine">
-                                    <i class="bi bi-plus-lg me-1"></i>Añadir línea de residuo
-                                </button>
-                            </div>
-
-                            @* ── Tabla dinámica de contenedores ──────────── *@
-                            <div class="col-12">
-                                <label class="form-label">Contenedores</label>
-                                <div class="table-wrapper mb-2">
-                                    <table class="table table-sm">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Tipo</th>
-                                            <th style="width:100px">Cantidad</th>
-                                            <th style="width:40px"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var (c, idx) in _containers.Select((x, i) => (x, i)))
-                                        {
-                                            <tr>
-                                                <td>
-                                                    <select class="form-select form-select-sm" @bind="c.Type">
-                                                        <option value="">— Seleccionar —</option>
-                                                        <option value="Bigbag">Big Bag</option>
-                                                        <option value="Contenedor">Contenedor</option>
-                                                        <option value="Palet">Palé</option>
-                                                        <option value="Granel">Granel</option>
-                                                        <option value="Otro">Otro</option>
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    <input type="number" class="form-control form-control-sm"
-                                                           @bind="c.Qty" min="1" />
-                                                </td>
-                                                <td class="text-center">
-                                                    <button type="button" class="btn btn-outline-danger btn-sm"
-                                                            @onclick="() => RemoveContainer(idx)">
-                                                        <i class="bi bi-trash"></i>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                    </table>
-                                </div>
-                                <button type="button" class="btn btn-outline-neutral btn-sm"
-                                        @onclick="AddContainer">
-                                    <i class="bi bi-plus-lg me-1"></i>Añadir contenedor
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
-
-            @* ── Sección 4: Asignaciones previstas ───────────────────────── *@
-            <div class="accordion-item">
-                <h2 class="accordion-header">
-                    <button class="accordion-button @(_sec4Open ? "" : "collapsed")" type="button"
-                            @onclick='() => _sec4Open = !_sec4Open'>
-                        <i class="bi bi-truck me-2"></i>Asignaciones previstas
-                    </button>
-                </h2>
-                @if (_sec4Open)
-                {
-                    <div class="accordion-collapse collapse show">
-                        <div class="accordion-body row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Transportista previsto</label>
-                                <select class="form-select" @bind="_model.IdCarrier">
-                                    <option value="">— Sin asignar —</option>
-                                    @foreach (var e in _allEntities)
-                                    {
-                                        <option value="@e.Id">
-                                            @e.Name — @EntityRoles.Label(e.EntityRole)
-                                        </option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Planta de destino prevista</label>
-                                <select class="form-select" @bind="_model.IdPlannedPlant">
-                                    <option value="">— Sin asignar —</option>
-                                    @foreach (var e in _allEntities)
-                                    {
-                                        <option value="@e.Id">
-                                            @e.Name — @EntityRoles.Label(e.EntityRole)
-                                        </option>
-                                    }
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
-
-        </div>
+        @* ── Sección 4: Asignaciones previstas ───────────────────────── *@
+        <RadzenFieldset Text="Asignaciones previstas" AllowCollapse="true" Collapsed="true" class="rz-mb-4">
+            <RadzenRow Gap="1rem">
+                <RadzenColumn SizeMD="6">
+                    <RadzenFormField Text="Transportista previsto" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="Guid?" Name="IdCarrier" @bind-Value="_model.IdCarrier"
+                                            Data="@_allEntities" TextProperty="Name" ValueProperty="Id"
+                                            AllowClear="true" AllowFiltering="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="— Sin asignar —" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+                <RadzenColumn SizeMD="6">
+                    <RadzenFormField Text="Planta de destino prevista" Variant="Variant.Outlined" Style="width:100%">
+                        <ChildContent>
+                            <RadzenDropDown TValue="Guid?" Name="IdPlannedPlant" @bind-Value="_model.IdPlannedPlant"
+                                            Data="@_allEntities" TextProperty="Name" ValueProperty="Id"
+                                            AllowClear="true" AllowFiltering="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="— Sin asignar —" Style="width:100%" />
+                        </ChildContent>
+                    </RadzenFormField>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenFieldset>
 
         @* ── Errores y acciones ──────────────────────────────────────────────── *@
         @if (_validationErrors.Any())
         {
-            <div class="alert alert-danger mt-3">
+            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mt-4">
                 <ul class="mb-0">
                     @foreach (var err in _validationErrors.Values.SelectMany(v => v))
                     {
                         <li>@err</li>
                     }
                 </ul>
-            </div>
+            </RadzenAlert>
         }
         @if (!string.IsNullOrEmpty(_serverError))
         {
-            <div class="alert alert-danger mt-3">@_serverError</div>
+            <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mt-4">@_serverError</RadzenAlert>
         }
 
-        <div class="d-flex gap-2 mt-4">
-            <button type="submit" class="btn btn-primary" disabled="@_saving">
-                @if (_saving) { <span class="spinner spinner-sm me-1"></span> }
-                <i class="bi bi-floppy me-1"></i>Guardar
-            </button>
-            <button type="button" class="btn btn-outline-neutral" @onclick="Cancel">
-                Cancelar
-            </button>
-        </div>
-    </EditForm>
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" class="rz-mt-4">
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Guardar" Icon="save"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@_saving" IsBusy="@_saving" />
+            <RadzenButton Text="Cancelar" Icon="cancel" ButtonStyle="ButtonStyle.Light"
+                          ButtonType="ButtonType.Button" Click="@(_ => Cancel())" />
+        </RadzenStack>
+
+    </RadzenTemplateForm>
 }
 
 @code {
@@ -451,6 +370,9 @@ else
     private bool _sec4Open = false;
     private string? _serverError;
     private Dictionary<string, List<string>> _validationErrors = new();
+
+    private RadzenDataGrid<ResidueLineModel> _residueGrid   = default!;
+    private RadzenDataGrid<ContainerRow>     _containerGrid = default!;
 
     // ── Modelo de cabecera ────────────────────────────────────────────────────
     private sealed class FormModel

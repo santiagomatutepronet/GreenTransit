@@ -218,6 +218,20 @@
 .fw-bold     { font-weight: 700 !important; }
 .small       { font-size: var(--text-xs) !important; }
 
+/* ── Loading overlay (RadzenProgressBarCircular centrado) ───────────────────── */
+.gt-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 3rem 0;
+    width: 100%;
+}
+
+.gt-loading .rz-progressbar-circular {
+    width: 3rem !important;
+    height: 3rem !important;
+}
+
 /* ── Spinner (Bootstrap → site.css) ────────────────────────────────────────── */
 @keyframes gt-spin { to { transform: rotate(360deg); } }
 
