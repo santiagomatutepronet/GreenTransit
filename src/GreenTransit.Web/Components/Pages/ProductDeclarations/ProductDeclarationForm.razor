@@ -1,7 +1,7 @@
 @page "/product-declarations/new"
 @page "/product-declarations/{DeclarationId:guid}/edit"
 @attribute [Authorize(Policy = PolicyConstants.CanManageProductDeclarations)]
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 
 @using GreenTransit.Application.Features.Entities.DTOs
 @using GreenTransit.Application.Features.Entities.Queries
@@ -314,18 +314,49 @@ else
     {
         try
         {
-            if (!CurrentUser.IsInProfile(ProfileConstants.Producer))
-                _producers = await LoadProducersAsync();
+            // En modo NUEVO sólo necesitamos productores (si aplica) y tipos:
+            // la tabla de líneas no se renderiza hasta que la declaración existe,
+            // así que diferimos productos/orígenes/usos al modo edición.
+            var producersTask = !CurrentUser.IsInProfile(ProfileConstants.Producer)
+                ? LoadProducersAsync()
+                : Task.FromResult(new List<EntityDto>());
 
-            _dicTypes    = await Mediator.Send(new GetDicProductDeclarationTypesQuery());
-            _dicProducts = await Mediator.Send(new GetDicProductDeclarationProductsQuery());
-            _dicSources  = await Mediator.Send(new GetDicProductDeclarationSourcesQuery());
-            _dicUses     = await Mediator.Send(new GetDicProductDeclarationUsesQuery());
+            var typesTask    = Mediator.Send(new GetDicProductDeclarationTypesQuery());
+
+            Task<List<DicProductDeclarationProductDto>>? productsTask = null;
+            Task<List<DicProductDeclarationSourceDto>>?  sourcesTask  = null;
+            Task<List<DicProductDeclarationUseDto>>?     usesTask     = null;
+            Task<ProductDeclarationDetailDto>?           detailTask   = null;
 
             if (_isEdit)
             {
-                var detail = await Mediator.Send(
-                    new GetProductDeclarationDetailQuery(DeclarationId!.Value));
+                productsTask = Mediator.Send(new GetDicProductDeclarationProductsQuery());
+                sourcesTask  = Mediator.Send(new GetDicProductDeclarationSourcesQuery());
+                usesTask     = Mediator.Send(new GetDicProductDeclarationUsesQuery());
+                detailTask   = Mediator.Send(new GetProductDeclarationDetailQuery(DeclarationId!.Value));
+            }
+
+            // Esperar en paralelo todas las cargas iniciales.
+            await Task.WhenAll(new Task[]
+            {
+                producersTask,
+                typesTask,
+                productsTask ?? Task.CompletedTask,
+                sourcesTask  ?? Task.CompletedTask,
+                usesTask     ?? Task.CompletedTask,
+                detailTask   ?? Task.CompletedTask
+            });
+
+            _producers = producersTask.Result;
+            _dicTypes  = typesTask.Result;
+
+            if (_isEdit)
+            {
+                _dicProducts = productsTask!.Result;
+                _dicSources  = sourcesTask!.Result;
+                _dicUses     = usesTask!.Result;
+
+                var detail = detailTask!.Result;
                 if (detail is not null)
                 {
                 _idProducer   = detail.IdProducer;

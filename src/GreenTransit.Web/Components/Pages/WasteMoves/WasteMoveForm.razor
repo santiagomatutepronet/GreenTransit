@@ -61,6 +61,7 @@ else
                                 ValueProperty="Id" 
                                 Change="@OnSOsSelectionChanged"
                                 AllowFiltering="true" 
+                                AllowVirtualization="true"
                                 FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
                                 Placeholder="— Seleccionar Órdenes de Servicio —" 
                                 Style="width:100%">
@@ -132,6 +133,8 @@ else
                                                     <RadzenDropDown TValue="Guid?" @bind-Value="line.IdResidue"
                                                                     Data="@line.AvailableResidues" TextProperty="Name" ValueProperty="Id"
                                                                     Disabled="@(!line.IsIncluded)" AllowClear="true"
+                                                                    AllowFiltering="true" AllowVirtualization="true"
+                                                                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                                                     Placeholder="â€” Sin especificar â€”" Style="width:100%" />
                                                 }
                                             </ChildContent>
@@ -173,7 +176,7 @@ else
                         <ChildContent>
                             <RadzenDropDown TValue="Guid?" Name="IdSource" @bind-Value="_formModel.IdSource"
                                             Data="@_sourceEntities" TextProperty="Name" ValueProperty="Id"
-                                            AllowFiltering="true" AllowClear="true"
+                                            AllowFiltering="true" AllowClear="true" AllowVirtualization="true"
                                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                             Placeholder="— Seleccionar —" Style="width:100%" />
                         </ChildContent>
@@ -185,7 +188,7 @@ else
                         <ChildContent>
                             <RadzenDropDown TValue="Guid?" Name="IdDestination" @bind-Value="_formModel.IdDestination"
                                             Data="@_destinationEntities" TextProperty="Name" ValueProperty="Id"
-                                            AllowFiltering="true" AllowClear="true"
+                                            AllowFiltering="true" AllowClear="true" AllowVirtualization="true"
                                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                             Placeholder="— Seleccionar —" Style="width:100%" />
                         </ChildContent>
@@ -204,7 +207,9 @@ else
                             {
                                 <RadzenDropDown TValue="Guid?" Name="IdScrap" @bind-Value="_formModel.IdScrap"
                                                 Data="@_scrapEntities" TextProperty="Name" ValueProperty="Id"
-                                                AllowClear="true" Placeholder="— Seleccionar —" Style="width:100%" />
+                                                AllowClear="true" AllowFiltering="true" AllowVirtualization="true"
+                                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                Placeholder="— Seleccionar —" Style="width:100%" />
                             }
                         </ChildContent>
                         <Helper><RadzenRequiredValidator Component="IdScrap" Text="Obligatorio" /></Helper>
@@ -215,7 +220,9 @@ else
                         <ChildContent>
                             <RadzenDropDown TValue="Guid?" Name="IdScrap2" @bind-Value="_formModel.IdScrap2"
                                             Data="@_scrapEntities" TextProperty="Name" ValueProperty="Id"
-                                            AllowClear="true" Placeholder="— Ninguno —" Style="width:100%" />
+                                            AllowClear="true" AllowFiltering="true" AllowVirtualization="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="— Ninguno —" Style="width:100%" />
                         </ChildContent>
                     </RadzenFormField>
                 </RadzenColumn>
@@ -342,14 +349,27 @@ else
     // â”€â”€ Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     protected override async Task OnInitializedAsync()
     {
-        var allSOs = await Mediator.Send(new GetServiceOrdersQuery(PageSize: 500));
-        _eligibleSOs = allSOs.Items
-            .Where(s => s.Status is ServiceOrderStatuses.Pending
-                                 or ServiceOrderStatuses.Scheduled
-                      && string.IsNullOrEmpty(s.WasteMoveReference))
-            .ToList();
+        // Roles necesarios para los tres selectores de entidades (unión sin duplicados).
+        var roles = WasteMoveSourceRoles.Valid
+            .Concat(WasteMoveDestinationRoles.Valid)
+            .Append(EntityRoles.SCRAP)
+            .Distinct()
+            .ToArray();
 
-        var allEntities = await Mediator.Send(new GetEntitiesForSelectorQuery());
+        // Lanzar ambas consultas en paralelo: cada Mediator.Send resuelve su propio
+        // IApplicationDbContext (registrado Transient sobre IDbContextFactory),
+        // por lo que es seguro ejecutarlas concurrentemente.
+        var sosTask = Mediator.Send(new GetServiceOrdersQuery(
+            PageSize             : 100,
+            Statuses             : [ServiceOrderStatuses.Pending, ServiceOrderStatuses.Scheduled],
+            OnlyWithoutWasteMove : true));
+
+        var entitiesTask = Mediator.Send(new GetEntitiesForSelectorQuery(roles));
+
+        await Task.WhenAll(sosTask, entitiesTask);
+
+        _eligibleSOs         = sosTask.Result.Items;
+        var allEntities      = entitiesTask.Result;
         _sourceEntities      = allEntities.Where(e => WasteMoveSourceRoles.Valid.Contains(e.EntityRole)).ToList();
         _destinationEntities = allEntities.Where(e => WasteMoveDestinationRoles.Valid.Contains(e.EntityRole)).ToList();
         _scrapEntities       = allEntities.Where(e => e.EntityRole == EntityRoles.SCRAP).ToList();

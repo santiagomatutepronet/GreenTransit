@@ -10,17 +10,19 @@ namespace GreenTransit.Application.Features.ServiceOrders.Queries;
 // ── GetServiceOrdersQuery — lista paginada con filtros ────────────────────────
 
 public sealed record GetServiceOrdersQuery(
-    string?   Status            = null,
-    string?   Priority          = null,
-    Guid?     IdIssuedBy        = null,
-    Guid?     IdPickupPoint     = null,
-    Guid?     IdLERCode         = null,
-    string?   WasteStream       = null,
-    DateTime? PlannedPickupFrom = null,
-    DateTime? PlannedPickupTo   = null,
-    string?   SearchTerm        = null,
-    int       PageNumber        = 1,
-    int       PageSize          = 15
+    string?   Status               = null,
+    string?   Priority             = null,
+    Guid?     IdIssuedBy           = null,
+    Guid?     IdPickupPoint        = null,
+    Guid?     IdLERCode            = null,
+    string?   WasteStream          = null,
+    DateTime? PlannedPickupFrom    = null,
+    DateTime? PlannedPickupTo      = null,
+    string?   SearchTerm           = null,
+    int       PageNumber           = 1,
+    int       PageSize             = 15,
+    string[]? Statuses             = null,
+    bool      OnlyWithoutWasteMove = false
 ) : IRequest<PaginatedResult<ServiceOrderDto>>;
 
 public sealed class GetServiceOrdersQueryHandler
@@ -104,6 +106,12 @@ public sealed class GetServiceOrdersQueryHandler
 
         if (!string.IsNullOrWhiteSpace(request.Status))
             q = q.Where(s => s.Status == request.Status);
+
+        if (request.Statuses is { Length: > 0 })
+            q = q.Where(s => request.Statuses.Contains(s.Status));
+
+        if (request.OnlyWithoutWasteMove)
+            q = q.Where(s => s.WasteMoveReference == null || s.WasteMoveReference == "");
 
         if (!string.IsNullOrWhiteSpace(request.Priority))
             q = q.Where(s => s.Priority == request.Priority);
