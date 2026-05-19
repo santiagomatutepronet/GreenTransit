@@ -1,6 +1,7 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.TreatmentPlants.DTOs;
+using GreenTransit.Domain.Authorization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -40,19 +41,52 @@ public sealed class GetTreatmentPlantsQueryHandler
         GetTreatmentPlantsQuery request, CancellationToken ct)
     {
         var ownerId        = _currentUser.OwnerId;
-        var isScrap        = _currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap);
         var linkedEntityId = _currentUser.LinkedEntityId;
 
         var query = _context.TreatmentPlants
             .AsNoTracking()
             .Where(t => ownerId == Guid.Empty || t.OwnerId == ownerId);
 
-        // SCRAP: solo tratamientos cuyo traslado lo tiene asignado
-        if (isScrap && linkedEntityId.HasValue)
+        // ── Filtro por perfil ─────────────────────────────────────────────────
+        if (_currentUser.IsInProfile(ProfileConstants.PlantOp))
+        {
+            // PLANT_OP: solo tratamientos de su planta
+            var wmIds = _context.WasteMoves
+                .Where(wm => wm.IdDestination == linkedEntityId && (ownerId == Guid.Empty || wm.OwnerId == ownerId))
+                .Select(wm => wm.Id);
+            query = query.Where(t => t.IdWasteMove != null && wmIds.Contains(t.IdWasteMove.Value));
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.Scrap))
+        {
+            // SCRAP: tratamientos cuyo traslado lo tiene asignado
             query = query.Where(t =>
                 t.WasteMove != null &&
-                (t.WasteMove.IdScrap == linkedEntityId.Value ||
-                 t.WasteMove.IdScrap2 == linkedEntityId.Value));
+                (t.WasteMove.IdScrap == linkedEntityId ||
+                 t.WasteMove.IdScrap2 == linkedEntityId));
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.PublicEnt))
+        {
+            // PUBLIC_ENT: tratamientos de traslados de SOs emitidas por su entidad
+            var soIds = _context.ServiceOrders
+                .Where(so => so.IdIssuedBy == linkedEntityId && (ownerId == Guid.Empty || so.OwnerId == ownerId))
+                .Select(so => so.Id);
+            var wmIds = _context.WasteMoves
+                .Where(wm => wm.ServiceOrderId != null && soIds.Contains(wm.ServiceOrderId.Value))
+                .Select(wm => wm.Id);
+            query = query.Where(t => t.IdWasteMove != null && wmIds.Contains(t.IdWasteMove.Value));
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.Coordinator))
+        {
+            // COORDINATOR: tratamientos de traslados de SCRAPs de sus acuerdos
+            var scrapIds = _context.Agreements
+                .Where(a => a.IdCoordinator == linkedEntityId && (ownerId == Guid.Empty || a.OwnerId == ownerId))
+                .Select(a => a.IdScrap);
+            var wmIds = _context.WasteMoves
+                .Where(wm => scrapIds.Contains(wm.IdScrap) && (ownerId == Guid.Empty || wm.OwnerId == ownerId))
+                .Select(wm => wm.Id);
+            query = query.Where(t => t.IdWasteMove != null && wmIds.Contains(t.IdWasteMove.Value));
+        }
+        // DISPATCH_OFFICE / ADMIN: sin filtro adicional
 
         if (!string.IsNullOrWhiteSpace(request.WasteMoveReference))
             query = query.Where(t =>

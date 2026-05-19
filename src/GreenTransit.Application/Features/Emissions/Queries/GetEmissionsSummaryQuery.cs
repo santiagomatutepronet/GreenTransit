@@ -1,5 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Common.Models;
+using GreenTransit.Domain.Authorization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -58,15 +59,58 @@ public sealed class GetEmissionsSummaryQueryHandler
     public async Task<EmissionsSummaryDto> Handle(
         GetEmissionsSummaryQuery request, CancellationToken ct)
     {
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var pageSize       = Math.Clamp(request.PageSize, 1, 100);
+        var ownerId        = _currentUser.OwnerId;
+        var linkedEntityId = _currentUser.LinkedEntityId;
 
         // Consulta base: WasteMoves con al menos una línea con emisión calculada.
         // Usar WasteMoves como entidad base permite paginación real en BD.
         var wmQuery = _context.WasteMoves
             .AsNoTracking()
-            .Where(wm => wm.WasteMoveResidues.Any(r =>
-                r.TransportInfo_TransportCarbonEmissions != null &&
-                r.TransportInfo_TransportCarbonEmissions > 0));
+            .Where(wm => (ownerId == Guid.Empty || wm.OwnerId == ownerId) &&
+                         wm.WasteMoveResidues.Any(r =>
+                             r.TransportInfo_TransportCarbonEmissions != null &&
+                             r.TransportInfo_TransportCarbonEmissions > 0));
+
+        // ── Filtro por perfil ─────────────────────────────────────────────────
+        if (_currentUser.IsInProfile(ProfileConstants.Producer))
+        {
+            var soIds = _context.ServiceOrders
+                .Where(so => so.IdIssuedBy == linkedEntityId && (ownerId == Guid.Empty || so.OwnerId == ownerId))
+                .Select(so => so.Id);
+            wmQuery = wmQuery.Where(wm => wm.ServiceOrderId != null && soIds.Contains(wm.ServiceOrderId.Value));
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.Carrier))
+        {
+            var wmIds = _context.WasteMoveResidues
+                .Where(wmr => wmr.IdCarrier == linkedEntityId)
+                .Select(wmr => wmr.IdWasteMove).Distinct();
+            wmQuery = wmQuery.Where(wm => wmIds.Contains(wm.Id));
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.Scrap))
+        {
+            wmQuery = wmQuery.Where(wm =>
+                wm.IdScrap == linkedEntityId || wm.IdScrap2 == linkedEntityId);
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.PublicEnt))
+        {
+            var soIds = _context.ServiceOrders
+                .Where(so => so.IdIssuedBy == linkedEntityId && (ownerId == Guid.Empty || so.OwnerId == ownerId))
+                .Select(so => so.Id);
+            wmQuery = wmQuery.Where(wm => wm.ServiceOrderId != null && soIds.Contains(wm.ServiceOrderId.Value));
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.PlantOp))
+        {
+            wmQuery = wmQuery.Where(wm => wm.IdDestination == linkedEntityId);
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.Coordinator))
+        {
+            var scrapIds = _context.Agreements
+                .Where(a => a.IdCoordinator == linkedEntityId && (ownerId == Guid.Empty || a.OwnerId == ownerId))
+                .Select(a => a.IdScrap);
+            wmQuery = wmQuery.Where(wm => scrapIds.Contains(wm.IdScrap));
+        }
+        // DISPATCH_OFFICE / ADMIN: sin filtro adicional
 
         if (request.DateFrom.HasValue)
             wmQuery = wmQuery.Where(wm => wm.GatheredDate >= request.DateFrom.Value);

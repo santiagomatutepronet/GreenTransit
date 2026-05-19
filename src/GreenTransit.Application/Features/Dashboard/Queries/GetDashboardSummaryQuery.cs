@@ -46,36 +46,51 @@ public sealed class GetDashboardSummaryQueryHandler
         var yearEnd          = yearStart.AddYears(1);
 
         var ownerId        = _currentUser.OwnerId;
-        var userProfile    = _currentUser.UserProfile;
-        var isCarrier      = string.Equals(userProfile, "CARRIER",  StringComparison.OrdinalIgnoreCase);
-        var isProducer     = string.Equals(userProfile, "PRODUCER", StringComparison.OrdinalIgnoreCase);
-        var isScrap        = string.Equals(userProfile, "SCRAP",    StringComparison.OrdinalIgnoreCase);
         var linkedEntityId = _currentUser.LinkedEntityId;
 
         // ── Helpers para filtro de tenant ─────────────────────────────────────
         bool HasOwner(Guid? entityOwnerId) => ownerId == Guid.Empty || entityOwnerId == ownerId;
+
+        // ── Preparar IDs de SCRAPs para perfil COORDINATOR ────────────────────
+        List<Guid>? coordinatorScrapIds = null;
+        if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Coordinator) && linkedEntityId.HasValue)
+            coordinatorScrapIds = (await _context.Agreements
+                .Where(a => a.IdCoordinator == linkedEntityId.Value && (ownerId == Guid.Empty || a.OwnerId == ownerId))
+                .Select(a => a.IdScrap).Distinct().ToListAsync(ct))
+                .Where(id => id.HasValue).Select(id => id!.Value).ToList();
 
         // ── 1. WasteMoves by status ───────────────────────────────────────────
         var wmQuery = _context.WasteMoves
             .AsNoTracking()
             .Where(wm => ownerId == Guid.Empty || wm.OwnerId == ownerId);
 
-        if (isCarrier)
+        if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Carrier))
             wmQuery = wmQuery.Where(wm =>
-                wm.WasteMoveResidues.Any(r => r.IdCarrier != null));
-
-        // PRODUCER: solo traslados cuya SO fue emitida por su entidad
-        if (isProducer && linkedEntityId.HasValue)
+                wm.WasteMoveResidues.Any(r => r.IdCarrier == linkedEntityId));
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Producer) && linkedEntityId.HasValue)
             wmQuery = wmQuery.Where(wm =>
                 wm.ServiceOrderId != null &&
                 wm.ServiceOrder != null &&
                 wm.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
-
-        // SCRAP: solo traslados donde figure como IdScrap o IdScrap2
-        if (isScrap && linkedEntityId.HasValue)
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap) && linkedEntityId.HasValue)
             wmQuery = wmQuery.Where(wm =>
                 wm.IdScrap == linkedEntityId.Value ||
                 wm.IdScrap2 == linkedEntityId.Value);
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PublicEnt) && linkedEntityId.HasValue)
+        {
+            var soIds = _context.ServiceOrders
+                .Where(so => so.IdIssuedBy == linkedEntityId.Value && (ownerId == Guid.Empty || so.OwnerId == ownerId))
+                .Select(so => so.Id);
+            wmQuery = wmQuery.Where(wm => wm.ServiceOrderId != null && soIds.Contains(wm.ServiceOrderId.Value));
+        }
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PlantOp) && linkedEntityId.HasValue)
+            wmQuery = wmQuery.Where(wm => wm.IdDestination == linkedEntityId.Value);
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.CacOp) && linkedEntityId.HasValue)
+            wmQuery = wmQuery.Where(wm =>
+                wm.IdDestination == linkedEntityId.Value ||
+                wm.IdSource == linkedEntityId.Value);
+        else if (coordinatorScrapIds != null)
+            wmQuery = wmQuery.Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value));
 
         var wasteMovesByStatus = (await wmQuery
             .GroupBy(wm => wm.ServiceStatus ?? "DESCONOCIDO")
@@ -88,35 +103,68 @@ public sealed class GetDashboardSummaryQueryHandler
             .AsNoTracking()
             .Where(r => ownerId == Guid.Empty || r.WasteMove.OwnerId == ownerId);
 
-        // PRODUCER: solo residuos de traslados vinculados a sus SOs
-        if (isProducer && linkedEntityId.HasValue)
+        if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Carrier) && linkedEntityId.HasValue)
+            wmrBase = wmrBase.Where(r => r.IdCarrier == linkedEntityId.Value);
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Producer) && linkedEntityId.HasValue)
             wmrBase = wmrBase.Where(r =>
                 r.WasteMove.ServiceOrderId != null &&
                 r.WasteMove.ServiceOrder != null &&
                 r.WasteMove.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
-
-        // SCRAP: solo residuos de traslados donde figure como IdScrap o IdScrap2
-        if (isScrap && linkedEntityId.HasValue)
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap) && linkedEntityId.HasValue)
             wmrBase = wmrBase.Where(r =>
                 r.WasteMove.IdScrap == linkedEntityId.Value ||
                 r.WasteMove.IdScrap2 == linkedEntityId.Value);
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PublicEnt) && linkedEntityId.HasValue)
+        {
+            var soIds = _context.ServiceOrders
+                .Where(so => so.IdIssuedBy == linkedEntityId.Value && (ownerId == Guid.Empty || so.OwnerId == ownerId))
+                .Select(so => so.Id);
+            wmrBase = wmrBase.Where(r =>
+                r.WasteMove.ServiceOrderId != null && soIds.Contains(r.WasteMove.ServiceOrderId.Value));
+        }
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PlantOp) && linkedEntityId.HasValue)
+            wmrBase = wmrBase.Where(r => r.WasteMove.IdDestination == linkedEntityId.Value);
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.CacOp) && linkedEntityId.HasValue)
+            wmrBase = wmrBase.Where(r =>
+                r.WasteMove.IdDestination == linkedEntityId.Value ||
+                r.WasteMove.IdSource == linkedEntityId.Value);
+        else if (coordinatorScrapIds != null)
+            wmrBase = wmrBase.Where(r => r.WasteMove.IdScrap.HasValue && coordinatorScrapIds.Contains(r.WasteMove.IdScrap.Value));
 
-        // ── Base de residuos de tratamiento (secciones 3, 4 y 9) ──────────────
+        // ── Base de residuos de tratamiento (secciones 3, 4 y 9) ─────────────
         var tpResiduesBase = _context.TreatmentPlantResidues
             .AsNoTracking()
             .Where(r => ownerId == Guid.Empty || r.TreatmentPlant.OwnerId == ownerId);
 
-        if (isProducer && linkedEntityId.HasValue)
+        if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Producer) && linkedEntityId.HasValue)
             tpResiduesBase = tpResiduesBase.Where(r =>
                 r.TreatmentPlant.WasteMove != null &&
                 r.TreatmentPlant.WasteMove.ServiceOrder != null &&
                 r.TreatmentPlant.WasteMove.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
-
-        if (isScrap && linkedEntityId.HasValue)
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap) && linkedEntityId.HasValue)
             tpResiduesBase = tpResiduesBase.Where(r =>
                 r.TreatmentPlant.WasteMove != null &&
                 (r.TreatmentPlant.WasteMove.IdScrap == linkedEntityId.Value ||
                  r.TreatmentPlant.WasteMove.IdScrap2 == linkedEntityId.Value));
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PublicEnt) && linkedEntityId.HasValue)
+        {
+            var soIds = _context.ServiceOrders
+                .Where(so => so.IdIssuedBy == linkedEntityId.Value && (ownerId == Guid.Empty || so.OwnerId == ownerId))
+                .Select(so => so.Id);
+            tpResiduesBase = tpResiduesBase.Where(r =>
+                r.TreatmentPlant.WasteMove != null &&
+                r.TreatmentPlant.WasteMove.ServiceOrderId != null &&
+                soIds.Contains(r.TreatmentPlant.WasteMove.ServiceOrderId.Value));
+        }
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PlantOp) && linkedEntityId.HasValue)
+            tpResiduesBase = tpResiduesBase.Where(r =>
+                r.TreatmentPlant.WasteMove != null &&
+                r.TreatmentPlant.WasteMove.IdDestination == linkedEntityId.Value);
+        else if (coordinatorScrapIds != null)
+            tpResiduesBase = tpResiduesBase.Where(r =>
+                r.TreatmentPlant.WasteMove != null &&
+                r.TreatmentPlant.WasteMove.IdScrap.HasValue &&
+                coordinatorScrapIds.Contains(r.TreatmentPlant.WasteMove.IdScrap.Value));
 
         var kgCollectedThisMonth = await wmrBase
             .Where(r =>
@@ -182,19 +230,43 @@ public sealed class GetDashboardSummaryQueryHandler
                 i.ClosedAt == null);
 
         // PRODUCER: solo incidencias de sus SOs
-        if (isProducer && linkedEntityId.HasValue)
+        if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Producer) && linkedEntityId.HasValue)
             incidentBase = incidentBase.Where(i =>
                 i.ServiceOrderId != null &&
                 i.ServiceOrder != null &&
                 i.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
-
-        // SCRAP: solo incidencias de traslados donde figure como IdScrap o IdScrap2
-        if (isScrap && linkedEntityId.HasValue)
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap) && linkedEntityId.HasValue)
             incidentBase = incidentBase.Where(i =>
                 i.WasteMoveReference != null &&
                 _context.WasteMoves.Any(wm =>
                     wm.WasteMoveReference == i.WasteMoveReference &&
                     (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value)));
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PublicEnt) && linkedEntityId.HasValue)
+        {
+            var soIds = _context.ServiceOrders
+                .Where(so => so.IdIssuedBy == linkedEntityId.Value && (ownerId == Guid.Empty || so.OwnerId == ownerId))
+                .Select(so => so.Id);
+            incidentBase = incidentBase.Where(i =>
+                i.ServiceOrderId != null && soIds.Contains(i.ServiceOrderId.Value));
+        }
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PlantOp) && linkedEntityId.HasValue)
+            incidentBase = incidentBase.Where(i =>
+                i.WasteMoveReference != null &&
+                _context.WasteMoves.Any(wm =>
+                    wm.WasteMoveReference == i.WasteMoveReference &&
+                    wm.IdDestination == linkedEntityId.Value));
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.CacOp) && linkedEntityId.HasValue)
+            incidentBase = incidentBase.Where(i =>
+                i.WasteMoveReference != null &&
+                _context.WasteMoves.Any(wm =>
+                    wm.WasteMoveReference == i.WasteMoveReference &&
+                    (wm.IdDestination == linkedEntityId.Value || wm.IdSource == linkedEntityId.Value)));
+        else if (coordinatorScrapIds != null)
+            incidentBase = incidentBase.Where(i =>
+                i.WasteMoveReference != null &&
+                _context.WasteMoves.Any(wm =>
+                    wm.WasteMoveReference == i.WasteMoveReference &&
+                    wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value)));
 
         var openIncidentsBySeverity = (await incidentBase
             .GroupBy(i => i.Severity)
@@ -269,20 +341,31 @@ public sealed class GetDashboardSummaryQueryHandler
                 so.Status != "Completed" &&
                 so.Status != "Cancelled");
 
-        if (isCarrier)
+        if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Carrier))
             soQuery = soQuery.Where(so => so.IdCarrier != null);
-
-        // PRODUCER: solo sus propias SOs
-        if (isProducer && linkedEntityId.HasValue)
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Producer) && linkedEntityId.HasValue)
             soQuery = soQuery.Where(so => so.IdIssuedBy == linkedEntityId.Value);
-
-        // SCRAP: solo SOs vinculadas a traslados donde figure como IdScrap o IdScrap2
-        if (isScrap && linkedEntityId.HasValue)
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PublicEnt) && linkedEntityId.HasValue)
+            soQuery = soQuery.Where(so => so.IdIssuedBy == linkedEntityId.Value);
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap) && linkedEntityId.HasValue)
             soQuery = soQuery.Where(so =>
                 so.WasteMoveReference != null &&
                 _context.WasteMoves.Any(wm =>
                     wm.WasteMoveReference == so.WasteMoveReference &&
                     (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value)));
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PlantOp) && linkedEntityId.HasValue)
+            soQuery = soQuery.Where(so =>
+                _context.WasteMoves.Any(wm =>
+                    wm.ServiceOrderId == so.Id && wm.IdDestination == linkedEntityId.Value));
+        else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.CacOp) && linkedEntityId.HasValue)
+            soQuery = soQuery.Where(so =>
+                so.IdPickupPoint == linkedEntityId.Value ||
+                _context.WasteMoves.Any(wm =>
+                    wm.ServiceOrderId == so.Id && wm.IdDestination == linkedEntityId.Value));
+        else if (coordinatorScrapIds != null)
+            soQuery = soQuery.Where(so =>
+                _context.WasteMoves.Any(wm =>
+                    wm.ServiceOrderId == so.Id && wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value)));
 
         var upcomingPickups = (await soQuery
             .OrderBy(so => so.PlannedPickupStart)

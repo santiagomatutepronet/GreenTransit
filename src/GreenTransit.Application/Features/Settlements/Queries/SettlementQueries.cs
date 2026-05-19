@@ -53,6 +53,16 @@ public sealed class GetSettlementsQueryHandler
         // Filtro SCRAP: solo sus liquidaciones
         if (_currentUser.IsInProfile(ProfileConstants.Scrap) && _currentUser.LinkedEntityId.HasValue)
             q = q.Where(s => s.IdScrap == _currentUser.LinkedEntityId.Value);
+        else if (_currentUser.IsInProfile(ProfileConstants.PublicEnt) && _currentUser.LinkedEntityId.HasValue)
+            q = q.Where(s => s.IdPublicEntity == _currentUser.LinkedEntityId.Value);
+        else if (_currentUser.IsInProfile(ProfileConstants.Coordinator) && _currentUser.LinkedEntityId.HasValue)
+        {
+            // COORDINATOR: liquidaciones de SCRAPs de sus acuerdos
+            var scrapIds = _context.Agreements
+                .Where(a => a.IdCoordinator == _currentUser.LinkedEntityId.Value)
+                .Select(a => a.IdScrap);
+            q = q.Where(s => scrapIds.Contains(s.IdScrap));
+        }
         else if (request.IdScrap.HasValue)
             q = q.Where(s => s.IdScrap == request.IdScrap.Value);
 

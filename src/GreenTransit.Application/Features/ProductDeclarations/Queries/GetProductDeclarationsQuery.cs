@@ -52,17 +52,44 @@ public sealed class GetProductDeclarationsQueryHandler
         }
         else if (_currentUser.IsInProfile(ProfileConstants.Scrap))
         {
-            // El SCRAP ve las declaraciones de productores adheridos a sus acuerdos
+            // SCRAP: ve declaraciones de productores adheridos (derivado de WasteMoves)
             var linkedId = _currentUser.LinkedEntityId;
             if (linkedId.HasValue)
             {
-                var producerIds = _context.Agreements
-                    .Where(a => a.IdScrap == linkedId.Value)
-                    .Select(a => a.IdPublicEntity);
+                var ownerId = _currentUser.OwnerId;
+                var producerIds = _context.WasteMoves
+                    .Where(wm => (wm.IdScrap == linkedId.Value || wm.IdScrap2 == linkedId.Value)
+                              && (ownerId == Guid.Empty || wm.OwnerId == ownerId)
+                              && wm.ServiceOrderId != null)
+                    .Join(_context.ServiceOrders,
+                        wm => wm.ServiceOrderId, so => so.Id,
+                        (wm, so) => so.IdIssuedBy)
+                    .Distinct();
                 q = q.Where(pd => pd.IdProducer != null && producerIds.Contains(pd.IdProducer.Value));
             }
         }
-        // ADMIN: sin restricción adicional
+        else if (_currentUser.IsInProfile(ProfileConstants.Coordinator))
+        {
+            // COORDINATOR: declaraciones de productores de SCRAPs coordinados
+            var linkedId = _currentUser.LinkedEntityId;
+            if (linkedId.HasValue)
+            {
+                var ownerId = _currentUser.OwnerId;
+                var scrapIds = _context.Agreements
+                    .Where(a => a.IdCoordinator == linkedId.Value && (ownerId == Guid.Empty || a.OwnerId == ownerId))
+                    .Select(a => a.IdScrap).Distinct();
+                var producerIds = _context.WasteMoves
+                    .Where(wm => scrapIds.Contains(wm.IdScrap)
+                              && (ownerId == Guid.Empty || wm.OwnerId == ownerId)
+                              && wm.ServiceOrderId != null)
+                    .Join(_context.ServiceOrders,
+                        wm => wm.ServiceOrderId, so => so.Id,
+                        (wm, so) => so.IdIssuedBy)
+                    .Distinct();
+                q = q.Where(pd => pd.IdProducer != null && producerIds.Contains(pd.IdProducer.Value));
+            }
+        }
+        // DISPATCH_OFFICE / ADMIN: sin restricción adicional
 
         // ── Filtros opcionales ────────────────────────────────────────────────
         if (request.Year.HasValue)

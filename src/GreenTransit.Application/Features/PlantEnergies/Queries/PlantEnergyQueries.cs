@@ -1,6 +1,7 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.PlantEnergies.DTOs;
+using GreenTransit.Domain.Authorization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -45,11 +46,52 @@ public sealed class GetPlantEnergiesQueryHandler
     public async Task<PaginatedResult<PlantEnergyDto>> Handle(
         GetPlantEnergiesQuery request, CancellationToken ct)
     {
-        var ownerId = _currentUser.OwnerId;
+        var ownerId        = _currentUser.OwnerId;
+        var linkedEntityId = _currentUser.LinkedEntityId;
 
         var query = _context.PlantEnergies
             .AsNoTracking()
-            .Where(e => e.OwnerId == ownerId);
+            .Where(e => ownerId == Guid.Empty || e.OwnerId == ownerId);
+
+        // ── Filtro por perfil ─────────────────────────────────────────────────
+        if (_currentUser.IsInProfile(ProfileConstants.PlantOp))
+        {
+            // PLANT_OP: solo datos de su planta
+            var centerCode = await _context.BusinessEntities
+                .Where(e => e.Id == linkedEntityId)
+                .Select(e => e.CenterCode)
+                .FirstOrDefaultAsync(ct);
+            if (centerCode != null)
+                query = query.Where(e => e.PlantCenterCode == centerCode);
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.Scrap))
+        {
+            // SCRAP: datos de plantas que procesan sus residuos
+            var plantCenterCodes = await _context.WasteMoves
+                .Where(wm => (wm.IdScrap == linkedEntityId || wm.IdScrap2 == linkedEntityId)
+                          && (ownerId == Guid.Empty || wm.OwnerId == ownerId))
+                .Join(_context.BusinessEntities, wm => wm.IdDestination, e => e.Id,
+                    (wm, e) => e.CenterCode)
+                .Where(cc => cc != null)
+                .Distinct().ToListAsync(ct);
+            query = query.Where(e => plantCenterCodes.Contains(e.PlantCenterCode));
+        }
+        else if (_currentUser.IsInProfile(ProfileConstants.Coordinator))
+        {
+            // COORDINATOR: energía de plantas de traslados de SCRAPs coordinados
+            var scrapIds = (await _context.Agreements
+                .Where(a => a.IdCoordinator == linkedEntityId && (ownerId == Guid.Empty || a.OwnerId == ownerId))
+                .Select(a => a.IdScrap).Distinct().ToListAsync(ct))
+                .Where(id => id.HasValue).Select(id => id!.Value).ToList();
+            var plantCenterCodes = await _context.WasteMoves
+                .Where(wm => wm.IdScrap.HasValue && scrapIds.Contains(wm.IdScrap.Value) && (ownerId == Guid.Empty || wm.OwnerId == ownerId))
+                .Join(_context.BusinessEntities, wm => wm.IdDestination, e => e.Id,
+                    (wm, e) => e.CenterCode)
+                .Where(cc => cc != null)
+                .Distinct().ToListAsync(ct);
+            query = query.Where(e => plantCenterCodes.Contains(e.PlantCenterCode));
+        }
+        // DISPATCH_OFFICE / ADMIN / PUBLIC_ENT: sin filtro adicional (todo el tenant)
 
         if (!string.IsNullOrWhiteSpace(request.PlantCenterCode))
             query = query.Where(e => e.PlantCenterCode == request.PlantCenterCode);
