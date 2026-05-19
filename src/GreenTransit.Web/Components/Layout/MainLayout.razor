@@ -55,19 +55,19 @@
                     </div>
                 </div>
 
-                <RadzenButton Icon="@(_darkMode ? "light_mode" : "dark_mode")"
-                              ButtonStyle="ButtonStyle.Light"
-                              Variant="Variant.Text"
-                              Click="ToggleDarkMode"
-                              title="@(_darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro")" />
+                <a class="rz-button rz-button-md rz-button-icon-only rz-variant-text rz-light"
+                   @onclick="ToggleDarkMode"
+                           title="@(_darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro")">
+                    <i class="rzi">@(_darkMode ? "light_mode" : "dark_mode")</i>
+                </a>
 
                 <AuthorizeView>
                     <Authorized>
-                        <a class="rz-button rz-button-sm rz-secondary rz-variant-text"
+                        <a class="rz-button rz-button-md rz-button-icon-only rz-variant-text rz-danger"
                            href="/account/logout"
                            data-enhance-nav="false"
                            title="Cerrar sesión">
-                            <i class="bi bi-box-arrow-right"></i>
+                            <i class="rzi">logout</i>
                         </a>
                     </Authorized>
                 </AuthorizeView>
@@ -148,7 +148,12 @@
         await JS.InvokeVoidAsync("localStorage.setItem", "gt-sidebar", expanded ? "0" : "1");
     }
 
-    private void ToggleDarkMode() => _darkMode = !_darkMode;
+    private async Task ToggleDarkMode()
+    {
+        _darkMode = !_darkMode;
+        var theme = _darkMode ? "material-dark" : "humanistic";
+        await JS.InvokeVoidAsync("setTheme", theme);
+    }
 
     public async ValueTask DisposeAsync()
     {

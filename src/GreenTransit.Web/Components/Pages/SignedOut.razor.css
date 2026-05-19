@@ -33,7 +33,7 @@
 
 .signed-out-icon .bi {
     font-size: 2rem;
-    color:     #1B6B3A;
+    color:     #0A404B;
 }
 
 .signed-out-title {
@@ -41,7 +41,7 @@
     font-weight:   700;
     color:         #1A1F2E;
     margin-bottom: 12px;
-    font-family:   'Source Sans 3', 'Segoe UI', sans-serif;
+    font-family:   'Inter', 'Segoe UI', sans-serif;
 }
 
 .signed-out-body {
@@ -56,7 +56,7 @@
     align-items:     center;
     justify-content: center;
     padding:         10px 28px;
-    background:      #1B6B3A;
+    background:      #0A404B;
     color:           #ffffff;
     border-radius:   8px;
     font-size:       0.9rem;
@@ -66,7 +66,7 @@
 }
 
 .signed-out-btn:hover {
-    background:      #155430;
+    background:      #083338;
     color:           #ffffff;
     text-decoration: none;
 }

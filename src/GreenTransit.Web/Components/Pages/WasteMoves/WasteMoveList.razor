@@ -93,18 +93,18 @@
 </div>
 
 @* ── Tabla ─────────────────────────────────────────────────────────────────── *@
-@if (_loading)
+@if (_result is null && _loading)
 {
     <div class="gt-loading"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
 }
-else if (_result is null || _result.Items.Count == 0)
+else if (_result is not null && _result.Items.Count == 0 && !_loading)
 {
     <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">No se encontraron traslados con los filtros aplicados.</RadzenAlert>
 }
 else
 {
     <RadzenDataGrid @ref="_grid" TItem="WasteMoveDto"
-                    Data="@_result.Items" Count="@_result.TotalCount"
+                    Data="@(_result?.Items)" Count="@(_result?.TotalCount ?? 0)"
                     LoadData="@OnLoadData"
                     AllowPaging="true" PageSize="PageSize"
                     AllowSorting="true" AllowFiltering="false"
@@ -119,9 +119,11 @@ else
                     </a>
                 </Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="WasteMoveDto" Property="ServiceStatus" Title="Estado" Width="320px">
+            <RadzenDataGridColumn TItem="WasteMoveDto" Property="ServiceStatus" Title="Estado" Width="150px">
                 <Template Context="wm">
-                    <WasteMoveStatusStepper Status="@wm.ServiceStatus" />
+                    <span class="@WasteMoveStatuses.BadgeCss(wm.ServiceStatus ?? "")">
+                        @WasteMoveStatuses.Label(wm.ServiceStatus ?? "")
+                    </span>
                 </Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="WasteMoveDto" Property="SourceName" Title="Origen" Width="160px">
@@ -182,10 +184,20 @@ else
     private async Task OnLoadData(LoadDataArgs args)
     {
         _page = args.Skip.HasValue ? (args.Skip.Value / PageSize) + 1 : 1;
-        await SearchAsync();
+        await ReloadDataAsync();
     }
 
     private async Task SearchAsync()
+    {
+        _page = 1;
+        if (_grid != null)
+        {
+            await _grid.FirstPage(true);
+        }
+        await ReloadDataAsync();
+    }
+
+    private async Task ReloadDataAsync()
     {
         _loading = true;
         _result  = await Mediator.Send(new GetWasteMovesQuery(

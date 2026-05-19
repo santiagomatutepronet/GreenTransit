@@ -11,10 +11,10 @@
     --color-accent:       var(--secondary);
     --color-bg:           var(--background);
     --color-surface:      var(--surface);
-    --color-sidebar-bg:     #255C3A; /* Verde corporativo GreenTransit (aclarado) */
-    --color-sidebar-text:   rgba(255,255,255,0.80);
-    --color-sidebar-hover:  #2E7348; /* Verde medio — hover                    */
-    --color-sidebar-active: var(--primary);
+    --color-sidebar-bg:     #17233C;               /* Dark Blue corporativo */
+    --color-sidebar-text:   rgba(255,255,255,0.85);
+    --color-sidebar-hover:  rgba(138,204,195,0.10); /* Teal semi-transparente */
+    --color-sidebar-active: #0A404B;               /* Dark Petroleum */
     --color-topbar-bg:    var(--surface);
     --color-border:       var(--border);
     --color-text:         var(--text-primary);
@@ -24,12 +24,12 @@
 
 /* ── Dark mode ─────────────────────────────────────────────────────────────── */
 .app-shell.dark-mode {
-    --color-bg:         #121c17;
-    --color-surface:    #1a2820;
-    --color-topbar-bg:  #1a2820;
-    --color-border:     #2d3d34;
-    --color-text:       #d4e8db;
-    --color-text-muted: #7a9e88;
+    --color-bg:         #12162A;
+    --color-surface:    #1A1F2E;
+    --color-topbar-bg:  #1A1F2E;
+    --color-border:     #2E3647;
+    --color-text:       #E8EAEA;
+    --color-text-muted: #A0ABA7;
 }
 
 /* ── Shell principal ───────────────────────────────────────────────────────── */

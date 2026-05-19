@@ -1,5 +1,5 @@
 ﻿<!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 
 <head>
     <meta charset="utf-8" />
@@ -7,15 +7,15 @@
     <base href="/" />
     <ResourcePreloader />
     <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+    @* ── Radzen CSS + Material Icons — debe cargarse ANTES de site.css para que los overrides surtan efecto *@
+    <link id="radzen-theme" rel="stylesheet" href="_content/Radzen.Blazor/css/humanistic.css" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
     <link rel="stylesheet" href="@Assets["site.css"]" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["GreenTransit.Web.styles.css"]" />
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
-    @* ── Radzen CSS + Material Icons (necesarios para RadzenLayout, NavMenu, etc.) *@
-    <link rel="stylesheet" href="_content/Radzen.Blazor/css/software.css" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
     @* ── Leaflet (mapas interactivos) ──────────────────────────────────────── *@
     <link rel="stylesheet" href="lib/leaflet/leaflet.css" />
     <HeadOutlet />
@@ -46,6 +46,11 @@
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     @* ── Radzen JS ────────────────────────────────────────────────────────── *@
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+    <script>
+        window.setTheme = function (themeName) {
+            document.getElementById('radzen-theme').setAttribute('href', '_content/Radzen.Blazor/css/' + themeName + '.css');
+        };
+    </script>
     @* ── ApexCharts ────────────────────────────────────────────────────────── *@
     <script src="_content/Blazor-ApexCharts/js/blazor-apexcharts.js"></script>
     @* ── Descarga de ficheros generados en servidor ────────────────────────── *@

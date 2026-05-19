@@ -304,7 +304,7 @@ else
             @* ── Botón guardar ────────────────────────────────────────────── *@
             <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" class="rz-mt-4">
                 <RadzenButton ButtonType="ButtonType.Submit" Text="Guardar y continuar" Icon="check_circle"
-                              ButtonStyle="ButtonStyle.Success" Disabled="@_saving" IsBusy="@_saving"
+                              ButtonStyle="ButtonStyle.Primary" Disabled="@_saving" IsBusy="@_saving"
                               Click="@(_ => _submitted = true)" />
                 <RadzenButton Text="Cancelar" Icon="cancel" ButtonStyle="ButtonStyle.Light"
                               ButtonType="ButtonType.Button" Click="@(_ => Nav.NavigateTo("/waste-moves/" + WasteMoveId))" />

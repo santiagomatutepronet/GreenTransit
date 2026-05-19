@@ -68,7 +68,7 @@
             @if (_isAdmin || _isPlantOp)
             {
                 <div class="col-auto ms-auto">
-                    <button class="btn btn-success btn-sm" @onclick="() => OpenForm(null)">
+                    <button class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
                         <i class="bi bi-plus-lg me-1"></i>Registrar consumo
                     </button>
                 </div>
@@ -261,7 +261,7 @@ else
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary btn-sm" @onclick="CloseForm">Cancelar</button>
-                <button class="btn btn-success btn-sm" @onclick="SaveFormAsync"
+                <button class="btn btn-primary btn-sm" @onclick="SaveFormAsync"
                         disabled="@_saving">
                     @if (_saving)
                     {

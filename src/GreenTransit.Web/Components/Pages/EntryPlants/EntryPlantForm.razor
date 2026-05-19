@@ -122,9 +122,9 @@ else
             </div>
 
             @* ── Pesos — sección destacada ────────────────────────────── *@
-            <div class="card mb-3 border-success border-2">
-                <div class="card-header bg-success-subtle">
-                    <h5 class="mb-0 text-success">
+            <div class="card mb-3 border-primary border-2">
+                <div class="card-header bg-primary-subtle">
+                    <h5 class="mb-0 text-primary">
                         <i class="bi bi-speedometer2 me-2"></i>Pesaje en báscula
                     </h5>
                 </div>
@@ -153,14 +153,14 @@ else
                     {
                         <div class="row g-3 align-items-end">
                             <div class="col-12 col-md-4">
-                                <label class="form-label fw-bold fs-6 text-success">
+                                <label class="form-label fw-bold fs-6 text-primary">
                                     Peso NETO (kg) *
                                 </label>
                                 <input type="number"
                                        step="0.01"
                                        min="0"
                                        class="form-control form-control-lg fw-bold
-                                              bg-success-subtle border-success text-success"
+                                              bg-primary-subtle border-primary text-primary"
                                        style="font-size:1.4rem"
                                        value="@_model.DirectNetWeight"
                                        @oninput="OnDirectNetWeightInput"
@@ -182,7 +182,7 @@ else
                                        step="0.01"
                                        min="0"
                                        class="form-control form-control-lg fw-bold
-                                              bg-success-subtle border-success text-success"
+                                              bg-primary-subtle border-primary text-primary"
                                        style="font-size:1.4rem"
                                        value="@_model.GrossWeight"
                                        @oninput="OnGrossWeightInput"
@@ -210,11 +210,11 @@ else
                                 }
                             </div>
                             <div class="col-12 col-md-4">
-                                <label class="form-label fw-bold fs-6 text-success">
+                                <label class="form-label fw-bold fs-6 text-primary">
                                     Peso NETO (kg) — calculado
                                 </label>
                                 <div class="form-control form-control-lg fw-bold
-                                            bg-body-secondary text-success border-success"
+                                            bg-body-secondary text-primary border-primary"
                                      style="font-size:1.6rem">
                                     @(_netWeightDisplay > 0 ? _netWeightDisplay.ToString("F2") : "—")
                                 </div>
@@ -466,7 +466,7 @@ else
                 <RadzenButton Text="Cancelar" Icon="cancel" ButtonStyle="ButtonStyle.Light"
                               Click="@(_ => Nav.NavigateTo("/waste-moves/" + WasteMoveId))" />
                 <RadzenButton ButtonType="ButtonType.Submit" Text="Registrar pesaje" Icon="check_circle"
-                              ButtonStyle="ButtonStyle.Success" Disabled="@_saving" IsBusy="@_saving" />
+                              ButtonStyle="ButtonStyle.Primary" Disabled="@_saving" IsBusy="@_saving" />
             </RadzenStack>
         </RadzenTemplateForm>
     }

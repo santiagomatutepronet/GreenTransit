@@ -23,8 +23,8 @@
 }
 
 .od-day-card--today {
-    border-color: var(--primary-muted, #4C9A6D);
-    background:   rgba(76,154,109,.08);
+    border-color: var(--primary-muted, #8ACCC3);
+    background:   rgba(138,204,195,.08);
 }
 
 .od-day-name {
@@ -46,7 +46,7 @@
 }
 
 .od-day-count--has {
-    color:       var(--primary, #1B6B3A);
+    color:       var(--primary, #0A404B);
     font-weight: 700;
 }
 

@@ -1,70 +1,124 @@
 /* ============================================================
-   GreenTransit Â· site.css
-   VersiÃ³n: 1.0 Â· Abril 2026
+   GreenTransit · site.css
+   Versión: 2.1 · Mayo 2026
    Stack: Blazor Web App / .NET 10 / SQL Server Azure
-   Paleta: Verde-azul sostenibilidad + grises tÃ©cnicos
-   Accesibilidad: WCAG AA (contrast ratio â‰¥ 4.5:1)
+   Paleta: Identidad corporativa GreenTransit (Dark Petroleum + Teal)
+   Tipografía: Inter (activa) — PP Mori (en cuanto se añadan los archivos de fuente)
+   Accesibilidad: WCAG AA (contrast ratio >= 4.5:1)
+   IMPORTANTE: Este archivo DEBE cargarse DESPUÉS de humanistic.css
    ============================================================ */
 
 /* ============================================================
-   1. GOOGLE FONTS IMPORT
+   1. FUENTES
    ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Source+Code+Pro:wght@400;500&display=swap');
+/* Google Fonts: Inter (usada mientras no estén los archivos PP Mori) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&display=swap');
+
+/* PP Mori — activar cuando se coloquen los archivos en wwwroot/fonts/PPMori/ */
+/*
+@font-face {
+    font-family: 'PP Mori';
+    src: url('/fonts/PPMori/PPMori-ExtraLight.woff2') format('woff2'),
+         url('/fonts/PPMori/PPMori-ExtraLight.woff') format('woff');
+    font-weight: 200;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'PP Mori';
+    src: url('/fonts/PPMori/PPMori-Regular.woff2') format('woff2'),
+         url('/fonts/PPMori/PPMori-Regular.woff') format('woff');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'PP Mori';
+    src: url('/fonts/PPMori/PPMori-SemiBold.woff2') format('woff2'),
+         url('/fonts/PPMori/PPMori-SemiBold.woff') format('woff');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+*/
 
 
 /* ============================================================
-   2. CSS CUSTOM PROPERTIES (DESIGN TOKENS)
+   2. CSS CUSTOM PROPERTIES (DESIGN TOKENS â€” IDENTIDAD CORPORATIVA)
    ============================================================ */
 :root {
-    /* --- Colores principales --- */
-    --primary:            #1B6B3A;   /* Verde institucional oscuro */
-    --primary-hover:      #155430;
-    --primary-light:      #E8F5EE;
-    --primary-muted:      #4C9A6D;
+    /* â”€â”€ Tokens corporativos GreenTransit â”€â”€ */
+    --gt-graphite-black:    #262626;
+    --gt-dark-blue:         #17233C;
+    --gt-dark-petroleum:    #0A404B;
+    --gt-stone-green:       #4F5E5A;
 
-    --secondary:          #1A4A72;   /* Azul tÃ©cnico oscuro */
-    --secondary-hover:    #133758;
-    --secondary-light:    #E5EDF5;
-    --secondary-muted:    #4A7FAA;
+    --gt-secondary-1:       #8ACCC3;
+    --gt-secondary-2:       #B4B736;
+    --gt-secondary-3:       #D8B00E;
+    --gt-secondary-4:       #D36F15;
+    --gt-secondary-5:       #C13E43;
+    --gt-secondary-6:       #6E4583;
+    --gt-secondary-7:       #535497;
+
+    --gt-alt-1:             #BEE2E4;
+    --gt-alt-2:             #D1DA50;
+    --gt-alt-3:             #FED525;
+    --gt-alt-4:             #F18820;
+    --gt-alt-5:             #EB595B;
+    --gt-alt-6:             #9464A7;
+    --gt-alt-7:             #706DB0;
+
+    /* --- Colores principales (mappings para compatibilidad) --- */
+    --primary:            #0A404B;   /* Dark Petroleum */
+    --primary-hover:      #083338;
+    --primary-light:      #BEE2E4;   /* Alt 1 */
+    --primary-muted:      #8ACCC3;   /* Secondary 1 */
+
+    --secondary:          #4F5E5A;   /* Stone Green */
+    --secondary-hover:    #3A4844;
+    --secondary-light:    #EEF1F0;
+    --secondary-muted:    #6E7D78;
 
     /* --- Estados semÃ¡nticos --- */
-    --success:            #1B6B3A;   /* mismo que primary â€” verde validado */
-    --success-bg:         #E8F5EE;
-    --success-border:     #A3D4B7;
+    --success:            #05C168;
+    --success-bg:         #DEF2E6;
+    --success-border:     #7FDCA4;
 
-    --warning:            #8A6100;   /* Ãmbar oscuro (WCAG AA sobre blanco) */
-    --warning-bg:         #FFF8E5;
-    --warning-border:     #F0C94A;
+    --warning:            #FFA800;
+    --warning-bg:         #FFF6E4;
+    --warning-border:     #FFE39B;
 
-    --danger:             #AE2020;   /* Rojo regulatorio */
-    --danger-hover:       #8C1A1A;
-    --danger-bg:          #FDEAEA;
-    --danger-border:      #E07070;
+    --danger:             #DC2B2B;
+    --danger-hover:       #B82020;
+    --danger-bg:          #FFEFF0;
+    --danger-border:      #FFBEC2;
 
-    --info:               #1A4A72;
-    --info-bg:            #E5EDF5;
-    --info-border:        #8AB0D0;
+    --info:               #086CD9;
+    --info-bg:            #EAF4FF;
+    --info-border:        #8FC3FF;
 
     /* --- Superficies y fondo --- */
-    --background:         #F4F6F8;   /* Gris tÃ©cnico claro */
+    --background:         #F5F6F5;
     --surface:            #FFFFFF;
-    --surface-alt:        #F0F2F5;
+    --surface-alt:        #F0F2F1;
     --surface-elevated:   #FFFFFF;
 
     /* --- Texto --- */
-    --text-primary:       #1A1F2E;   /* Casi negro azulado */
-    --text-secondary:     #4A5568;
-    --text-muted:         #718096;
-    --text-disabled:      #A0ADB8;
+    --text-primary:       #262626;   /* Graphite Black */
+    --text-secondary:     #4F5E5A;   /* Stone Green */
+    --text-muted:         #6E7D78;
+    --text-disabled:      #A0ABA7;
     --text-inverse:       #FFFFFF;
 
     /* --- Bordes --- */
-    --border:             #D1D9E0;
-    --border-strong:      #A8B6C2;
-    --border-focus:       #1B6B3A;
+    --border:             #D1D5D4;
+    --border-strong:      #B0B8B5;
+    --border-focus:       #0A404B;
 
     /* --- TipografÃ­a --- */
-    --font-body:          'Source Sans 3', 'Segoe UI', sans-serif;
+    --font-body:          'Inter', 'Segoe UI', sans-serif;
     --font-mono:          'Source Code Pro', 'Consolas', monospace;
 
     --text-xs:    0.75rem;
@@ -95,11 +149,11 @@
     --radius-xl:  14px;
 
     /* --- Sombras --- */
-    --shadow-xs:  0 1px 2px rgba(26, 31, 46, 0.06);
-    --shadow-sm:  0 1px 4px rgba(26, 31, 46, 0.08), 0 0 1px rgba(26, 31, 46, 0.04);
-    --shadow:     0 2px 8px rgba(26, 31, 46, 0.10), 0 0 1px rgba(26, 31, 46, 0.06);
-    --shadow-md:  0 4px 16px rgba(26, 31, 46, 0.12), 0 0 1px rgba(26, 31, 46, 0.08);
-    --shadow-lg:  0 8px 24px rgba(26, 31, 46, 0.14), 0 0 1px rgba(26, 31, 46, 0.10);
+    --shadow-xs:  0 1px 2px rgba(38, 38, 38, 0.06);
+    --shadow-sm:  0 1px 4px rgba(38, 38, 38, 0.08), 0 0 1px rgba(38, 38, 38, 0.04);
+    --shadow:     0 2px 8px rgba(38, 38, 38, 0.10), 0 0 1px rgba(38, 38, 38, 0.06);
+    --shadow-md:  0 4px 16px rgba(38, 38, 38, 0.12), 0 0 1px rgba(38, 38, 38, 0.08);
+    --shadow-lg:  0 8px 24px rgba(38, 38, 38, 0.14), 0 0 1px rgba(38, 38, 38, 0.10);
 
     /* --- Transiciones --- */
     --transition-fast:   80ms ease;
@@ -111,6 +165,157 @@
     --sidebar-collapsed:   60px;
     --topbar-height:       56px;
     --content-max-width:   1280px;
+
+    /* â”€â”€ Radzen Humanistic Theme Overrides (Modo Claro) â”€â”€ */
+    --rz-body-font-family:    'PP Mori', 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --rz-heading-font-family: 'PP Mori', 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+    --rz-primary:          #0A404B;
+    --rz-primary-light:    #8ACCC3;
+    --rz-primary-lighter:  #BEE2E4;
+    --rz-primary-dark:     #083338;
+    --rz-primary-darker:   #062028;
+    --rz-on-primary:       #FFFFFF;
+    --rz-on-primary-lighter: #0A404B;
+
+    --rz-secondary:         #4F5E5A;
+    --rz-secondary-light:   #6E7D78;
+    --rz-secondary-lighter: #A0ABA7;
+    --rz-secondary-dark:    #3A4844;
+    --rz-secondary-darker:  #2A3532;
+    --rz-on-secondary:      #FFFFFF;
+    --rz-on-secondary-lighter: #262626;
+
+    --rz-info:              #1D88FE;
+    --rz-info-light:        #8FC3FF;
+    --rz-info-lighter:      #EAF4FF;
+    --rz-info-dark:         #086CD9;
+    --rz-on-info:           #FFFFFF;
+    --rz-on-info-lighter:   #086CD9;
+
+    --rz-success:           #05C168;
+    --rz-success-light:     #7FDCA4;
+    --rz-success-lighter:   #DEF2E6;
+    --rz-success-dark:      #11845B;
+    --rz-on-success:        #FFFFFF;
+    --rz-on-success-lighter: #11845B;
+
+    --rz-danger:            #FF5A65;
+    --rz-danger-light:      #FFBEC2;
+    --rz-danger-lighter:    #FFEFF0;
+    --rz-danger-dark:       #DC2B2B;
+    --rz-on-danger:         #FFFFFF;
+    --rz-on-danger-lighter: #DC2B2B;
+
+    --rz-warning:           #FDBD1A;
+    --rz-warning-light:     #FFE39B;
+    --rz-warning-lighter:   #FFF6E4;
+    --rz-warning-dark:      #FFA800;
+    --rz-on-warning:        #262626;
+    --rz-on-warning-lighter: #262626;
+
+    --rz-base-background-color: #FFFFFF;
+    --rz-body-background-color: #F5F6F5;
+    --rz-body-color:            #262626;
+
+    --rz-text-color:            #262626;
+    --rz-text-secondary-color:  #4F5E5A;
+    --rz-text-tertiary-color:   #6E7D78;
+    --rz-text-disabled-color:   #A0ABA7;
+    --rz-text-title-color:      #17233C;
+    --rz-text-h1-color:         #17233C;
+    --rz-text-h2-color:         #17233C;
+    --rz-text-h3-color:         #0A404B;
+    --rz-text-h4-color:         #0A404B;
+    --rz-text-h5-color:         #262626;
+    --rz-text-h6-color:         #262626;
+
+    --rz-link-color:            #0A404B;
+    --rz-link-hover-color:      #083338;
+
+    --rz-border-color:               #D1D5D4;
+    --rz-input-border-color:         #B0B8B5;
+    --rz-input-hover-border-color:   #0A404B;
+    --rz-input-focus-border-color:   #0A404B;
+    --rz-input-focus-shadow:         0 0 0 3px rgba(10, 64, 75, 0.15);
+
+    --rz-sidebar-background-color:   #17233C;
+    --rz-sidebar-color:              rgba(255, 255, 255, 0.85);
+    --rz-sidebar-border-inline-end:  1px solid rgba(255, 255, 255, 0.08);
+
+    --rz-header-background-color:    #FFFFFF;
+    --rz-header-color:               #262626;
+
+    --rz-series-1: #0A404B;
+    --rz-series-2: #8ACCC3;
+    --rz-series-3: #D8B00E;
+    --rz-series-4: #D36F15;
+    --rz-series-5: #C13E43;
+    --rz-series-6: #6E4583;
+    --rz-series-7: #535497;
+    --rz-series-8: #B4B736;
+}
+
+/* ============================================================
+   2b. RADZEN DARK MODE OVERRIDES
+   ============================================================ */
+html[data-theme="dark"],
+.rz-dark {
+    --rz-body-font-family:    'Inter', 'Segoe UI', sans-serif;
+    --rz-heading-font-family: 'Inter', 'Segoe UI', sans-serif;
+
+    --rz-primary:           #8ACCC3;
+    --rz-primary-light:     #BEE2E4;
+    --rz-primary-lighter:   rgba(138, 204, 195, 0.15);
+    --rz-primary-dark:      #6EAFA7;
+    --rz-primary-darker:    #4F9189;
+    --rz-on-primary:        #17233C;
+    --rz-on-primary-lighter: #BEE2E4;
+
+    --rz-secondary:         #A0ABA7;
+    --rz-on-secondary:      #17233C;
+
+    --rz-base-background-color: #1A1F2E;
+    --rz-body-background-color: #12162A;
+    --rz-body-color:            #E8EAEA;
+
+    --rz-text-color:           #E8EAEA;
+    --rz-text-secondary-color: #A0ABA7;
+    --rz-text-tertiary-color:  #6E7D78;
+    --rz-text-title-color:     #BEE2E4;
+    --rz-text-h1-color:        #BEE2E4;
+    --rz-text-h2-color:        #BEE2E4;
+    --rz-text-h3-color:        #8ACCC3;
+    --rz-text-h4-color:        #8ACCC3;
+
+    --rz-link-color:           #8ACCC3;
+    --rz-link-hover-color:     #BEE2E4;
+
+    --rz-border-color:               #2E3647;
+    --rz-input-border-color:         #3A4558;
+    --rz-input-hover-border-color:   #8ACCC3;
+    --rz-input-focus-border-color:   #8ACCC3;
+    --rz-input-focus-shadow:         0 0 0 3px rgba(138, 204, 195, 0.2);
+
+    --rz-sidebar-background-color:   #0F1320;
+    --rz-sidebar-color:              rgba(255, 255, 255, 0.8);
+
+    --rz-header-background-color:    #1A1F2E;
+    --rz-header-color:               #E8EAEA;
+
+    --rz-info:    #1D88FE;
+    --rz-success: #05C168;
+    --rz-danger:  #FF5A65;
+    --rz-warning: #FDBD1A;
+
+    --rz-series-1: #8ACCC3;
+    --rz-series-2: #BEE2E4;
+    --rz-series-3: #FED525;
+    --rz-series-4: #F18820;
+    --rz-series-5: #EB595B;
+    --rz-series-6: #9464A7;
+    --rz-series-7: #706DB0;
+    --rz-series-8: #D1DA50;
 }
 
 
@@ -2941,3 +3146,229 @@ select:disabled {
     border-color: var(--primary);
     color:        #fff;
 }
+
+
+/* ============================================================
+   GreenTransit — Radzen Component-Level Overrides
+   NOTA: NO usar [class*="rz-"] — rompe Material Icons y otras icon fonts
+   ============================================================ */
+
+/* Iconos: preservar Material Icons y Bootstrap Icons sin override de fuente */
+.material-icons,
+.material-icons-outlined,
+.material-icons-round,
+.bi,
+[class^="bi-"],
+[class*=" bi-"] {
+    font-family: 'Material Icons', 'Bootstrap Icons' !important;
+}
+
+/* Aplicar Inter solo a componentes de texto Radzen (NO a iconos) */
+.rz-body,
+.rz-sidebar,
+.rz-header,
+.rz-dialog,
+.rz-panel,
+.rz-datatable,
+.rz-grid,
+.rz-dropdown,
+.rz-textbox,
+.rz-textarea,
+.rz-button,
+.rz-badge,
+.rz-card,
+.rz-tabs,
+.rz-autocomplete,
+.rz-scheduler,
+.rz-notification {
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+/* Headings Radzen */
+.rz-text-h1, .rz-text-h2, .rz-text-h3,
+.rz-text-h4, .rz-text-h5, .rz-text-h6,
+.rz-text-subtitle1, .rz-text-subtitle2 { font-weight: 600; }
+.rz-text-body1, .rz-text-body2         { font-weight: 400; }
+.rz-text-caption, .rz-text-overline    { font-weight: 200; }
+
+/* Sidebar Radzen */
+.rz-sidebar .rz-navigation-item-text {
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    font-size: 14px;
+}
+
+.rz-sidebar .rz-navigation-item-icon {
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.rz-sidebar .rz-navigation-item:hover {
+    background-color: rgba(138, 204, 195, 0.12);
+}
+
+.rz-sidebar .rz-navigation-item.rz-navigation-item-active,
+.rz-sidebar .rz-navigation-item-wrapper-active {
+    background-color: rgba(138, 204, 195, 0.18);
+    border-left: 3px solid #8ACCC3;
+}
+
+.rz-sidebar .rz-navigation-item-active .rz-navigation-item-text,
+.rz-sidebar .rz-navigation-item-active .rz-navigation-item-icon {
+    color: #FFFFFF;
+}
+
+/* Botones */
+.rz-button.rz-primary   { font-weight: 500; letter-spacing: 0.01em; }
+.rz-button.rz-secondary { font-weight: 400; }
+
+/* DataGrid cabeceras */
+.rz-grid-table thead th,
+.rz-datatable-thead th {
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #4F5E5A;
+}
+
+.rz-grid-table tbody td,
+.rz-datatable-tbody td {
+    font-weight: 400;
+    font-size: 14px;
+}
+
+.rz-datatable-tbody > tr.rz-state-highlight,
+.rz-grid-table tbody > tr.rz-data-row.rz-state-highlight {
+    background-color: #BEE2E4 !important;
+    color: #262626;
+}
+
+/* Cards */
+.rz-card {
+    border-color: #D1D5D4;
+    border-radius: 8px;
+}
+
+/* Badges */
+.rz-badge.rz-badge-pill {
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+}
+
+/* Tabs */
+.rz-tabview-nav li.rz-tabview-selected a {
+    color: #0A404B;
+    border-bottom-color: #0A404B;
+    font-weight: 600;
+}
+
+/* Notificaciones */
+.rz-notification {
+    font-family: 'Inter', sans-serif;
+    border-radius: 8px;
+}
+
+/* Diálogos */
+.rz-dialog-titlebar {
+    font-weight: 600;
+    color: #17233C;
+}
+
+/* Scheduler */
+.rz-scheduler {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Fieldset / Panel */
+.rz-fieldset-legend,
+.rz-panel-titlebar {
+    font-weight: 600;
+    color: #17233C;
+}
+
+/* Tooltip */
+.rz-tooltip {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+}
+
+/* ============================================================
+   GreenTransit — Badges de Estado (Paleta Corporativa)
+   ============================================================ */
+
+/* Pending / Borrador */
+.badge-pending,
+.status-badge-pending {
+    background-color: #FFF6E4;
+    color: #FFA800;
+    border: 1px solid #FFE39B;
+}
+
+/* Scheduled / Planificado */
+.badge-scheduled,
+.status-badge-scheduled {
+    background-color: #EAF4FF;
+    color: #086CD9;
+    border: 1px solid #8FC3FF;
+}
+
+/* InProgress / En curso */
+.badge-inprogress,
+.status-badge-inprogress {
+    background-color: #BEE2E4;
+    color: #0A404B;
+    border: 1px solid #8ACCC3;
+}
+
+/* Completed / Completado */
+.badge-completed,
+.status-badge-completed {
+    background-color: #DEF2E6;
+    color: #11845B;
+    border: 1px solid #7FDCA4;
+}
+
+/* Cancelled / Anulado */
+.badge-cancelled,
+.status-badge-cancelled {
+    background-color: #FFEFF0;
+    color: #DC2B2B;
+    border: 1px solid #FFBEC2;
+}
+
+/* Emitido */
+.badge-emitido,
+.status-badge-emitido {
+    background-color: #EAF4FF;
+    color: #086CD9;
+    border: 1px solid #8FC3FF;
+}
+
+/* Validado */
+.badge-validado,
+.status-badge-validado {
+    background-color: #DEF2E6;
+    color: #11845B;
+    border: 1px solid #7FDCA4;
+}
+
+/* Rechazado */
+.badge-rechazado,
+.status-badge-rechazado {
+    background-color: #FFEFF0;
+    color: #DC2B2B;
+    border: 1px solid #FFBEC2;
+}
+
+/* Overrides paleta corporativa para badge-success/warning/danger/info existentes */
+.badge-success { background-color: #DEF2E6; color: #11845B; border-color: #7FDCA4; }
+.badge-warning { background-color: #FFF6E4; color: #FFA800; border-color: #FFE39B; }
+.badge-danger  { background-color: #FFEFF0; color: #DC2B2B; border-color: #FFBEC2; }
+.badge-info    { background-color: #EAF4FF; color: #086CD9; border-color: #8FC3FF; }
+
+/* Dark mode badges */
+.app-shell.dark-mode .badge-success { background: #0f3320; color: #7FDCA4; border-color: #11845B; }
+.app-shell.dark-mode .badge-warning { background: #2e2000; color: #FFE39B; border-color: #FFA800; }
+.app-shell.dark-mode .badge-danger  { background: #2e0d0d; color: #FFBEC2; border-color: #DC2B2B; }
+.app-shell.dark-mode .badge-info    { background: #071a38; color: #8FC3FF; border-color: #086CD9; }

@@ -16,11 +16,11 @@
     align-items:    center;
     gap:            10px;
     padding:        6px 16px;
-    font-size:      10px;
-    font-weight:    700;
+    font-size:      11px;
+    font-weight:    600;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color:          rgba(255,255,255,0.35);
+    letter-spacing: 0.08em;
+    color:          rgba(255,255,255,0.45);
     white-space:    nowrap;
     overflow:       hidden;
     cursor:         pointer;
@@ -29,15 +29,19 @@
 }
 
 .nav-group-title:hover {
-    color: rgba(255,255,255,0.60);
+    color: rgba(255,255,255,0.70);
 }
 
 .nav-chevron {
     margin-left:  auto;
     font-size:    0.65rem;
-    opacity:      0.5;
+    color:        rgba(255,255,255,0.5);
     flex-shrink:  0;
-    transition:   transform 0.2s ease;
+    transition:   transform 0.2s ease, color 0.2s ease;
+}
+
+.nav-group-title:hover .nav-chevron {
+    color: #8ACCC3;
 }
 
 .nav-chevron.rotated {
@@ -62,17 +66,17 @@
 }
 
 ::deep .nav-item:hover {
-    background:  rgba(255,255,255,0.07);
+    background:  rgba(138, 204, 195, 0.10);
     color:       #fff;
-    border-left: 3px solid rgba(27,107,58,0.5);
+    border-left: 3px solid rgba(138, 204, 195, 0.45);
     text-decoration: none;
 }
 
 ::deep .nav-item.active {
-    background:  rgba(27,107,58,0.30);
+    background:  rgba(138, 204, 195, 0.18);
     color:       #fff;
-    border-left: 3px solid var(--primary-muted, #4C9A6D);
-    font-weight: 500;
+    border-left: 3px solid #8ACCC3;
+    font-weight: 600;
 }
 
 /* Ítems hijos (nivel 2) */

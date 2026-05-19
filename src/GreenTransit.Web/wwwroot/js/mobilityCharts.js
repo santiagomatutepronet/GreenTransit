@@ -19,10 +19,10 @@ window.mobilityMunicipalHistory = (function () {
 
 
             // Gráfico mixto: barras (recogidas) + línea (incidencias)
-            // chart.type debe ser 'bar' cuando la primera serie es de tipo bar
+            // chart.type debe ser 'line' cuando se usa mixed chart (column + line) en ApexCharts
             var options = {
                 chart: {
-                    type: 'bar',
+                    type: 'line',
                     height: 260,
                     toolbar: { show: false },
                     fontFamily: 'inherit'

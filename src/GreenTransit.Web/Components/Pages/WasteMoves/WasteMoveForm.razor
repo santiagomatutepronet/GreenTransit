@@ -29,7 +29,7 @@
 <div class="page-header">
     <div class="page-header-info">
         <h1><i class="bi bi-truck me-2"></i>Nuevo Traslado de Residuos</h1>
-        <p>Agrupa una o varias Ã“rdenes de Servicio. Define residuo y cantidad por cada lÃ­nea.</p>
+        <p>Agrupa una o varias Órdenes de Servicio. Define residuo y cantidad por cada línea.</p>
     </div>
 </div>
 
@@ -43,68 +43,46 @@ else
 {
     <RadzenTemplateForm TItem="HeaderModel" Data="@_formModel" Submit="@SaveAsync">
 
-        @* â”€â”€ 1. Ã“rdenes de Servicio â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
-        <RadzenFieldset Text="Ã“rdenes de Servicio a agrupar" class="rz-mb-4">
+        @* ── 1. Órdenes de Servicio ──────────────────────────────────────── *@
+        <RadzenFieldset Text="Órdenes de Servicio a agrupar" class="rz-mb-4">
             @if (_eligibleSOs.Count == 0)
             {
                 <RadzenAlert AlertStyle="AlertStyle.Warning">
-                    No hay Ã“rdenes de Servicio disponibles (Pendiente/Planificada sin traslado asignado).
+                    No hay Órdenes de Servicio disponibles (Pendiente/Planificada sin traslado asignado).
                 </RadzenAlert>
             }
             else
             {
-                <div class="table-wrapper mb-3">
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th style="width:40px"></th>
-                                <th>NÂº Orden</th>
-                                <th>Estado</th>
-                                <th>CÃ³digo LER</th>
-                                <th class="cell-number">Peso est.</th>
-                                <th>Recogida planif.</th>
-                                <th>Punto recogida</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var so in _eligibleSOs)
-                            {
-                                var isSelected = _lines.Any(l => l.SoId == so.Id);
-                                <tr class="@(isSelected ? "selected" : "")" style="cursor:pointer"
-                                    @onclick="async () => await ToggleSoAsync(so)">
-                                    <td @onclick:stopPropagation>
-                                        <RadzenCheckBox TValue="bool" Value="@isSelected"
-                                                        Change="@(async _ => await ToggleSoAsync(so))" />
-                                    </td>
-                                    <td class="font-semibold">@so.ServiceOrderNumber</td>
-                                    <td><span class="@ServiceOrderStatuses.BadgeCss(so.Status)">@ServiceOrderStatuses.Label(so.Status)</span></td>
-                                    <td class="cell-muted">
-                                        @if (!string.IsNullOrEmpty(so.LerCodesDisplay)) { <span>@so.LerCodesDisplay</span> }
-                                        else if (so.LerCodeCode != null) { <span title="@so.LerCodeDescription">@so.LerCodeCode</span> }
-                                        else { <span>â€”</span> }
-                                    </td>
-                                    <td class="cell-number">@(so.EstimatedWeight.HasValue ? $"{so.EstimatedWeight:N0} kg" : "â€”")</td>
-                                    <td class="cell-muted">@(so.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "â€”")</td>
-                                    <td class="cell-muted">@(so.PickupPointName ?? "â€”")</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                <RadzenDropDown TValue="IEnumerable<Guid>" 
+                                Multiple="true" 
+                                Chips="true" 
+                                MaxSelectedLabels="4" 
+                                Data="@_eligibleSOs" 
+                                ValueProperty="Id" 
+                                Change="@OnSOsSelectionChanged"
+                                AllowFiltering="true" 
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
+                                Placeholder="— Seleccionar Órdenes de Servicio —" 
+                                Style="width:100%">
+                    <Template Context="soItem">
+                        <span><strong>@(((ServiceOrderDto)soItem).ServiceOrderNumber)</strong> — @(((ServiceOrderDto)soItem).LerCodeCode ?? "Sin LER") — @(((ServiceOrderDto)soItem).EstimatedWeight?.ToString("N0") ?? "—") kg</span>
+                    </Template>
+                </RadzenDropDown>
+
                 @if (_lines.Count == 0)
                 {
-                    <small class="rz-color-danger">Selecciona al menos una Orden de Servicio.</small>
+                    <small class="rz-color-danger d-block mt-2">Selecciona al menos una Orden de Servicio.</small>
                 }
             }
         </RadzenFieldset>
 
-        @* â”€â”€ 2. LÃ­neas de residuos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
+        @* ── 2. Líneas de residuos ─────────────────────────────────────── *@
         @if (_lines.Count > 0)
         {
             var includedCount = _lines.Count(l => l.IsIncluded);
-            <RadzenFieldset Text="@($"LÃ­neas de residuos ({includedCount} incluida{(includedCount == 1 ? "" : "s")})")" class="rz-mb-4">
+            <RadzenFieldset Text="@($"Líneas de residuos ({includedCount} incluida{(includedCount == 1 ? "" : "s")})")" class="rz-mb-4">
                 <p class="rz-text-secondary-color rz-mb-4">
-                    Marca las lÃ­neas que deseas incluir. Para cada lÃ­nea activa, selecciona el residuo y ajusta la cantidad.
+                    Marca las líneas que deseas incluir. Para cada línea activa, selecciona el residuo y ajusta la cantidad.
                 </p>
 
                 @foreach (var soGroup in _lines.GroupBy(l => l.SoId))
@@ -116,7 +94,7 @@ else
                     <div class="card rz-mb-3">
                         <div class="card-header d-flex align-items-center gap-3">
                             <span class="font-semibold"><i class="bi bi-clipboard2-check me-1"></i>@soNumber</span>
-                            @if (multiLine) { <RadzenBadge Text="@($"{soLines.Count} lÃ­neas")" /> }
+                            @if (multiLine) { <RadzenBadge Text="@($"{soLines.Count} líneas")" /> }
                         </div>
 
                         @foreach (var line in soLines)
@@ -128,7 +106,7 @@ else
                                         <RadzenColumn Size="12" SizeMD="1">
                                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
                                                 <RadzenCheckBox TValue="bool" @bind-Value="line.IsIncluded" />
-                                                <span class="cell-muted">LÃ­nea @(line.SortOrder + 1)</span>
+                                                <span class="cell-muted">Línea @(line.SortOrder + 1)</span>
                                             </RadzenStack>
                                         </RadzenColumn>
                                     }
@@ -143,11 +121,11 @@ else
                                             <ChildContent>
                                                 @if (line.LoadingResidues)
                                                 {
-                                                    <RadzenTextBox Value="Cargando residuosâ€¦" ReadOnly="true" Style="width:100%" />
+                                                    <RadzenTextBox Value="Cargando residuos…" ReadOnly="true" Style="width:100%" />
                                                 }
                                                 else if (line.AvailableResidues.Count == 0)
                                                 {
-                                                    <RadzenTextBox Value="@($"Sin residuos para LER {line.LerCodeCode ?? "â€”"}")" ReadOnly="true" Style="width:100%" />
+                                                    <RadzenTextBox Value="@($"Sin residuos para LER {line.LerCodeCode ?? "—"}")" ReadOnly="true" Style="width:100%" />
                                                 }
                                                 else
                                                 {
@@ -182,12 +160,12 @@ else
                 }
                 @if (includedCount == 0)
                 {
-                    <small class="rz-color-danger">Debes incluir al menos una lÃ­nea de residuo.</small>
+                    <small class="rz-color-danger">Debes incluir al menos una línea de residuo.</small>
                 }
             </RadzenFieldset>
         }
 
-        @* â”€â”€ 3. Entidades implicadas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
+        @* ── 3. Entidades implicadas ──────────────────────────────────── *@
         <RadzenFieldset Text="Entidades del traslado" class="rz-mb-4">
             <RadzenRow Gap="1rem">
                 <RadzenColumn SizeMD="4">
@@ -197,7 +175,7 @@ else
                                             Data="@_sourceEntities" TextProperty="Name" ValueProperty="Id"
                                             AllowFiltering="true" AllowClear="true"
                                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                                            Placeholder="â€” Seleccionar â€”" Style="width:100%" />
+                                            Placeholder="— Seleccionar —" Style="width:100%" />
                         </ChildContent>
                         <Helper><RadzenRequiredValidator Component="IdSource" Text="Obligatorio" /></Helper>
                     </RadzenFormField>
@@ -209,7 +187,7 @@ else
                                             Data="@_destinationEntities" TextProperty="Name" ValueProperty="Id"
                                             AllowFiltering="true" AllowClear="true"
                                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                                            Placeholder="â€” Seleccionar â€”" Style="width:100%" />
+                                            Placeholder="— Seleccionar —" Style="width:100%" />
                         </ChildContent>
                         <Helper><RadzenRequiredValidator Component="IdDestination" Text="Obligatorio" /></Helper>
                     </RadzenFormField>
@@ -220,13 +198,13 @@ else
                             @if (_isScrapProfile)
                             {
                                 <RadzenTextBox Style="width:100%" ReadOnly="true"
-                                               Value="@(_scrapEntities.FirstOrDefault(e => e.Id == _formModel.IdScrap)?.Name ?? "â€”")" />
+                                               Value="@(_scrapEntities.FirstOrDefault(e => e.Id == _formModel.IdScrap)?.Name ?? "—")" />
                             }
                             else
                             {
                                 <RadzenDropDown TValue="Guid?" Name="IdScrap" @bind-Value="_formModel.IdScrap"
                                                 Data="@_scrapEntities" TextProperty="Name" ValueProperty="Id"
-                                                AllowClear="true" Placeholder="â€” Seleccionar â€”" Style="width:100%" />
+                                                AllowClear="true" Placeholder="— Seleccionar —" Style="width:100%" />
                             }
                         </ChildContent>
                         <Helper><RadzenRequiredValidator Component="IdScrap" Text="Obligatorio" /></Helper>
@@ -237,14 +215,14 @@ else
                         <ChildContent>
                             <RadzenDropDown TValue="Guid?" Name="IdScrap2" @bind-Value="_formModel.IdScrap2"
                                             Data="@_scrapEntities" TextProperty="Name" ValueProperty="Id"
-                                            AllowClear="true" Placeholder="â€” Ninguno â€”" Style="width:100%" />
+                                            AllowClear="true" Placeholder="— Ninguno —" Style="width:100%" />
                         </ChildContent>
                     </RadzenFormField>
                 </RadzenColumn>
             </RadzenRow>
         </RadzenFieldset>
 
-        @* â”€â”€ 4. Fechas planificadas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
+        @* ── 4. Fechas planificadas ───────────────────────────────────── *@
         <RadzenFieldset Text="Fechas planificadas (opcionales)" class="rz-mb-4">
             <RadzenRow Gap="1rem">
                 <RadzenColumn SizeMD="3">
@@ -282,7 +260,7 @@ else
             </RadzenRow>
         </RadzenFieldset>
 
-        @* â”€â”€ Errores y acciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
+        @* ── Errores y acciones ──────────────────────────────────────── *@
         @if (_validationErrors.Any())
         {
             <RadzenAlert AlertStyle="AlertStyle.Danger" class="rz-mt-4">
@@ -315,7 +293,7 @@ else
     private string? _serverError;
     private Dictionary<string, List<string>> _validationErrors = new();
 
-    // â”€â”€ Modelo de cabecera del formulario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Modelo de cabecera del formulario ──────────────────────────────
     private sealed class HeaderModel
     {
         public Guid?     IdSource             { get; set; }
@@ -384,29 +362,41 @@ else
         _loading = false;
     }
 
-    // â”€â”€ Eventos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Eventos ────────────────────────────────────────────────────────────
 
-    private async Task ToggleSoAsync(ServiceOrderDto so)
+    private async Task OnSOsSelectionChanged(object value)
     {
-        // Si ya estÃ¡ seleccionada, eliminar todas sus lÃ­neas
-        var existingLines = _lines.Where(l => l.SoId == so.Id).ToList();
-        if (existingLines.Count > 0)
-        {
-            foreach (var l in existingLines) _lines.Remove(l);
-            return;
-        }
+        var selectedIds = ((IEnumerable<Guid>?)value)?.ToList() ?? [];
 
+        // Eliminar líneas de SOs que ya no están seleccionadas
+        var toRemove = _lines.Where(l => !selectedIds.Contains(l.SoId)).ToList();
+        foreach (var l in toRemove) _lines.Remove(l);
+
+        // Añadir líneas de las nuevas SOs seleccionadas
+        var currentSoIds = _lines.Select(l => l.SoId).Distinct().ToList();
+        var newSoIds = selectedIds.Except(currentSoIds).ToList();
+
+        foreach (var soId in newSoIds)
+        {
+            var so = _eligibleSOs.FirstOrDefault(s => s.Id == soId);
+            if (so != null)
+                await ProcessAddedSoAsync(so);
+        }
+    }
+
+    private async Task ProcessAddedSoAsync(ServiceOrderDto so)
+    {
         // Autocompletar Origen con el punto de recogida de la SO (primera SO seleccionada)
         if (_formModel.IdSource is null && so.IdPickupPoint.HasValue)
             _formModel.IdSource = so.IdPickupPoint.Value;
 
-        // Obtener el detalle de la SO para acceder a todas sus lÃ­neas de residuo
+        // Obtener el detalle de la SO para acceder a todas sus líneas de residuo
         var detail = await Mediator.Send(new GetServiceOrderByIdQuery(so.Id));
 
         if (detail is not null && detail.Residues.Count > 0)
         {
-            // Crear una LineModel por cada lÃ­nea de residuo de la SO.
-            // Carga secuencial para evitar race conditions en la cachÃ© y
+            // Crear una LineModel por cada línea de residuo de la SO.
+            // Carga secuencial para evitar race conditions en la caché y
             // llamadas concurrentes a StateHasChanged en Blazor Server.
             foreach (var residue in detail.Residues)
             {

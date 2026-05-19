@@ -21,9 +21,8 @@
         </h1>
     </div>
     <div class="page-header-actions">
-        <button class="btn btn-danger btn-sm" @onclick='() => Nav.NavigateTo("/incidents/new")'>
-            <i class="bi bi-plus-lg me-1"></i>Nueva incidencia
-        </button>
+        <RadzenButton Text="Nueva incidencia" Icon="add" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                      Click="@(_ => Nav.NavigateTo("/incidents/new"))" />
     </div>
 </div>
 
