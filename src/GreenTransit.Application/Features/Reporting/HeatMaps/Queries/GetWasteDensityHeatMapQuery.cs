@@ -76,42 +76,45 @@ public sealed class GetWasteDensityHeatMapQueryHandler
             wmQuery = wmQuery.Where(wm => wm.IdScrap == request.IdScrap || wm.IdScrap2 == request.IdScrap);
         }
 
-        // Materializar con residuos + SO + LER
-        var rawData = await wmQuery
-            .Include(wm => wm.WasteMoveResidues)
-                .ThenInclude(wmr => wmr.Residue)
-                    .ThenInclude(r => r!.LerCode)
-            .Include(wm => wm.ServiceOrder)
-                .ThenInclude(so => so!.PickupPoint)
-            .ToListAsync(ct);
-
-        // ── Aplanar a filas ───────────────────────────────────────────────────
-        var rows = (
-            from wm  in rawData
-            where wm.ServiceOrder?.PickupPoint != null
-            let  pp  = wm.ServiceOrder!.PickupPoint!
-            where !string.IsNullOrEmpty(pp.Latitude) && !string.IsNullOrEmpty(pp.Longitude)
-            from wmr in wm.WasteMoveResidues
-            let  res = wmr.Residue
-            let  ler = res?.LerCode
-            where lerFilterIds.Count == 0 || (res?.IdLERCode != null && lerFilterIds.Contains(res.IdLERCode.Value))
-            where string.IsNullOrEmpty(request.WasteStream) || wm.ServiceOrder!.WasteStream == request.WasteStream
-            where string.IsNullOrEmpty(request.ProvinceCode) || pp.ProvinceCode == request.ProvinceCode
-            where string.IsNullOrEmpty(request.MunicipalityCode) || pp.MunicipalityCode == request.MunicipalityCode
-            select new
+        // ── Proyección directa en SQL — evita cargar grafos completos en memoria ──
+        var rowsQuery = wmQuery
+            .Where(wm => wm.ServiceOrder != null && wm.ServiceOrder.PickupPoint != null)
+            .Where(wm => wm.ServiceOrder!.PickupPoint!.Latitude != null
+                      && wm.ServiceOrder!.PickupPoint!.Longitude != null)
+            .SelectMany(wm => wm.WasteMoveResidues, (wm, wmr) => new
             {
-                WasteMove  = wm,
-                Residue    = res,
-                LerCode    = ler,
-                PickupPoint= pp,
-                Weight     = wmr.Weight ?? 0m,
-                PickupDate = wm.ActualPickupStart ?? wm.PlannedPickupStart
-            }
-        ).ToList();
+                WasteMoveId       = wm.Id,
+                WasteStream       = wm.ServiceOrder!.WasteStream,
+                PickupPointId     = wm.ServiceOrder!.PickupPoint!.Id,
+                PickupPointName   = wm.ServiceOrder!.PickupPoint!.Name,
+                PickupPointAddr   = wm.ServiceOrder!.PickupPoint!.Address,
+                PickupPointLat    = wm.ServiceOrder!.PickupPoint!.Latitude,
+                PickupPointLon    = wm.ServiceOrder!.PickupPoint!.Longitude,
+                ProvinceCode      = wm.ServiceOrder!.PickupPoint!.ProvinceCode,
+                MunicipalityCode  = wm.ServiceOrder!.PickupPoint!.MunicipalityCode,
+                LerCodeId         = wmr.Residue != null ? wmr.Residue.IdLERCode : (Guid?)null,
+                LerCode           = wmr.Residue != null && wmr.Residue.LerCode != null ? wmr.Residue.LerCode.Code        : null,
+                LerDescription    = wmr.Residue != null && wmr.Residue.LerCode != null ? wmr.Residue.LerCode.Description : null,
+                LerIsDangerous    = wmr.Residue != null && wmr.Residue.LerCode != null && wmr.Residue.LerCode.IsDangerous,
+                Weight            = wmr.Weight ?? 0m,
+                PickupDate        = wm.ActualPickupStart ?? wm.PlannedPickupStart
+            });
+
+        // Aplicar filtros opcionales en SQL
+        if (lerFilterIds.Count > 0)
+            rowsQuery = rowsQuery.Where(r => r.LerCodeId != null && lerFilterIds.Contains(r.LerCodeId.Value));
+        if (!string.IsNullOrEmpty(request.WasteStream))
+            rowsQuery = rowsQuery.Where(r => r.WasteStream == request.WasteStream);
+        if (!string.IsNullOrEmpty(request.ProvinceCode))
+            rowsQuery = rowsQuery.Where(r => r.ProvinceCode == request.ProvinceCode);
+        if (!string.IsNullOrEmpty(request.MunicipalityCode))
+            rowsQuery = rowsQuery.Where(r => r.MunicipalityCode == request.MunicipalityCode);
+
+        var rows = await rowsQuery.ToListAsync(ct);
 
         // ── Diccionarios código → nombre (sólo los códigos presentes en los datos) ──
-        var provinceCodes = rows.Select(r => r.PickupPoint.ProvinceCode).Where(c => c != null).Distinct().ToList();
-        var municipalityCodes = rows.Select(r => r.PickupPoint.MunicipalityCode).Where(c => c != null).Distinct().ToList();
+        var provinceCodes = rows.Select(r => r.ProvinceCode).Where(c => c != null).Distinct().ToList();
+        var municipalityCodes = rows.Select(r => r.MunicipalityCode).Where(c => c != null).Distinct().ToList();
 
         var provinceNames = await _db.Provinces.AsNoTracking()
             .Where(p => provinceCodes.Contains(p.Code))
@@ -127,46 +130,47 @@ public sealed class GetWasteDensityHeatMapQueryHandler
 
         // ── Puntos georreferenciados ─────────────────────────────────────────
         var byEntity = rows
-            .GroupBy(r => r.PickupPoint.Id)
+            .GroupBy(r => r.PickupPointId)
             .Select(g =>
             {
-                var pp         = g.First().PickupPoint;
+                var first      = g.First();
                 var totalKg    = g.Sum(r => r.Weight);
-                var pickups    = g.Select(r => r.WasteMove.Id).Distinct().Count();
+                var pickups    = g.Select(r => r.WasteMoveId).Distinct().Count();
                 var lastPickup = g.Max(r => r.PickupDate);
-                var dominant   = g.Where(r => r.LerCode != null)
-                                  .GroupBy(r => r.LerCode!.Id)
+                var dominant   = g.Where(r => r.LerCodeId != null)
+                                  .GroupBy(r => r.LerCodeId)
                                   .OrderByDescending(lg => lg.Sum(r => r.Weight))
-                                  .Select(lg => lg.First().LerCode)
+                                  .Select(lg => lg.First())
                                   .FirstOrDefault();
-                double lat = double.TryParse(pp.Latitude,  System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la) ? la : 0;
-                double lng = double.TryParse(pp.Longitude, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo) ? lo : 0;
-                return new HeatMapPointDto(pp.Id, pp.Name, pp.Address, lat, lng, totalKg, pickups, dominant?.Code, dominant?.Description, lastPickup);
+                double lat = double.TryParse(first.PickupPointLat, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la) ? la : 0;
+                double lng = double.TryParse(first.PickupPointLon, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo) ? lo : 0;
+                return new HeatMapPointDto(first.PickupPointId, first.PickupPointName, first.PickupPointAddr, lat, lng, totalKg, pickups, dominant?.LerCode, dominant?.LerDescription, lastPickup);
             })
             .ToList();
 
         // ── Densidad por zona ────────────────────────────────────────────────
         var densityByZone = rows
-            .GroupBy(r => r.PickupPoint.ProvinceCode ?? "")
+            .GroupBy(r => r.ProvinceCode ?? "")
             .Select(g =>
             {
                 var totalKg  = g.Sum(r => r.Weight);
-                var byTypo   = g.Where(r => r.LerCode != null)
-                                .GroupBy(r => r.LerCode!.Id)
+                var byTypo   = g.Where(r => r.LerCodeId != null)
+                                .GroupBy(r => r.LerCodeId)
                                 .Select(tg =>
                                 {
                                     var tKg  = tg.Sum(r => r.Weight);
+                                    var tf   = tg.First();
                                     return new WasteTypologyDto(
-                                        tg.First().LerCode!.Code,
-                                        tg.First().LerCode!.Description,
-                                        tg.First().LerCode!.IsDangerous,
+                                        tf.LerCode!,
+                                        tf.LerDescription,
+                                        tf.LerIsDangerous,
                                         tKg,
                                         totalKg > 0 ? (double)(tKg / totalKg * 100) : 0);
                                 })
                                 .OrderByDescending(t => t.TotalKg)
                                 .ToList();
                 return new DensityByZoneDto(g.Key, provinceNames.TryGetValue(g.Key, out var pn) ? pn : g.Key, "Province", totalKg,
-                    g.Select(r => r.WasteMove.Id).Distinct().Count(), byTypo);
+                    g.Select(r => r.WasteMoveId).Distinct().Count(), byTypo);
             })
             .OrderByDescending(d => d.TotalKg)
             .ToList();
@@ -174,14 +178,14 @@ public sealed class GetWasteDensityHeatMapQueryHandler
         // ── Tipología global ─────────────────────────────────────────────────
         var totalKgAll    = rows.Sum(r => r.Weight);
         var wasteTypology = rows
-            .Where(r => r.LerCode != null)
-            .GroupBy(r => r.LerCode!.Id)
+            .Where(r => r.LerCodeId != null)
+            .GroupBy(r => r.LerCodeId)
             .Select(g =>
             {
+                var f   = g.First();
                 var tKg = g.Sum(r => r.Weight);
                 return new WasteTypologyDto(
-                    g.First().LerCode!.Code, g.First().LerCode!.Description,
-                    g.First().LerCode!.IsDangerous, tKg,
+                    f.LerCode!, f.LerDescription, f.LerIsDangerous, tKg,
                     totalKgAll > 0 ? (double)(tKg / totalKgAll * 100) : 0);
             })
             .OrderByDescending(t => t.TotalKg)
@@ -189,16 +193,21 @@ public sealed class GetWasteDensityHeatMapQueryHandler
 
         // ── Top 20 puntos ────────────────────────────────────────────────────
         var allKgs = byEntity.Select(e => e.TotalKg).ToList();
+        // Lookup rápido de municipio/provincia por PickupPointId
+        var pickupMeta = rows
+            .GroupBy(r => r.PickupPointId)
+            .ToDictionary(g => g.Key, g => (MunicipalityCode: g.First().MunicipalityCode, ProvinceCode: g.First().ProvinceCode));
+
         var top20  = byEntity
             .OrderByDescending(e => e.TotalKg)
             .Take(20)
             .Select(e =>
             {
-                var pp = rows.First(r => r.PickupPoint.Id == e.EntityId).PickupPoint;
+                pickupMeta.TryGetValue(e.EntityId, out var meta);
                 return new TopPickupPointDto(
                     e.EntityId, e.EntityName,
-                    pp.MunicipalityCode != null && municipalityNames.TryGetValue(pp.MunicipalityCode, out var mn) ? mn : pp.MunicipalityCode,
-                    pp.ProvinceCode     != null && provinceNames.TryGetValue(pp.ProvinceCode, out var pn2)       ? pn2 : pp.ProvinceCode,
+                    meta.MunicipalityCode != null && municipalityNames.TryGetValue(meta.MunicipalityCode, out var mn) ? mn : meta.MunicipalityCode,
+                    meta.ProvinceCode     != null && provinceNames.TryGetValue(meta.ProvinceCode, out var pn2)       ? pn2 : meta.ProvinceCode,
                     e.TotalKg, e.PickupCount,
                     e.PickupCount > 0 ? Math.Round(e.TotalKg / e.PickupCount, 2) : 0,
                     e.PredominantLerCode,
@@ -226,22 +235,22 @@ public sealed class GetWasteDensityHeatMapQueryHandler
                 : new DateTime(request.CompareYear.Value, 1, 1);
             var compTo = request.CompareMonth.HasValue ? compFrom.AddMonths(1) : compFrom.AddYears(1);
 
-            var compWms = await _db.WasteMoves.AsNoTracking()
+            // Proyección directa — sin Include masivo
+            var compByZone = await _db.WasteMoves.AsNoTracking()
                 .Where(wm => (ownerId == Guid.Empty || wm.OwnerId == ownerId)
                     && ((wm.ActualPickupStart  >= compFrom && wm.ActualPickupStart  < compTo)
-                     || (wm.PlannedPickupStart >= compFrom && wm.PlannedPickupStart < compTo)))
-                .Include(wm => wm.WasteMoveResidues)
-                .Include(wm => wm.ServiceOrder)
-                    .ThenInclude(so => so!.PickupPoint)
-                .ToListAsync(ct);
-
-            var compByZone = compWms
-                .Where(wm => wm.ServiceOrder?.PickupPoint?.ProvinceCode != null)
+                     || (wm.PlannedPickupStart >= compFrom && wm.PlannedPickupStart < compTo))
+                    && wm.ServiceOrder != null
+                    && wm.ServiceOrder.PickupPoint != null
+                    && wm.ServiceOrder.PickupPoint.ProvinceCode != null)
                 .GroupBy(wm => wm.ServiceOrder!.PickupPoint!.ProvinceCode!)
-                .ToDictionary(
-                    g => g.Key,
-                    g => (Kg: g.SelectMany(wm => wm.WasteMoveResidues).Sum(r => r.Weight ?? 0m),
-                          Count: g.Count()));
+                .Select(g => new
+                {
+                    ProvinceCode = g.Key,
+                    Kg           = g.SelectMany(wm => wm.WasteMoveResidues).Sum(r => (decimal?)r.Weight) ?? 0m,
+                    Count        = g.Count()
+                })
+                .ToDictionaryAsync(x => x.ProvinceCode, x => (Kg: x.Kg, Count: x.Count), ct);
 
             periodComparison = densityByZone.Select(z =>
             {
@@ -257,16 +266,16 @@ public sealed class GetWasteDensityHeatMapQueryHandler
 
         // ── Exportación ──────────────────────────────────────────────────────
         var exportRows = rows
-            .GroupBy(r => new { EntityId = r.PickupPoint.Id, LerCodeId = r.LerCode?.Id })
+            .GroupBy(r => new { r.PickupPointId, r.LerCodeId })
             .Select(g => new HeatMapExportRowDto(
-                g.First().PickupPoint.Name,
-                g.First().PickupPoint.MunicipalityCode,
-                g.First().PickupPoint.ProvinceCode,
-                g.First().LerCode?.Code,
-                g.First().LerCode?.Description,
-                g.First().LerCode?.IsDangerous ?? false,
+                g.First().PickupPointName,
+                g.First().MunicipalityCode,
+                g.First().ProvinceCode,
+                g.First().LerCode,
+                g.First().LerDescription,
+                g.First().LerIsDangerous,
                 g.Sum(r => r.Weight),
-                g.Select(r => r.WasteMove.Id).Distinct().Count(),
+                g.Select(r => r.WasteMoveId).Distinct().Count(),
                 g.Max(r => r.PickupDate)))
             .OrderByDescending(r => r.TotalKg)
             .ToList();

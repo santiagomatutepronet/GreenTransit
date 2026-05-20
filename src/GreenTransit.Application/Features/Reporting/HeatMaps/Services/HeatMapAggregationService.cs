@@ -9,11 +9,16 @@ namespace GreenTransit.Application.Features.Reporting.HeatMaps.Services;
 /// </summary>
 public sealed class HeatMapAggregationService
 {
-    private readonly IConfiguration _config;
+    // Umbrales cacheados en el constructor para evitar parsear IConfiguration en cada llamada
+    private readonly int     _maxDaysWithoutPickup;
+    private readonly decimal _overloadThresholdKg;
+    private readonly double  _frequencyDropPct;
 
     public HeatMapAggregationService(IConfiguration config)
     {
-        _config = config;
+        _maxDaysWithoutPickup = int.TryParse(config["HeatMaps:Alerts:MaxDaysWithoutPickup"], out var d) ? d : 30;
+        _overloadThresholdKg  = decimal.TryParse(config["HeatMaps:Alerts:OverloadThresholdKg"], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : 5000m;
+        _frequencyDropPct     = double.TryParse(config["HeatMaps:Alerts:FrequencyDropPercent"], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var fpVal) ? fpVal : 30.0;
     }
 
     // â”€â”€ Alertas de acumulaciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -27,9 +32,9 @@ public sealed class HeatMapAggregationService
         IEnumerable<ZoneAlertInput>   zones,
         IEnumerable<FreqAlertInput>   frequencyData)
     {
-        var maxDaysWithoutPickup = int.TryParse(_config["HeatMaps:Alerts:MaxDaysWithoutPickup"], out var d) ? d : 30;
-        var overloadThresholdKg  = decimal.TryParse(_config["HeatMaps:Alerts:OverloadThresholdKg"], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : 5000m;
-        var frequencyDropPct     = double.TryParse(_config["HeatMaps:Alerts:FrequencyDropPercent"], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var fpVal) ? fpVal : 30.0;
+        var maxDaysWithoutPickup = _maxDaysWithoutPickup;
+        var overloadThresholdKg  = _overloadThresholdKg;
+        var frequencyDropPct     = _frequencyDropPct;
 
         var alerts = new List<AccumulationAlertDto>();
         var now    = DateTime.UtcNow;

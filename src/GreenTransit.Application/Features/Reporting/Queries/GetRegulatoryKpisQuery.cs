@@ -69,27 +69,30 @@ public sealed class GetRegulatoryKpisQueryHandler
             ))
             .ToListAsync(ct);
 
-        // ── 2. WasteMove IDs del año (para CO2 y conteo) ─────────────────────
-        var wmIdsYear = tprYear
-            .Where(r => r.WasteMoveId.HasValue)
-            .Select(r => r.WasteMoveId!.Value)
-            .Distinct()
-            .ToList();
+        // ── 2. CO2 y estado CLASIFICADO: subqueries IQueryable — evita IN (lista larga de GUIDs) ──
+        // wmIdsYearQuery es un IQueryable<Guid> que EF traduce a subquery SQL, sin materializar.
+        var wmIdsYearQuery = _db.TreatmentPlants
+            .Where(tp =>
+                tp.PlantTreatmentDate >= yearStart &&
+                tp.PlantTreatmentDate < yearEnd &&
+                (ownerId == Guid.Empty || tp.OwnerId == ownerId) &&
+                (request.IdScrap == null || (tp.WasteMove != null && tp.WasteMove.IdScrap == request.IdScrap)) &&
+                tp.IdWasteMove != null)
+            .Select(tp => tp.IdWasteMove!.Value)
+            .Distinct();
 
-        // CO2 por WasteMoveId
         var co2ByWm = await _db.WasteMoveResidues
             .AsNoTracking()
-            .Where(r => wmIdsYear.Contains(r.IdWasteMove))
+            .Where(r => wmIdsYearQuery.Contains(r.IdWasteMove))
             .GroupBy(r => r.IdWasteMove)
             .Select(g => new { WmId = g.Key, Co2 = g.Sum(r => r.TransportInfo_TransportCarbonEmissions ?? 0m) })
             .ToListAsync(ct);
 
         var co2MapYear = co2ByWm.ToDictionary(x => x.WmId, x => x.Co2);
 
-        // Conteo de traslados CLASIFICADO por WasteMoveId
         var classifiedWmIds = await _db.WasteMoves
             .AsNoTracking()
-            .Where(w => wmIdsYear.Contains(w.Id) && w.ServiceStatus == "CLASIFICADO")
+            .Where(w => w.ServiceStatus == "CLASIFICADO" && wmIdsYearQuery.Contains(w.Id))
             .Select(w => w.Id)
             .ToListAsync(ct);
 
@@ -100,11 +103,6 @@ public sealed class GetRegulatoryKpisQueryHandler
 
         // ── 4. Calcular KPIs del periodo principal ────────────────────────────
         var periodRows = FilterByQuarter(tprYear, request.Quarter);
-        var periodWmIds = periodRows
-            .Where(r => r.WasteMoveId.HasValue)
-            .Select(r => r.WasteMoveId!.Value)
-            .Distinct()
-            .ToHashSet();
 
         var mainKpis = ComputeKpis(periodRows, co2MapYear, classifiedSet);
 

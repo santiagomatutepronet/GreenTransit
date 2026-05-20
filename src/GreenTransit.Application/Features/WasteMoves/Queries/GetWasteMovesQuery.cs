@@ -126,9 +126,9 @@ public sealed class GetWasteMovesQueryHandler
 
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))
         {
-            var term = request.SearchTerm.ToLower();
+            var pattern = $"%{request.SearchTerm.Trim()}%";
             q = q.Where(w => w.WasteMoveReference != null
-                           && w.WasteMoveReference.ToLower().Contains(term));
+                           && EF.Functions.Like(w.WasteMoveReference, pattern));
         }
 
         var total = await q.CountAsync(ct);

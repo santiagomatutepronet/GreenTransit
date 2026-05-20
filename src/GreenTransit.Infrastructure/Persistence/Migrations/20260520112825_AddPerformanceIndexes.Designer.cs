@@ -4,16 +4,19 @@ using GreenTransit.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace GreenTransit.Infrastructure.Migrations
+namespace GreenTransit.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260520112825_AddPerformanceIndexes")]
+    partial class AddPerformanceIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2146,8 +2149,7 @@ namespace GreenTransit.Infrastructure.Migrations
                     b.HasIndex("IdCarrier")
                         .HasDatabaseName("IX_ServiceOrders_IdCarrier");
 
-                    b.HasIndex("IdIssuedBy")
-                        .HasDatabaseName("IX_ServiceOrders_IdIssuedBy");
+                    b.HasIndex("IdIssuedBy");
 
                     b.HasIndex("IdLERCode");
 
@@ -2156,18 +2158,12 @@ namespace GreenTransit.Infrastructure.Migrations
                     b.HasIndex("IdPlannedPlant")
                         .HasDatabaseName("IX_ServiceOrders_IdPlannedPlant");
 
-                    b.HasIndex("OwnerId")
-                        .HasDatabaseName("IX_ServiceOrders_OwnerId");
-
                     b.HasIndex("ServiceOrderNumber")
                         .IsUnique()
                         .HasDatabaseName("UX_ServiceOrders_Number");
 
                     b.HasIndex("WasteMoveReference")
                         .HasDatabaseName("IX_ServiceOrders_WasteMoveRef");
-
-                    b.HasIndex("OwnerId", "IdIssuedBy")
-                        .HasDatabaseName("IX_ServiceOrders_OwnerId_IssuedBy");
 
                     b.ToTable("ServiceOrders", (string)null);
                 });
@@ -2537,21 +2533,11 @@ namespace GreenTransit.Infrastructure.Migrations
 
                     b.HasIndex("IdTreatmentOperation");
 
-                    b.HasIndex("IdWasteMove")
-                        .HasDatabaseName("IX_TreatmentPlants_IdWasteMove");
+                    b.HasIndex("IdWasteMove");
 
                     b.HasIndex("IncidentId");
 
-                    b.HasIndex("OwnerId")
-                        .HasDatabaseName("IX_TreatmentPlants_OwnerId");
-
-                    b.HasIndex("PlantTreatmentDate")
-                        .HasDatabaseName("IX_TreatmentPlants_PlantTreatmentDate");
-
                     b.HasIndex("ServiceOrderId");
-
-                    b.HasIndex("OwnerId", "PlantTreatmentDate")
-                        .HasDatabaseName("IX_TreatmentPlants_OwnerId_TreatmentDate");
 
                     b.ToTable("TreatmentPlants", (string)null);
                 });
@@ -2633,8 +2619,7 @@ namespace GreenTransit.Infrastructure.Migrations
 
                     b.HasIndex("IdResidueValued");
 
-                    b.HasIndex("IdTreatmentPlant")
-                        .HasDatabaseName("IX_TreatmentPlantResidues_IdTreatmentPlant");
+                    b.HasIndex("IdTreatmentPlant");
 
                     b.ToTable("TreatmentPlantResidues", (string)null);
                 });
@@ -2806,9 +2791,6 @@ namespace GreenTransit.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ActualPickupStart")
-                        .HasDatabaseName("IX_WasteMoves_ActualPickupStart");
-
                     b.HasIndex("IdDestination");
 
                     b.HasIndex("IdOperatorTransfer");
@@ -2820,22 +2802,10 @@ namespace GreenTransit.Infrastructure.Migrations
 
                     b.HasIndex("IdSource");
 
-                    b.HasIndex("OwnerId")
-                        .HasDatabaseName("IX_WasteMoves_OwnerId");
-
-                    b.HasIndex("PlannedPickupStart")
-                        .HasDatabaseName("IX_WasteMoves_PlannedPickupStart");
-
                     b.HasIndex("ServiceOrderId");
-
-                    b.HasIndex("ServiceStatus")
-                        .HasDatabaseName("IX_WasteMoves_ServiceStatus");
 
                     b.HasIndex("WasteMoveReference")
                         .HasDatabaseName("IX_WasteMoves_Reference");
-
-                    b.HasIndex("OwnerId", "ServiceStatus")
-                        .HasDatabaseName("IX_WasteMoves_OwnerId_Status");
 
                     b.ToTable("WasteMoves", (string)null);
                 });
@@ -2926,8 +2896,7 @@ namespace GreenTransit.Infrastructure.Migrations
 
                     b.HasIndex("EmissionFactorSetId");
 
-                    b.HasIndex("IdCarrier")
-                        .HasDatabaseName("IX_WasteMoveResidues_IdCarrier");
+                    b.HasIndex("IdCarrier");
 
                     b.HasIndex("IdResidue");
 

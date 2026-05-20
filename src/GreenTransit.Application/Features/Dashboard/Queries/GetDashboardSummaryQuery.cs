@@ -236,11 +236,15 @@ public sealed class GetDashboardSummaryQueryHandler
                 i.ServiceOrder != null &&
                 i.ServiceOrder.IdIssuedBy == linkedEntityId.Value);
         else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap) && linkedEntityId.HasValue)
+        {
+            // JOIN SQL en lugar de correlated subquery
+            var wmRefIds = _context.WasteMoves
+                .Where(wm => wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value)
+                .Select(wm => wm.WasteMoveReference)
+                .Where(r => r != null);
             incidentBase = incidentBase.Where(i =>
-                i.WasteMoveReference != null &&
-                _context.WasteMoves.Any(wm =>
-                    wm.WasteMoveReference == i.WasteMoveReference &&
-                    (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value)));
+                i.WasteMoveReference != null && wmRefIds.Contains(i.WasteMoveReference));
+        }
         else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PublicEnt) && linkedEntityId.HasValue)
         {
             var soIds = _context.ServiceOrders
@@ -250,23 +254,32 @@ public sealed class GetDashboardSummaryQueryHandler
                 i.ServiceOrderId != null && soIds.Contains(i.ServiceOrderId.Value));
         }
         else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PlantOp) && linkedEntityId.HasValue)
+        {
+            var wmRefIds = _context.WasteMoves
+                .Where(wm => wm.IdDestination == linkedEntityId.Value)
+                .Select(wm => wm.WasteMoveReference)
+                .Where(r => r != null);
             incidentBase = incidentBase.Where(i =>
-                i.WasteMoveReference != null &&
-                _context.WasteMoves.Any(wm =>
-                    wm.WasteMoveReference == i.WasteMoveReference &&
-                    wm.IdDestination == linkedEntityId.Value));
+                i.WasteMoveReference != null && wmRefIds.Contains(i.WasteMoveReference));
+        }
         else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.CacOp) && linkedEntityId.HasValue)
+        {
+            var wmRefIds = _context.WasteMoves
+                .Where(wm => wm.IdDestination == linkedEntityId.Value || wm.IdSource == linkedEntityId.Value)
+                .Select(wm => wm.WasteMoveReference)
+                .Where(r => r != null);
             incidentBase = incidentBase.Where(i =>
-                i.WasteMoveReference != null &&
-                _context.WasteMoves.Any(wm =>
-                    wm.WasteMoveReference == i.WasteMoveReference &&
-                    (wm.IdDestination == linkedEntityId.Value || wm.IdSource == linkedEntityId.Value)));
+                i.WasteMoveReference != null && wmRefIds.Contains(i.WasteMoveReference));
+        }
         else if (coordinatorScrapIds != null)
+        {
+            var wmRefIds = _context.WasteMoves
+                .Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value))
+                .Select(wm => wm.WasteMoveReference)
+                .Where(r => r != null);
             incidentBase = incidentBase.Where(i =>
-                i.WasteMoveReference != null &&
-                _context.WasteMoves.Any(wm =>
-                    wm.WasteMoveReference == i.WasteMoveReference &&
-                    wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value)));
+                i.WasteMoveReference != null && wmRefIds.Contains(i.WasteMoveReference));
+        }
 
         var openIncidentsBySeverity = (await incidentBase
             .GroupBy(i => i.Severity)
@@ -275,16 +288,23 @@ public sealed class GetDashboardSummaryQueryHandler
             .ToDictionary(x => x.Severity, x => x.Count);
 
         // ── 7. Cumplimiento MarketShares (año en curso) ───────────────────────
+        // Proyectar solo los campos necesarios — evita carga de entidades Scrap completas
         var marketShareTargets = await _context.MarketShares
             .AsNoTracking()
-            .Include(ms => ms.Scrap)
             .Where(ms =>
                 (ownerId == Guid.Empty || ms.OwnerId == ownerId) &&
                 ms.Year == now.Year)
+            .Select(ms => new
+            {
+                ms.IdScrap,
+                ms.Category,
+                ms.AutonomousCommunity,
+                ms.Weight,
+                ScrapName = ms.Scrap != null ? ms.Scrap.Name : null
+            })
             .ToListAsync(ct);
 
-        // Peso real: WasteMoveResidues del año, agrupados por (IdScrap, ProductCategory)
-        // Solo traslados no cancelados con fecha de recogida en el año actual
+        // Peso real calculado directamente en BD agrupado por (IdScrap, Category)
         var actualByScrapCategory = await _context.WasteMoveResidues
             .AsNoTracking()
             .Where(wmr =>
@@ -309,15 +329,16 @@ public sealed class GetDashboardSummaryQueryHandler
             })
             .ToListAsync(ct);
 
+        var actualMap = actualByScrapCategory
+            .ToDictionary(k => (k.IdScrap, k.Category), k => k.TotalWeight);
+
         var compliance = marketShareTargets
             .GroupBy(ms => new { ms.IdScrap, ms.Category })
             .Select(g =>
             {
                 var first  = g.First();
                 var target = g.Sum(ms => ms.Weight);
-                var actual = actualByScrapCategory
-                    .Where(k => k.IdScrap == g.Key.IdScrap && k.Category == g.Key.Category)
-                    .Sum(k => k.TotalWeight);
+                actualMap.TryGetValue((g.Key.IdScrap, g.Key.Category), out var actual);
                 return new MarketShareComplianceDto(
                     g.Key.Category,
                     first.AutonomousCommunity,
@@ -325,7 +346,7 @@ public sealed class GetDashboardSummaryQueryHandler
                     actual,
                     target > 0 ? Math.Round((double)(actual / target) * 100, 1) : 0d,
                     g.Key.IdScrap,
-                    first.Scrap?.Name);
+                    first.ScrapName);
             })
             .OrderBy(x => x.ScrapName)
             .ThenBy(x => x.Category)
@@ -348,24 +369,37 @@ public sealed class GetDashboardSummaryQueryHandler
         else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PublicEnt) && linkedEntityId.HasValue)
             soQuery = soQuery.Where(so => so.IdIssuedBy == linkedEntityId.Value);
         else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Scrap) && linkedEntityId.HasValue)
-            soQuery = soQuery.Where(so =>
-                so.WasteMoveReference != null &&
-                _context.WasteMoves.Any(wm =>
-                    wm.WasteMoveReference == so.WasteMoveReference &&
-                    (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value)));
+        {
+            // Subquery de SOs via ServiceOrderId en WasteMoves — evita correlated ANY
+            var soIdsForScrap = _context.WasteMoves
+                .Where(wm => (wm.IdScrap == linkedEntityId.Value || wm.IdScrap2 == linkedEntityId.Value)
+                          && wm.ServiceOrderId != null)
+                .Select(wm => wm.ServiceOrderId!.Value);
+            soQuery = soQuery.Where(so => soIdsForScrap.Contains(so.Id));
+        }
         else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.PlantOp) && linkedEntityId.HasValue)
-            soQuery = soQuery.Where(so =>
-                _context.WasteMoves.Any(wm =>
-                    wm.ServiceOrderId == so.Id && wm.IdDestination == linkedEntityId.Value));
+        {
+            var soIdsForPlant = _context.WasteMoves
+                .Where(wm => wm.IdDestination == linkedEntityId.Value && wm.ServiceOrderId != null)
+                .Select(wm => wm.ServiceOrderId!.Value);
+            soQuery = soQuery.Where(so => soIdsForPlant.Contains(so.Id));
+        }
         else if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.CacOp) && linkedEntityId.HasValue)
+        {
+            var soIdsForCac = _context.WasteMoves
+                .Where(wm => wm.IdDestination == linkedEntityId.Value && wm.ServiceOrderId != null)
+                .Select(wm => wm.ServiceOrderId!.Value);
             soQuery = soQuery.Where(so =>
-                so.IdPickupPoint == linkedEntityId.Value ||
-                _context.WasteMoves.Any(wm =>
-                    wm.ServiceOrderId == so.Id && wm.IdDestination == linkedEntityId.Value));
+                so.IdPickupPoint == linkedEntityId.Value || soIdsForCac.Contains(so.Id));
+        }
         else if (coordinatorScrapIds != null)
-            soQuery = soQuery.Where(so =>
-                _context.WasteMoves.Any(wm =>
-                    wm.ServiceOrderId == so.Id && wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value)));
+        {
+            var soIdsForCoord = _context.WasteMoves
+                .Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value)
+                          && wm.ServiceOrderId != null)
+                .Select(wm => wm.ServiceOrderId!.Value);
+            soQuery = soQuery.Where(so => soIdsForCoord.Contains(so.Id));
+        }
 
         var upcomingPickups = (await soQuery
             .OrderBy(so => so.PlannedPickupStart)

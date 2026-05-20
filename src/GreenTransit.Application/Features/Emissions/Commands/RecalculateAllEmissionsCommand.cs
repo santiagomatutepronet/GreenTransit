@@ -77,24 +77,35 @@ public sealed class RecalculateAllEmissionsCommandHandler
             .Where(f => f.FactorSetId == activeSet.Id)
             .ToListAsync(ct);
 
-        // ── Obtener IDs de WasteMoves elegibles ───────────────────────────────
-        var eligibleIds = await _context.WasteMoves
-            .AsNoTracking()
+        // ── Procesar por páginas sin cargar todos los IDs en memoria ─────────
+        // Se pagina directamente desde la BD usando Skip/Take sobre WasteMoveResidues
+        // ordenados por IdWasteMove para garantizar páginas estables.
+        var totalEligible = await _context.WasteMoves
             .Where(w => PostPickupStatuses.Contains(w.ServiceStatus!))
-            .Select(w => w.Id)
-            .ToListAsync(ct);
+            .CountAsync(ct);
 
         _logger.LogInformation(
             "RecalculateAllEmissions: {Count} traslados elegibles. FactorSet={FactorSetId} v{Version}.",
-            eligibleIds.Count, activeSet.Id, activeSet.Version);
+            totalEligible, activeSet.Id, activeSet.Version);
 
         int processed = 0, updated = 0, skipped = 0;
+        int offset = 0;
 
-        for (int offset = 0; offset < eligibleIds.Count; offset += BatchSize)
+        while (offset < totalEligible)
         {
             ct.ThrowIfCancellationRequested();
 
-            var batchIds = eligibleIds.Skip(offset).Take(BatchSize).ToList();
+            // Obtener una página de IDs directamente desde la BD
+            var batchIds = await _context.WasteMoves
+                .AsNoTracking()
+                .Where(w => PostPickupStatuses.Contains(w.ServiceStatus!))
+                .OrderBy(w => w.Id)
+                .Skip(offset)
+                .Take(BatchSize)
+                .Select(w => w.Id)
+                .ToListAsync(ct);
+
+            if (batchIds.Count == 0) break;
 
             var lines = await _context.WasteMoveResidues
                 .Where(r => batchIds.Contains(r.IdWasteMove))
@@ -134,6 +145,8 @@ public sealed class RecalculateAllEmissionsCommandHandler
             _logger.LogInformation(
                 "RecalculateAllEmissions: lote {Offset}-{End} procesado.",
                 offset, offset + batchIds.Count - 1);
+
+            offset += batchIds.Count;
         }
 
         _logger.LogInformation(

@@ -201,6 +201,9 @@ public class ServiceOrderConfiguration : IEntityTypeConfiguration<ServiceOrder>
         builder.HasIndex(e => e.WasteMoveReference).HasDatabaseName("IX_ServiceOrders_WasteMoveRef");
         builder.HasIndex(e => e.IdCarrier).HasDatabaseName("IX_ServiceOrders_IdCarrier");
         builder.HasIndex(e => e.IdPlannedPlant).HasDatabaseName("IX_ServiceOrders_IdPlannedPlant");
+        builder.HasIndex(e => e.OwnerId).HasDatabaseName("IX_ServiceOrders_OwnerId");
+        builder.HasIndex(e => e.IdIssuedBy).HasDatabaseName("IX_ServiceOrders_IdIssuedBy");
+        builder.HasIndex(e => new { e.OwnerId, e.IdIssuedBy }).HasDatabaseName("IX_ServiceOrders_OwnerId_IssuedBy");
     }
 }
 
@@ -279,6 +282,11 @@ public class WasteMoveConfiguration : IEntityTypeConfiguration<WasteMove>
 
         builder.HasIndex(e => e.WasteMoveReference).HasDatabaseName("IX_WasteMoves_Reference");
         builder.HasIndex(e => e.IdScrap).HasDatabaseName("IX_WasteMoves_IdScrap");
+        builder.HasIndex(e => e.OwnerId).HasDatabaseName("IX_WasteMoves_OwnerId");
+        builder.HasIndex(e => e.ServiceStatus).HasDatabaseName("IX_WasteMoves_ServiceStatus");
+        builder.HasIndex(e => e.ActualPickupStart).HasDatabaseName("IX_WasteMoves_ActualPickupStart");
+        builder.HasIndex(e => e.PlannedPickupStart).HasDatabaseName("IX_WasteMoves_PlannedPickupStart");
+        builder.HasIndex(e => new { e.OwnerId, e.ServiceStatus }).HasDatabaseName("IX_WasteMoves_OwnerId_Status");
     }
 }
 
@@ -330,10 +338,11 @@ public class WasteMoveResidueConfiguration : IEntityTypeConfiguration<WasteMoveR
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => e.IdWasteMove).HasDatabaseName("IX_WasteMoveResidues_IdWasteMove");
+        builder.HasIndex(e => e.IdCarrier).HasDatabaseName("IX_WasteMoveResidues_IdCarrier");
     }
 }
 
-// ── Entradas en planta ────────────────────────────────────────────────────────
+// ── Entradas en planta
 
 public class EntryPlantConfiguration : IEntityTypeConfiguration<EntryPlant>
 {
@@ -421,6 +430,11 @@ public class TreatmentPlantConfiguration : IEntityTypeConfiguration<TreatmentPla
             .WithMany()
             .HasForeignKey(e => e.IncidentId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.IdWasteMove).HasDatabaseName("IX_TreatmentPlants_IdWasteMove");
+        builder.HasIndex(e => e.OwnerId).HasDatabaseName("IX_TreatmentPlants_OwnerId");
+        builder.HasIndex(e => e.PlantTreatmentDate).HasDatabaseName("IX_TreatmentPlants_PlantTreatmentDate");
+        builder.HasIndex(e => new { e.OwnerId, e.PlantTreatmentDate }).HasDatabaseName("IX_TreatmentPlants_OwnerId_TreatmentDate");
     }
 }
 
@@ -463,10 +477,12 @@ public class TreatmentPlantResidueConfiguration : IEntityTypeConfiguration<Treat
             .WithMany(r => r.TreatmentPlantResiduesAsRemove)
             .HasForeignKey(e => e.IdResidueRemove)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.IdTreatmentPlant).HasDatabaseName("IX_TreatmentPlantResidues_IdTreatmentPlant");
     }
 }
 
-// ── Centros de acopio ─────────────────────────────────────────────────────────
+// ── Centros de acopio
 
 public class EntryCACConfiguration : IEntityTypeConfiguration<EntryCAC>
 {
