@@ -24,8 +24,9 @@ los siguientes documentos Markdown:
 
 1. `docs/README.md`
 2. `docs/Mapa_Funcionalidades.md`
-6. `docs/COPILOT_CONTEXT.md`
-7. `docs/instrucciones_adicionales.md`
+3. `docs/Documentacion_Completa_GreenTransit.md`
+4. `docs/COPILOT_CONTEXT.md`
+5. `docs/instrucciones_adicionales.md`
 
 
 

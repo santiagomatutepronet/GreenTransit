@@ -155,6 +155,7 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
     private static string InferModuleName(string? ns, string route)
     {
         if (ns?.Contains("Security") == true) return "Seguridad";
+        if (ns?.Contains("EcoDataNet") == true)           return "EcoDataNet";
         if (ns?.Contains("TratamientoReciclaje") == true) return "Tratamiento y Reciclaje";
         if (ns?.Contains("Ecomodulacion") == true)     return "Ecomodulación";
         if (ns?.Contains("HeatMaps") == true)              return "Mapas de Calor";
@@ -188,6 +189,7 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
                        r.StartsWith("/security")           ||
                        r.StartsWith("/admin")              => "Seguridad",
             var r when r.StartsWith("/product-declarations") => "Declaraciones de Producto",
+            var r when r.StartsWith("/ecodatanet")           => "EcoDataNet",
             var r when r.StartsWith("/logistics")          ||
                        r.StartsWith("/kpis")               ||
                        r.StartsWith("/traceability")       ||
@@ -249,6 +251,7 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["PlantEnergyFootprint"]       = "Huella de Carbono — Huella Energética de Plantas",
             ["ProducerCarbonReport"]       = "Huella de Carbono — Reporte Productor",
             ["PublicEntityCarbonView"]     = "Huella de Carbono — Vista Entidad Pública",
+            ["PublishData"]                = "Publicar Datos — EcoDataNet",
         };
 
         if (map.TryGetValue(componentName, out var name)) return name;
