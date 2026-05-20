@@ -1,7 +1,6 @@
 using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using GreenTransit.Domain.Entities;
 
@@ -47,7 +46,7 @@ public sealed class UpdatePagePermissionCommandHandler : IRequestHandler<UpdateP
         {
             if (existing is not null)
             {
-                _context.PagePermissions.Remove(existing);
+                _context.Remove(existing);
                 _logger.LogInformation(
                     "Permiso eliminado: página {Route}, perfil {Profile}",
                     page.Route, request.IdProfile);
@@ -64,7 +63,7 @@ public sealed class UpdatePagePermissionCommandHandler : IRequestHandler<UpdateP
         }
         else
         {
-            _context.PagePermissions.Add(new PagePermission
+            _context.Add(new PagePermission
             {
                 IdPageDefinition = request.IdPageDefinition,
                 IdProfile        = request.IdProfile,
@@ -149,7 +148,7 @@ public sealed class BulkUpdatePagePermissionsCommandHandler
             {
                 if (perm is not null)
                 {
-                    _context.PagePermissions.Remove(perm);
+                    _context.Remove(perm);
                     changes++;
                 }
             }
@@ -165,7 +164,7 @@ public sealed class BulkUpdatePagePermissionsCommandHandler
             }
             else
             {
-                _context.PagePermissions.Add(new PagePermission
+                _context.Add(new PagePermission
                 {
                     IdPageDefinition = entry.IdPageDefinition,
                     IdProfile        = entry.IdProfile,

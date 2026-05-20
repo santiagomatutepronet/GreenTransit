@@ -1,7 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Residues.DTOs;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Residues.Queries;
 
@@ -11,17 +10,32 @@ public sealed class GetResidueByIdQueryHandler
     : IRequestHandler<GetResidueByIdQuery, ResidueDetailDto?>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentUserService   _currentUser;
 
-    public GetResidueByIdQueryHandler(IApplicationDbContext context)
-        => _context = context;
+    public GetResidueByIdQueryHandler(IApplicationDbContext context, ICurrentUserService currentUser)
+    {
+        _context     = context;
+        _currentUser = currentUser;
+    }
 
     public async Task<ResidueDetailDto?> Handle(
         GetResidueByIdQuery request,
         CancellationToken cancellationToken)
     {
+        // ── Filtro de tenant temporal ──────────────────────────────────────────
+        // Residue no implementa ITenantEntity: el HasQueryFilter global no aplica.
+        // Se filtra por IdProducer como proxy de tenant para evitar acceso directo
+        // a residuos de otros tenants por Id.
+        // TODO: reemplazar cuando se añada OwnerId a Residue + migración + backfill.
+        var ownerId = _currentUser.IsAuthenticated ? _currentUser.OwnerId : Guid.Empty;
+
         return await _context.Residues
             .AsNoTracking()
-            .Where(r => r.Id == request.Id)
+            .Where(r => r.Id == request.Id &&
+                        (!_currentUser.IsAuthenticated ||
+                         ownerId == Guid.Empty ||
+                         r.IdProducer == null ||
+                         r.IdProducer == ownerId))
             .Select(r => new ResidueDetailDto(
                 r.Id,
                 r.ResidueType,

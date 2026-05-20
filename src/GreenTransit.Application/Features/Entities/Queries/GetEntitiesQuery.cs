@@ -2,7 +2,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.Entities.DTOs;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Entities.Queries;
 

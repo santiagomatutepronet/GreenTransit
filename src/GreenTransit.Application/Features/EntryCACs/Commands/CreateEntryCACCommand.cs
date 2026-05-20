@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.EntryCACs.Commands;
@@ -124,7 +123,7 @@ public sealed class CreateEntryCACCommandHandler
         // ── 5. Transición de estado ───────────────────────────────────────────
         wm.ServiceStatus = WasteMoveStatuses.EnCAC;
 
-        _context.EntryCACs.Add(entry);
+        _context.Add(entry);
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(

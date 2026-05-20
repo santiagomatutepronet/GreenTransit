@@ -3,7 +3,6 @@ using GreenTransit.Application.Features.Reporting.RegulatoryCompliance.DTOs;
 using GreenTransit.Application.Features.Reporting.RegulatoryCompliance.Services;
 using GreenTransit.Domain.Authorization;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Reporting.RegulatoryCompliance.Queries;
 

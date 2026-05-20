@@ -4,7 +4,6 @@ using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Entities;
 using GreenTransit.Domain.Exceptions;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.Security.Commands;

@@ -1,80 +1,85 @@
 using GreenTransit.Domain.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Common.Interfaces;
 
 /// <summary>
 /// Abstracción del DbContext expuesta a la capa Application.
-/// Permite que los query handlers accedan a los DbSets sin depender
-/// directamente de AppDbContext (Infrastructure).
+/// Expone IQueryable&lt;T&gt; para consultas y métodos de mutación genéricos,
+/// eliminando la dependencia directa de EF Core en la capa Application.
 /// </summary>
 public interface IApplicationDbContext
 {
     // ── Catálogos ─────────────────────────────────────────────────────────────
-    DbSet<BusinessEntity> BusinessEntities { get; }
-    DbSet<LerCode> LerCodes { get; }
-    DbSet<Residue> Residues { get; }
-    DbSet<TreatmentOperation> TreatmentOperations { get; }
+    IQueryable<BusinessEntity> BusinessEntities { get; }
+    IQueryable<LerCode> LerCodes { get; }
+    IQueryable<Residue> Residues { get; }
+    IQueryable<TreatmentOperation> TreatmentOperations { get; }
 
     // ── Contratos ─────────────────────────────────────────────────────────────
-    DbSet<Agreement> Agreements { get; }
-    DbSet<AgreementDocument> AgreementDocuments { get; }
+    IQueryable<Agreement> Agreements { get; }
+    IQueryable<AgreementDocument> AgreementDocuments { get; }
 
     // ── Operaciones logísticas ────────────────────────────────────────────────
-    DbSet<ServiceOrder> ServiceOrders { get; }
-    DbSet<ServiceOrderResidue> ServiceOrderResidues { get; }
-    DbSet<WasteMove> WasteMoves { get; }
-    DbSet<WasteMoveResidue> WasteMoveResidues { get; }
+    IQueryable<ServiceOrder> ServiceOrders { get; }
+    IQueryable<ServiceOrderResidue> ServiceOrderResidues { get; }
+    IQueryable<WasteMove> WasteMoves { get; }
+    IQueryable<WasteMoveResidue> WasteMoveResidues { get; }
 
     // ── Entradas y tratamiento ────────────────────────────────────────────────
-    DbSet<EntryPlant> EntryPlants { get; }
-    DbSet<EntryPlantResidue> EntryPlantResidues { get; }
-    DbSet<TreatmentPlant> TreatmentPlants { get; }
-    DbSet<TreatmentPlantResidue> TreatmentPlantResidues { get; }
-    DbSet<EntryCAC> EntryCACs { get; }
-    DbSet<EntryCACResidue> EntryCACResidues { get; }
+    IQueryable<EntryPlant> EntryPlants { get; }
+    IQueryable<EntryPlantResidue> EntryPlantResidues { get; }
+    IQueryable<TreatmentPlant> TreatmentPlants { get; }
+    IQueryable<TreatmentPlantResidue> TreatmentPlantResidues { get; }
+    IQueryable<EntryCAC> EntryCACs { get; }
+    IQueryable<EntryCACResidue> EntryCACResidues { get; }
 
     // ── Producto y declaraciones ──────────────────────────────────────────────
-    DbSet<ProductDeclaration> ProductDeclarations { get; }
-    DbSet<Product> Products { get; }
-    DbSet<ProductSpec> ProductSpecs { get; }
-    DbSet<MarketShare> MarketShares { get; }
+    IQueryable<ProductDeclaration> ProductDeclarations { get; }
+    IQueryable<Product> Products { get; }
+    IQueryable<ProductSpec> ProductSpecs { get; }
+    IQueryable<MarketShare> MarketShares { get; }
 
     // ── Liquidaciones ─────────────────────────────────────────────────────────
-    DbSet<Settlement> Settlements { get; }
-    DbSet<SettlementLine> SettlementLines { get; }
+    IQueryable<Settlement> Settlements { get; }
+    IQueryable<SettlementLine> SettlementLines { get; }
 
     // ── Sostenibilidad ────────────────────────────────────────────────────────
-    DbSet<EmissionFactorSet> EmissionFactorSets { get; }
-    DbSet<EmissionFactor> EmissionFactors { get; }
-    DbSet<EcoModulationRuleSet> EcoModulationRuleSets { get; }
-    DbSet<EcoModulationRule> EcoModulationRules { get; }
-    DbSet<PlantEnergy> PlantEnergies { get; }
-    DbSet<Incident> Incidents { get; }
-    DbSet<DumZone> DumZones { get; }
-    DbSet<DumRestrictionRule> DumRestrictionRules { get; }
-    DbSet<RegulatoryTarget> RegulatoryTargets { get; }
+    IQueryable<EmissionFactorSet> EmissionFactorSets { get; }
+    IQueryable<EmissionFactor> EmissionFactors { get; }
+    IQueryable<EcoModulationRuleSet> EcoModulationRuleSets { get; }
+    IQueryable<EcoModulationRule> EcoModulationRules { get; }
+    IQueryable<PlantEnergy> PlantEnergies { get; }
+    IQueryable<Incident> Incidents { get; }
+    IQueryable<DumZone> DumZones { get; }
+    IQueryable<DumRestrictionRule> DumRestrictionRules { get; }
+    IQueryable<RegulatoryTarget> RegulatoryTargets { get; }
 
     // ── Geografía ─────────────────────────────────────────────────────────────
-    DbSet<Country>              Countries              { get; }
-    DbSet<TerritoryState>       TerritoryStates        { get; }
-    DbSet<Province>             Provinces              { get; }
-    DbSet<Municipality>         Municipalities         { get; }
-    DbSet<MunicipalityZipCode>  MunicipalityZipCodes   { get; }
+    IQueryable<Country>              Countries              { get; }
+    IQueryable<TerritoryState>       TerritoryStates        { get; }
+    IQueryable<Province>             Provinces              { get; }
+    IQueryable<Municipality>         Municipalities         { get; }
+    IQueryable<MunicipalityZipCode>  MunicipalityZipCodes   { get; }
 
     // ── Seguridad ─────────────────────────────────────────────────────────────
-    DbSet<AppUser>     AppUsers     { get; }
-    DbSet<UserProfile> UserProfiles { get; }
-    DbSet<PageDefinition>  PageDefinitions  { get; }
-    DbSet<PagePermission>  PagePermissions  { get; }
+    IQueryable<AppUser>     AppUsers     { get; }
+    IQueryable<UserProfile> UserProfiles { get; }
+    IQueryable<PageDefinition>  PageDefinitions  { get; }
+    IQueryable<PagePermission>  PagePermissions  { get; }
 
     // ── Diccionarios declaraciones ────────────────────────────────────────────
-    DbSet<DicProductDeclarationCategory> DicProductDeclarationCategories { get; }
-    DbSet<DicProductDeclarationPeriod>   DicProductDeclarationPeriods    { get; }
-    DbSet<DicProductDeclarationProduct>  DicProductDeclarationProducts   { get; }
-    DbSet<DicProductDeclarationSource>   DicProductDeclarationSources    { get; }
-    DbSet<DicProductDeclarationType>     DicProductDeclarationTypes      { get; }
-    DbSet<DicProductDeclarationUse>      DicProductDeclarationUses       { get; }
+    IQueryable<DicProductDeclarationCategory> DicProductDeclarationCategories { get; }
+    IQueryable<DicProductDeclarationPeriod>   DicProductDeclarationPeriods    { get; }
+    IQueryable<DicProductDeclarationProduct>  DicProductDeclarationProducts   { get; }
+    IQueryable<DicProductDeclarationSource>   DicProductDeclarationSources    { get; }
+    IQueryable<DicProductDeclarationType>     DicProductDeclarationTypes      { get; }
+    IQueryable<DicProductDeclarationUse>      DicProductDeclarationUses       { get; }
+
+    // ── Mutaciones genéricas ──────────────────────────────────────────────────
+    void Add<T>(T entity) where T : class;
+    void AddRange<T>(IEnumerable<T> entities) where T : class;
+    void Remove<T>(T entity) where T : class;
+    void RemoveRange<T>(IEnumerable<T> entities) where T : class;
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
@@ -86,4 +91,17 @@ public interface IApplicationDbContext
 
     /// <summary>Reactiva el filtro de tenant tras haberlo desactivado.</summary>
     void RestoreTenantFilter();
+
+    /// <summary>
+    /// Inicia una transacción de base de datos explícita.
+    /// Usar únicamente desde <see cref="GreenTransit.Application.Common.Behaviours.TransactionBehavior{TRequest,TResponse}"/>
+    /// para commands que implementen <see cref="ITransactional"/>.
+    /// </summary>
+    Task<IAsyncDisposable> BeginTransactionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Confirma la transacción activa iniciada con <see cref="BeginTransactionAsync"/>.</summary>
+    Task CommitTransactionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Revierte la transacción activa iniciada con <see cref="BeginTransactionAsync"/>.</summary>
+    Task RollbackTransactionAsync(CancellationToken cancellationToken = default);
 }

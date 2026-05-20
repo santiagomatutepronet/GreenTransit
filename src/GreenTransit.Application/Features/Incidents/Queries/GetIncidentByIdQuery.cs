@@ -2,7 +2,6 @@ using System.Text.Json;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Incidents.DTOs;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Incidents.Queries;
 

@@ -2,7 +2,6 @@ using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Entities.Commands;
 using GreenTransit.Domain.Constants;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Entities.Validators;
 

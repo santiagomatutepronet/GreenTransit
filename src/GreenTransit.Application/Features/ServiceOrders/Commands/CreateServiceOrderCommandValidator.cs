@@ -1,7 +1,6 @@
 using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ServiceOrders.Commands;
 
@@ -46,6 +45,11 @@ public sealed class CreateServiceOrderCommandValidator
                     || x.PlannedPickupEnd > x.PlannedPickupStart)
             .WithMessage("La fecha fin de recogida debe ser posterior a la fecha inicio.")
             .OverridePropertyName(nameof(CreateServiceOrderCommand.PlannedPickupEnd));
+
+        // Al menos una línea de residuo
+        RuleFor(x => x.Residues)
+            .NotEmpty()
+            .WithMessage("La orden de servicio debe tener al menos una línea de residuo.");
 
         RuleFor(x => x)
             .Must(x => x.PlannedDeliveryStart is null || x.PlannedPickupEnd is null

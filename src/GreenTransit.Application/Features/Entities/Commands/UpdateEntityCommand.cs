@@ -1,7 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Exceptions;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.Entities.Commands;

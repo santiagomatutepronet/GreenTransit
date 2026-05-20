@@ -2,7 +2,6 @@ using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.EmissionFactors.Commands;
 
@@ -119,7 +118,7 @@ public sealed class CreateEmissionFactorSetCommandHandler
             });
         }
 
-        _context.EmissionFactorSets.Add(set);
+        _context.Add(set);
         await _context.SaveChangesAsync(ct);
         return set.Id;
     }

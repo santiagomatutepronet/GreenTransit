@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ProductDeclarations.Commands;
 

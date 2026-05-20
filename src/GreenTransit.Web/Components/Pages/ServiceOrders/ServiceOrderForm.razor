@@ -525,19 +525,38 @@ else
         line.IsDangerous = ler?.IsDangerous ?? false;
     }
 
-    private void AddResidueLine()    => _residueLines.Add(new ResidueLineModel());
+    private void AddResidueLine()
+    {
+        var line = new ResidueLineModel();
+        _residueLines.Add(line);
+        _residueGrid.Reload();
+        _residueGrid.EditRow(line);
+    }
     private void RemoveResidueLine(int idx)
     {
         if (idx >= 0 && idx < _residueLines.Count && _residueLines.Count > 1)
+        {
             _residueLines.RemoveAt(idx);
+            _residueGrid.Reload();
+        }
     }
 
     private void ClearNumber() => _model.ServiceOrderNumber = "";
 
-    private void AddContainer()    => _containers.Add(new ContainerRow());
+    private void AddContainer()
+    {
+        var row = new ContainerRow();
+        _containers.Add(row);
+        _containerGrid.Reload();
+        _containerGrid.EditRow(row);
+    }
     private void RemoveContainer(int idx)
     {
-        if (idx >= 0 && idx < _containers.Count) _containers.RemoveAt(idx);
+        if (idx >= 0 && idx < _containers.Count)
+        {
+            _containers.RemoveAt(idx);
+            _containerGrid.Reload();
+        }
     }
 
     private static DateTime? ParseDate(string? s)
@@ -549,6 +568,13 @@ else
         _validationErrors = new();
         _serverError      = null;
         _saving           = true;
+
+        if (_residueLines.Count == 0)
+        {
+            _validationErrors = new() { ["Residues"] = ["La orden de servicio debe tener al menos una línea de residuo."] };
+            _saving = false;
+            return;
+        }
 
         var containersJson = _containers.Count > 0
             ? JsonSerializer.Serialize(_containers)

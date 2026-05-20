@@ -2,7 +2,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Mobility.DTOs;
 using GreenTransit.Domain.Authorization;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
 namespace GreenTransit.Application.Features.Mobility.Queries;

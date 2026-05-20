@@ -1,7 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Reporting.TratamientoReciclaje.DTOs;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Reporting.TratamientoReciclaje.Queries;
 

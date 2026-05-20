@@ -2,7 +2,6 @@ using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.PlantEnergies.Commands;
 
@@ -97,7 +96,7 @@ public sealed class CreatePlantEnergyCommandHandler
             Version          = 1
         };
 
-        _context.PlantEnergies.Add(entity);
+        _context.Add(entity);
         await _context.SaveChangesAsync(ct);
         return entity.Id;
     }

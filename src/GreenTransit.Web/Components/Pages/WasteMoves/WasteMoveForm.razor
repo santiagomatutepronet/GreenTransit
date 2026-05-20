@@ -59,6 +59,7 @@ else
                                 MaxSelectedLabels="4" 
                                 Data="@_eligibleSOs" 
                                 ValueProperty="Id" 
+                                @bind-Value="@_selectedSoIds"
                                 Change="@OnSOsSelectionChanged"
                                 AllowFiltering="true" 
                                 AllowVirtualization="true"
@@ -341,6 +342,12 @@ else
 
     private bool _isScrapProfile;
 
+    [Parameter, SupplyParameterFromQuery(Name = "serviceOrderId")]
+    public Guid? PreselectedServiceOrderId { get; set; }
+
+    // Valor del dropdown de SOs (permite preselección programática)
+    private IEnumerable<Guid> _selectedSoIds = [];
+
     private IReadOnlyList<EligibleServiceOrderDto> _eligibleSOs         = [];
     private IReadOnlyList<EntitySelectorDto>       _sourceEntities      = [];
     private IReadOnlyList<EntitySelectorDto>       _destinationEntities = [];
@@ -376,6 +383,14 @@ else
         _isScrapProfile = CurrentUser.IsInProfile(ProfileConstants.Scrap);
         if (_isScrapProfile && CurrentUser.LinkedEntityId.HasValue)
             _formModel.IdScrap = CurrentUser.LinkedEntityId.Value;
+
+        // Si se llegó desde el detalle de una SO, preseleccionarla automáticamente
+        if (PreselectedServiceOrderId.HasValue &&
+            _eligibleSOs.Any(s => s.Id == PreselectedServiceOrderId.Value))
+        {
+            _selectedSoIds = [PreselectedServiceOrderId.Value];
+            await OnSOsSelectionChanged(_selectedSoIds);
+        }
 
         _loading = false;
     }
@@ -544,6 +559,7 @@ else
             var soIds = includedLines.Select(l => l.SoId).Distinct().ToArray();
             var lineInputs = includedLines.Select(l => new WasteMoveLineInput(
                 IdResidue   : l.IdResidue,
+                IdLerCode   : l.IdLerCode,
                 Weight      : l.Weight,
                 MeasureUnit : l.MeasureUnit,
                 Units       : l.Units

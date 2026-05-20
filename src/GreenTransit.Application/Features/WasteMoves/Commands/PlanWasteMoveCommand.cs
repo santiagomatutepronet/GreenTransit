@@ -1,8 +1,8 @@
 using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
+using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.WasteMoves.Commands;
@@ -153,16 +153,31 @@ public sealed class PlanWasteMoveCommandHandler
 
         foreach (var lineInput in request.Lines)
         {
-            if (!residueDict.TryGetValue(lineInput.WasteMoveResidueId, out var residueLine))
-                throw new KeyNotFoundException(
-                    $"Línea de residuo {lineInput.WasteMoveResidueId} no pertenece al traslado.");
+            WasteMoveResidue residueLine;
 
-            residueLine.IdCarrier                            = lineInput.IdCarrier;
-            residueLine.TransportInfo_VehicleRegistration    = lineInput.VehicleRegistration;
+            if (lineInput.WasteMoveResidueId == Guid.Empty)
+            {
+                // Traslado legacy sin líneas: crear la entidad ahora
+                residueLine = new WasteMoveResidue
+                {
+                    Id          = Guid.NewGuid(),
+                    IdWasteMove = wm.Id
+                };
+                wm.WasteMoveResidues.Add(residueLine);
+            }
+            else
+            {
+                if (!residueDict.TryGetValue(lineInput.WasteMoveResidueId, out residueLine!))
+                    throw new KeyNotFoundException(
+                        $"Línea de residuo {lineInput.WasteMoveResidueId} no pertenece al traslado.");
+            }
+
+            residueLine.IdCarrier                                = lineInput.IdCarrier;
+            residueLine.TransportInfo_VehicleRegistration        = lineInput.VehicleRegistration;
             residueLine.TransportInfo_VehicleRegistrationTrailer = lineInput.VehicleRegistrationTrailer;
-            residueLine.VehicleType                          = lineInput.VehicleType;
-            residueLine.FuelType                             = lineInput.FuelType;
-            residueLine.EuroClass                            = lineInput.EuroClass;
+            residueLine.VehicleType                              = lineInput.VehicleType;
+            residueLine.FuelType                                 = lineInput.FuelType;
+            residueLine.EuroClass                                = lineInput.EuroClass;
         }
 
         await _context.SaveChangesAsync(ct);

@@ -6,7 +6,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ServiceOrders.Commands;
 
@@ -98,7 +97,7 @@ public sealed class UpdateServiceOrderCommandHandler : IRequestHandler<UpdateSer
 
         foreach (var line in request.Residues)
         {
-            _context.ServiceOrderResidues.Add(new ServiceOrderResidue
+            _context.Add(new ServiceOrderResidue
             {
                 Id              = Guid.NewGuid(),
                 IdServiceOrder  = so.Id,
@@ -166,6 +165,11 @@ public sealed class UpdateServiceOrderCommandValidator
                     || x.PlannedDeliveryStart >= x.PlannedPickupEnd)
             .WithMessage("La fecha inicio de entrega debe ser igual o posterior al fin de recogida.")
             .OverridePropertyName(nameof(UpdateServiceOrderCommand.PlannedDeliveryStart));
+
+        // Al menos una línea de residuo
+        RuleFor(x => x.Residues)
+            .NotEmpty()
+            .WithMessage("La orden de servicio debe tener al menos una línea de residuo.");
     }
 
     private async Task<bool> NumberUniqueForUpdateAsync(
@@ -267,7 +271,7 @@ public sealed class DuplicateServiceOrderCommandHandler
             });
         }
 
-        _context.ServiceOrders.Add(copy);
+        _context.Add(copy);
         await _context.SaveChangesAsync(ct);
         return copy.Id;
     }

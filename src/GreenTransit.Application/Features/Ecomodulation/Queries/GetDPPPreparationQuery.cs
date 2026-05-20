@@ -2,7 +2,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Ecomodulation.DTOs;
 using GreenTransit.Domain.Authorization;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Ecomodulation.Queries;
 

@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.EntryCACs.Commands;

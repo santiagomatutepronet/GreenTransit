@@ -286,10 +286,10 @@ else
         _successMessage = null;
         try
         {
-            var updated = await Mediator.Send(new RecalculateSettlementCommand(Id));
-            // El recálculo puede crear una nueva entidad; navegamos a ella si el Id cambió
-            if (updated.Id != Id && updated.Id != Guid.Empty)
-                Nav.NavigateTo($"/settlements/{updated.Id}");
+            var newId = await Mediator.Send(new RecalculateSettlementCommand(Id));
+            // El recálculo crea una nueva entidad; navegamos a ella si el Id cambió
+            if (newId != Id && newId != Guid.Empty)
+                Nav.NavigateTo($"/settlements/{newId}");
             else
             {
                 _successMessage = "Liquidación recalculada correctamente.";

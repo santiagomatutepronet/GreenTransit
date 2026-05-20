@@ -75,7 +75,7 @@ else
                 <button class="btn btn-success btn-sm" @onclick="ValidateAsync">
                     <i class="bi bi-check-circle me-1"></i>Validar
                 </button>
-                <button class="btn btn-outline-danger btn-sm" @onclick="() => _showRejectModal = true">
+                <button class="btn btn-outline-danger btn-sm" @onclick="OpenRejectModal">
                     <i class="bi bi-x-circle me-1"></i>Rechazar
                 </button>
             }
@@ -236,8 +236,12 @@ else
                     </div>
                     <div class="modal-body">
                         <label class="form-label">Motivo <span class="text-danger">*</span></label>
-                        <textarea class="form-control" rows="4" @bind="_rejectReason"
+                        <textarea class="form-control" rows="4" @bind="_rejectReason" @bind:event="oninput"
                                   placeholder="Motivo del rechazo (mín. 10 caracteres)…"></textarea>
+                        @if (!string.IsNullOrEmpty(_rejectError))
+                        {
+                            <div class="alert alert-danger mt-2 py-2">@_rejectError</div>
+                        }
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-ghost btn-sm"
@@ -269,9 +273,10 @@ else
 
     private bool   _loading         = true;
     private string? _errorMessage;
-    private bool   _showRejectModal = false;
-    private bool   _showImportModal = false;
-    private string _rejectReason    = "";
+    private bool    _showRejectModal = false;
+    private bool    _showImportModal = false;
+    private string  _rejectReason    = "";
+    private string? _rejectError;
 
     private ProductDeclarationDetailDto? _detail;
 
@@ -306,20 +311,28 @@ else
         catch (Exception ex) { _errorMessage = ex.Message; }
     }
 
+    private void OpenRejectModal()
+    {
+        _rejectReason    = "";
+        _rejectError     = null;
+        _showRejectModal = true;
+    }
+
     private async Task ConfirmRejectAsync()
     {
-        if (_rejectReason.Length < 10)
+        _rejectError = null;
+        if (_rejectReason.Trim().Length < 10)
         {
-            _errorMessage = "El motivo debe tener al menos 10 caracteres.";
+            _rejectError = "El motivo debe tener al menos 10 caracteres.";
             return;
         }
         try
         {
-            await Mediator.Send(new RejectProductDeclarationCommand(DeclarationId, _rejectReason));
+            await Mediator.Send(new RejectProductDeclarationCommand(DeclarationId, _rejectReason.Trim()));
             _showRejectModal = false;
             _detail = await Mediator.Send(new GetProductDeclarationDetailQuery(DeclarationId));
         }
-        catch (Exception ex) { _errorMessage = ex.Message; }
+        catch (Exception ex) { _rejectError = ex.Message; }
     }
 
     private async Task OnImportedAsync()

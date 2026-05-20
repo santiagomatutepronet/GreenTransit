@@ -1,6 +1,5 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Reporting.RegulatoryCompliance.DTOs;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
 namespace GreenTransit.Application.Features.Reporting.RegulatoryCompliance.Services;

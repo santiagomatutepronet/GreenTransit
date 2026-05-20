@@ -4,7 +4,6 @@ using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ProductDeclarations.Queries;
 

@@ -2,13 +2,15 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.Residues.DTOs;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Residues.Queries;
 
 /// <summary>
 /// Listado paginado de residuos/productos. Filtra por OwnerId implícito
 /// (los residuos tienen IdUser y son del tenant del usuario autenticado).
+/// NOTA: Residue no implementa ITenantEntity todavía — el filtro de tenant
+/// global del DbContext no aplica. Se filtra explícitamente por IdProducer
+/// hasta que se añada OwnerId a la entidad y su migración correspondiente.
 /// </summary>
 public sealed record GetResiduesQuery(
     string? ResidueType = null,
@@ -40,6 +42,17 @@ public sealed class GetResiduesQueryHandler
         CancellationToken cancellationToken)
     {
         var query = _context.Residues.AsNoTracking();
+
+        // ── Filtro por perfil ──────────────────────────────────────────────────
+        // PRODUCER: sólo ve sus propios residuos (IdProducer == su LinkedEntityId).
+        // Resto de perfiles autenticados: ven el catálogo completo (sin filtro por productor).
+        if (_currentUser.IsAuthenticated &&
+            _currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Producer) &&
+            _currentUser.LinkedEntityId.HasValue)
+        {
+            query = query.Where(r => r.IdProducer == null ||
+                                     r.IdProducer == _currentUser.LinkedEntityId.Value);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.ResidueType))
             query = query.Where(r => r.ResidueType == request.ResidueType);

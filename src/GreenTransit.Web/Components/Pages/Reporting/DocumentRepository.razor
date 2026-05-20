@@ -3,16 +3,15 @@
 @rendermode InteractiveServer
 
 @using GreenTransit.Application.Common.Interfaces
-@using GreenTransit.Domain.Entities
+@using GreenTransit.Application.Features.Reporting.Queries
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
-@using Microsoft.EntityFrameworkCore
 @using System.Security.Cryptography
 @using System.Text
 
-@inject IApplicationDbContext Db
-@inject ICurrentUserService   CurrentUser
-@inject IJSRuntime            JS
+@inject IMediator            Mediator
+@inject ICurrentUserService  CurrentUser
+@inject IJSRuntime           JS
 
 <PageTitle>Repositorio Documental</PageTitle>
 
@@ -185,99 +184,18 @@ else
         _docs          = [];
         _verifyResults = [];
 
-        var ownerId = CurrentUser.OwnerId;
-
         try
         {
-            var list = new List<DocRow>();
+            var result = await Mediator.Send(new GetDocumentRepositoryQuery(
+                FilterType:     _filterType,
+                FilterRef:      _filterRef,
+                FilterDateFrom: _filterDateFrom,
+                FilterDateTo:   _filterDateTo));
 
-            // ── AgreementDocuments ────────────────────────────────────────────
-            if (_filterType is null or "Agreement")
-            {
-                var aQuery = Db.AgreementDocuments
-                    .AsNoTracking()
-                    .Include(d => d.Agreement)
-                    .Where(d => ownerId == Guid.Empty || d.Agreement.OwnerId == ownerId);
-
-                if (!string.IsNullOrWhiteSpace(_filterRef))
-                    aQuery = aQuery.Where(d => d.Agreement.AgreementNumber.Contains(_filterRef));
-                if (_filterDateFrom.HasValue)
-                    aQuery = aQuery.Where(d => d.SignedAt >= _filterDateFrom);
-                if (_filterDateTo.HasValue)
-                    aQuery = aQuery.Where(d => d.SignedAt <= _filterDateTo.Value.AddDays(1));
-
-                var agrDocs = await aQuery
-                    .OrderByDescending(d => d.SignedAt)
-                    .Select(d => new {
-                        d.Id, d.DocumentType, d.DocumentHash, d.SignedAt, d.SignatureProvider,
-                        Reference = d.Agreement.AgreementNumber
-                    })
-                    .ToListAsync();
-
-                list.AddRange(agrDocs.Select(d => new DocRow(
-                    d.Id.ToString(), "Agreement", d.Reference,
-                    d.DocumentType, d.SignedAt, d.DocumentHash, d.SignatureProvider)));
-            }
-
-            // ── WasteMoves (DocumentId / DocumentHash) ────────────────────────
-            if (_filterType is null or "WasteMove")
-            {
-                var wmQuery = Db.WasteMoves
-                    .AsNoTracking()
-                    .Where(w => (ownerId == Guid.Empty || w.OwnerId == ownerId)
-                             && w.DocumentId != null);
-
-                if (!string.IsNullOrWhiteSpace(_filterRef))
-                    wmQuery = wmQuery.Where(w => w.WasteMoveReference != null &&
-                                                 w.WasteMoveReference.Contains(_filterRef));
-                if (_filterDateFrom.HasValue)
-                    wmQuery = wmQuery.Where(w => w.DateCreateSys >= _filterDateFrom);
-                if (_filterDateTo.HasValue)
-                    wmQuery = wmQuery.Where(w => w.DateCreateSys <= _filterDateTo.Value.AddDays(1));
-
-                var wmDocs = await wmQuery
-                    .OrderByDescending(w => w.DateCreateSys)
-                    .Select(w => new {
-                        w.Id, w.DocumentId, w.DocumentHash, w.DateCreateSys,
-                        w.SignatureStatus, w.WasteMoveReference
-                    })
-                    .Take(200)
-                    .ToListAsync();
-
-                list.AddRange(wmDocs.Select(w => new DocRow(
-                    w.Id.ToString(), "WasteMove", w.WasteMoveReference ?? w.Id.ToString(),
-                    "Documento traslado", w.DateCreateSys, w.DocumentHash, w.SignatureStatus)));
-            }
-
-            // ── Settlements (EvidenceRefsJson como indicador de evidencia) ─────
-            if (_filterType is null or "Settlement")
-            {
-                var slQuery = Db.Settlements
-                    .AsNoTracking()
-                    .Where(s => (ownerId == Guid.Empty || s.OwnerId == ownerId)
-                             && s.EvidenceRefsJson != null);
-
-                if (!string.IsNullOrWhiteSpace(_filterRef))
-                    slQuery = slQuery.Where(s => s.SettlementNumber.Contains(_filterRef));
-                if (_filterDateFrom.HasValue)
-                    slQuery = slQuery.Where(s => s.CreatedAt >= _filterDateFrom);
-                if (_filterDateTo.HasValue)
-                    slQuery = slQuery.Where(s => s.CreatedAt <= _filterDateTo.Value.AddDays(1));
-
-                var slDocs = await slQuery
-                    .OrderByDescending(s => s.CreatedAt)
-                    .Select(s => new {
-                        s.Id, s.SettlementNumber, s.Hash, s.CreatedAt, s.ValidationStatus
-                    })
-                    .Take(100)
-                    .ToListAsync();
-
-                list.AddRange(slDocs.Select(s => new DocRow(
-                    s.Id.ToString(), "Settlement", s.SettlementNumber,
-                    "Liquidación (evidencias)", s.CreatedAt, s.Hash, s.ValidationStatus)));
-            }
-
-            _docs = list;
+            _docs = result
+                .Select(d => new DocRow(d.Id, d.SourceType, d.Reference,
+                                        d.DocumentType, d.Date, d.Hash, d.SignatureStatus))
+                .ToList();
         }
         finally
         {

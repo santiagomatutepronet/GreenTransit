@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.MarketShares.Commands;
 
@@ -76,7 +75,7 @@ public sealed class CreateMarketShareCommandHandler : IRequestHandler<CreateMark
             Version            = 1
         };
 
-        _context.MarketShares.Add(entity);
+        _context.Add(entity);
         await _context.SaveChangesAsync(ct);
         return entity.Id;
     }
@@ -179,7 +178,7 @@ public sealed class DeleteMarketShareCommandHandler : IRequestHandler<DeleteMark
             .FirstOrDefaultAsync(ms => ms.Id == request.Id && ms.OwnerId == _currentUser.OwnerId, ct)
             ?? throw new KeyNotFoundException($"Cuota de mercado {request.Id} no encontrada.");
 
-        _context.MarketShares.Remove(entity);
+        _context.Remove(entity);
         await _context.SaveChangesAsync(ct);
     }
 }

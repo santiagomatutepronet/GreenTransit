@@ -7,7 +7,6 @@ using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Agreements.Commands;
 
@@ -89,7 +88,7 @@ public sealed class CreateAgreementCommandHandler : IRequestHandler<CreateAgreem
 
         agreement.Hash = ComputeHash(agreement);
 
-        _context.Agreements.Add(agreement);
+        _context.Add(agreement);
         await _context.SaveChangesAsync(ct);
         return agreement.Id;
     }
@@ -353,7 +352,7 @@ public sealed class AttachDocumentCommandHandler : IRequestHandler<AttachDocumen
             SignatureProvider = request.SignatureProvider
         };
 
-        _context.AgreementDocuments.Add(doc);
+        _context.Add(doc);
         await _context.SaveChangesAsync(ct);
         return doc.Id;
     }

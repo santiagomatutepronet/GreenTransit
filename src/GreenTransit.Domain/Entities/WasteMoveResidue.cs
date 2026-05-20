@@ -6,6 +6,7 @@ public class WasteMoveResidue
     public Guid Id { get; set; }
     public Guid IdWasteMove { get; set; }
     public Guid? IdResidue { get; set; }
+    public Guid? IdLerCode { get; set; }
     public decimal? Weight { get; set; }
     public string? MeasureUnit { get; set; }
     public int? Units { get; set; }
@@ -29,6 +30,7 @@ public class WasteMoveResidue
 
     public WasteMove WasteMove { get; set; } = null!;
     public Residue? Residue { get; set; }
+    public LerCode? LerCode { get; set; }
     public TreatmentOperation? TreatmentOperationDestiny { get; set; }
     public BusinessEntity? Carrier { get; set; }
     public EmissionFactorSet? EmissionFactorSet { get; set; }

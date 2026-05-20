@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.WasteMoves.Commands;
 
@@ -12,6 +11,7 @@ namespace GreenTransit.Application.Features.WasteMoves.Commands;
 /// <summary>Datos de una línea de residuo proporcionados por el usuario al crear el traslado.</summary>
 public sealed record WasteMoveLineInput(
     Guid?    IdResidue,
+    Guid?    IdLerCode,
     decimal? Weight,
     string?  MeasureUnit,
     int?     Units
@@ -91,14 +91,15 @@ public sealed class CreateWasteMoveCommandHandler
             Version              = 1
         };
 
-        // ── Líneas de residuo — solo las que tienen residuo asignado ─────────
-        foreach (var line in request.Lines.Where(l => l.IdResidue.HasValue))
+        // ── Líneas de residuo — todas las líneas incluidas (IdResidue puede ser null) ─
+        foreach (var line in request.Lines)
         {
             wasteMove.WasteMoveResidues.Add(new WasteMoveResidue
             {
                 Id          = Guid.NewGuid(),
                 IdWasteMove = wasteMove.Id,
                 IdResidue   = line.IdResidue,
+                IdLerCode   = line.IdLerCode,
                 Weight      = line.Weight,
                 MeasureUnit = line.MeasureUnit,
                 Units       = line.Units,
@@ -115,7 +116,7 @@ public sealed class CreateWasteMoveCommandHandler
             so.IdUser             = _currentUser.IdUser;
         }
 
-        _context.WasteMoves.Add(wasteMove);
+        _context.Add(wasteMove);
         await _context.SaveChangesAsync(ct);
 
         return wasteMove.Id;

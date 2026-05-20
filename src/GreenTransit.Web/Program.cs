@@ -738,15 +738,19 @@ try
     builder.Services.AddMemoryCache();
 
     // ── MediatR: handlers + pipeline behaviors ────────────────────────────────
-    // Orden: LoggingBehavior → AuthorizationBehavior → ValidationBehavior → Handler
-    // AuthorizationBehavior debe ir antes de ValidationBehavior para no ejecutar
-    // validaciones de datos en requests que el usuario no debería ver.
+    // Orden: ExceptionHandling → Logging → Authorization → Validation → Transaction → Handler
+    // ExceptionHandlingBehavior primero: envuelve todo para logging centralizado de errores.
+    // AuthorizationBehavior antes de ValidationBehavior: no se validan datos de requests
+    // que el usuario no debería poder ejecutar.
+    // TransactionBehavior al final: solo actúa en commands con ITransactional.
     builder.Services.AddMediatR(cfg =>
     {
         cfg.RegisterServicesFromAssembly(typeof(CreateServiceOrderCommand).Assembly);
+        cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ExceptionHandlingBehavior<,>));
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AuthorizationBehavior<,>));
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+        cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
     });
 
     // ── FluentValidation: registro automático de todos los validators ─────────

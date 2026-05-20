@@ -517,18 +517,20 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         var treatOpIds = await _db.TreatmentOperations
             .Where(x => x.IsActive).Select(x => x.Id).ToListAsync(ct);
 
-        var (serviceOrders, wasteMoves, wmResidues) = BuildOperations(
+        var (serviceOrders, soResidues, wasteMoves, wmResidues) = BuildOperations(
             producers, publicEnts, carriers, plants, cacs, scraps, opTransfers,
             lerIds, wasteResidueIds, treatOpIds, _ownerId, _now);
 
         _db.ServiceOrders.AddRange(serviceOrders);
         await _db.SaveChangesAsync(ct);
+        _db.ServiceOrderResidues.AddRange(soResidues);
+        await _db.SaveChangesAsync(ct);
         _db.WasteMoves.AddRange(wasteMoves);
         await _db.SaveChangesAsync(ct);
         _db.WasteMoveResidues.AddRange(wmResidues);
         await _db.SaveChangesAsync(ct);
-        _log.LogInformation("  Fase 4 completada — {SO} SO, {WM} WM, {WMR} WMR en {Ms}ms",
-            serviceOrders.Count, wasteMoves.Count, wmResidues.Count, sw.ElapsedMilliseconds);
+        _log.LogInformation("  Fase 4 completada — {SO} SO, {SOR} SOR, {WM} WM, {WMR} WMR en {Ms}ms",
+            serviceOrders.Count, soResidues.Count, wasteMoves.Count, wmResidues.Count, sw.ElapsedMilliseconds);
     }
 
     // =========================================================================
@@ -1352,7 +1354,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 IdLERCode       = lerId == Guid.Empty ? null : lerId,
                 IsDangerous     = danger,
                 IsRAEE          = raee,
-                IdProducer      = producerIds.Count > 0 ? producerIds[i % producerIds.Count] : null,
+                IdProducer      = null, // catálogo global — visible para todos los perfiles
                 IsActive        = true,
                 SourceSystem    = Seed,
                 Version         = 1,
@@ -1393,7 +1395,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 ProductUse      = use,
                 WeightPerUnitKg = 0.5m + i * 0.3m,
                 RecycledContentPercent = 10 + i * 3,
-                IdProducer      = producerIds.Count > 0 ? producerIds[i % producerIds.Count] : null,
+                IdProducer      = null, // catálogo global — visible para todos los perfiles
                 IsActive        = true,
                 SourceSystem    = Seed,
                 Version         = 1,
@@ -1403,7 +1405,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             });
         }
 
-        // ProductSpec (12) — fichas técnicas con datos de ecomodulación
+        // ProductSpec (12)
         var specDefs = new[]
         {
             // (nombre, category, lerCode, reparability, recycledPct, disassembly, containsHazardous, potentialLer)
@@ -1516,12 +1518,13 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     }
 
     // ── ServiceOrders + WasteMoves + WasteMoveResidues ─────────────────────────
-    private static (List<ServiceOrder>, List<WasteMove>, List<WasteMoveResidue>) BuildOperations(
+    private static (List<ServiceOrder>, List<ServiceOrderResidue>, List<WasteMove>, List<WasteMoveResidue>) BuildOperations(
         List<Guid> producers, List<Guid> publicEnts, List<Guid> carriers,
         List<Guid> plants, List<Guid> cacs, List<Guid> scraps, List<Guid> opTransfers,
         List<Guid> lerIds, List<Guid> wasteResidueIds, List<Guid> treatOpIds, Guid ownerId, DateTime now)
     {
         var sos     = new List<ServiceOrder>();
+        var sors    = new List<ServiceOrderResidue>();
         var wms     = new List<WasteMove>();
         var wmrs    = new List<WasteMoveResidue>();
 
@@ -1648,6 +1651,22 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             };
             sos.Add(so);
 
+            // Líneas de residuo de la SO (al menos 1, hasta 3)
+            int soLineCount = 1 + (i % 3);
+            for (int sl = 0; sl < soLineCount; sl++)
+            {
+                sors.Add(new ServiceOrderResidue
+                {
+                    Id             = SeedGuid($"sor{i+1}", sl + 1),
+                    IdServiceOrder = so.Id,
+                    SortOrder      = sl,
+                    IdLERCode      = lerIds[(i + sl) % lerIds.Count],
+                    EstimatedWeight = 100 + (i * 31 + sl * 47) % 2000,
+                    MeasureUnit    = 1,
+                    Units          = 1 + sl
+                });
+            }
+
             var opTransfer = opTransfers.Count > 0 && i % 3 == 0 ? opTransfers[i % opTransfers.Count] : (Guid?)null;
             var pickupHour  = hours[(i * 2) % hours.Length];
             var pickupMin   = minutes[(i * 2) % minutes.Length];
@@ -1716,10 +1735,10 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             }
         }
 
-        return (sos, wms, wmrs);
+        return (sos, sors, wms, wmrs);
     }
 
-    // ── Incidents ─────────────────────────────────────────────────────────────
+    // ── Incidents
     private static List<Incident> BuildIncidents(
         List<(Guid soId, string wmRef, Guid? soGuid)> wasteMoves, Guid ownerId, DateTime now)
     {

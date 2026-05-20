@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.Incidents.DTOs;
 using GreenTransit.Domain.Authorization;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Incidents.Queries;
 

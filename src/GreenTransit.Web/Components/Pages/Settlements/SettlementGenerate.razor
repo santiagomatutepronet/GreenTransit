@@ -7,6 +7,7 @@
 @using GreenTransit.Application.Features.Agreements.Queries
 @using GreenTransit.Application.Features.Settlements.Commands
 @using GreenTransit.Application.Features.Settlements.DTOs
+@using GreenTransit.Application.Features.Settlements.Queries
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Domain.Authorization
 @using MediatR
@@ -157,8 +158,8 @@
         _preview = null;
         try
         {
-            _preview = await Mediator.Send(new GenerateSettlementCommand(
-                _agreementId, _year, _month, DryRun: true));
+            _preview = await Mediator.Send(new PreviewSettlementQuery(
+                _agreementId, _year, _month));
         }
         catch (Exception ex)
         {
@@ -175,9 +176,9 @@
         _validationError = null;
         try
         {
-            var result = await Mediator.Send(new GenerateSettlementCommand(
-                _agreementId, _year, _month, DryRun: false));
-            Nav.NavigateTo($"/settlements/{result.Id}");
+            var newId = await Mediator.Send(new GenerateSettlementCommand(
+                _agreementId, _year, _month));
+            Nav.NavigateTo($"/settlements/{newId}");
         }
         catch (Exception ex)
         {

@@ -2,7 +2,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ProductDeclarations.Commands;
 
@@ -43,7 +42,7 @@ public sealed class RemoveProductFromDeclarationCommandHandler
             throw new UnauthorizedAccessException(
                 "No tienes permiso para modificar esta declaración.");
 
-        _context.Products.Remove(product);
+        _context.Remove(product);
 
         // Recalcular Amount de la cabecera
         var remaining = declaration.Products

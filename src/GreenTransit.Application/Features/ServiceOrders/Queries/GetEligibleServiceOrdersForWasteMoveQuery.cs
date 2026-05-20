@@ -3,7 +3,6 @@ using GreenTransit.Application.Features.ServiceOrders.DTOs;
 using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Constants;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ServiceOrders.Queries;
 

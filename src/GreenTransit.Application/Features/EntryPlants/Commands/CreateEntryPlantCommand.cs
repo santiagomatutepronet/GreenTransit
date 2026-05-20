@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.EntryPlants.Commands;
@@ -202,7 +201,7 @@ public sealed class CreateEntryPlantCommandHandler
                     IdUser             = _currentUser.IdUser,
                     Version            = 1,
                 };
-                _context.Incidents.Add(incident);
+                _context.Add(incident);
 
                 _logger.LogWarning(
                     "Descuadre de peso detectado en traslado {WasteMoveRef}: {Message}",
@@ -227,7 +226,7 @@ public sealed class CreateEntryPlantCommandHandler
             so.IdUser    = _currentUser.IdUser;
         }
 
-        _context.EntryPlants.Add(entry);
+        _context.Add(entry);
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(

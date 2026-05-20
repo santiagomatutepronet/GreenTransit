@@ -5,7 +5,6 @@ using GreenTransit.Application.Features.TreatmentPlants.DTOs;
 using GreenTransit.Application.Features.WasteMoves.DTOs;
 using GreenTransit.Domain.Constants;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.WasteMoves.Queries;
 

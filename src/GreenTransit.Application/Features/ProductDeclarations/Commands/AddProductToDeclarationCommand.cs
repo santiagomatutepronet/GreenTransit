@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ProductDeclarations.Commands;
 
@@ -91,7 +90,7 @@ public sealed class AddProductToDeclarationCommandHandler
             Price                 = request.Price
         };
 
-        _context.Products.Add(product);
+        _context.Add(product);
 
         // EF fix-up añade product a declaration.Products automáticamente.
         // Se recalcula el total sobre la colección completa (incluyendo la nueva línea).

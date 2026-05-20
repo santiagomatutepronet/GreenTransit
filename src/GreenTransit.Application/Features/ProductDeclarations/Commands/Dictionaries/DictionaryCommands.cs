@@ -1,7 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ProductDeclarations.Commands.Dictionaries;
 
@@ -37,7 +36,7 @@ public sealed class UpsertDicProductDeclarationCategoryCommandHandler
         {
             var entity = new DicProductDeclarationCategory
                 { Ref = request.Ref, Description = request.Description };
-            _context.DicProductDeclarationCategories.Add(entity);
+            _context.Add(entity);
             await _context.SaveChangesAsync(ct);
             return entity.Id;
         }
@@ -76,7 +75,7 @@ public sealed class UpsertDicProductDeclarationPeriodCommandHandler
         {
             var entity = new DicProductDeclarationPeriod
                 { Ref = request.Ref, Description = request.Description };
-            _context.DicProductDeclarationPeriods.Add(entity);
+            _context.Add(entity);
             await _context.SaveChangesAsync(ct);
             return entity.Id;
         }
@@ -121,7 +120,7 @@ public sealed class UpsertDicProductDeclarationProductCommandHandler
                 Description = request.Description,
                 CategoryId = request.CategoryId
             };
-            _context.DicProductDeclarationProducts.Add(entity);
+            _context.Add(entity);
             await _context.SaveChangesAsync(ct);
             return entity.Id;
         }
@@ -160,7 +159,7 @@ public sealed class UpsertDicProductDeclarationSourceCommandHandler
         {
             var entity = new DicProductDeclarationSource
                 { Ref = request.Ref, Description = request.Description };
-            _context.DicProductDeclarationSources.Add(entity);
+            _context.Add(entity);
             await _context.SaveChangesAsync(ct);
             return entity.Id;
         }
@@ -199,7 +198,7 @@ public sealed class UpsertDicProductDeclarationTypeCommandHandler
         {
             var entity = new DicProductDeclarationType
                 { Ref = request.Ref, Description = request.Description };
-            _context.DicProductDeclarationTypes.Add(entity);
+            _context.Add(entity);
             await _context.SaveChangesAsync(ct);
             return entity.Id;
         }
@@ -238,7 +237,7 @@ public sealed class UpsertDicProductDeclarationUseCommandHandler
         {
             var entity = new DicProductDeclarationUse
                 { Ref = request.Ref, Description = request.Description };
-            _context.DicProductDeclarationUses.Add(entity);
+            _context.Add(entity);
             await _context.SaveChangesAsync(ct);
             return entity.Id;
         }

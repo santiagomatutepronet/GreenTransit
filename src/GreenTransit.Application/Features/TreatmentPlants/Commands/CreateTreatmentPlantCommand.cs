@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.TreatmentPlants.Commands;
@@ -176,7 +175,7 @@ public sealed class CreateTreatmentPlantCommandHandler
                 IdUser             = _currentUser.IdUser,
                 Version            = 1,
             };
-            _context.Incidents.Add(incident);
+            _context.Add(incident);
             await _context.SaveChangesAsync(ct);
 
             _logger.LogWarning(
@@ -257,7 +256,7 @@ public sealed class CreateTreatmentPlantCommandHandler
             so.IdUser    = _currentUser.IdUser;
         }
 
-        _context.TreatmentPlants.Add(treatment);
+        _context.Add(treatment);
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(

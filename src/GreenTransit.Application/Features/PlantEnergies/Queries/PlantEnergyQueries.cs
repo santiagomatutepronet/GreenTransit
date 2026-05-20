@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.PlantEnergies.DTOs;
 using GreenTransit.Domain.Authorization;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace GreenTransit.Application.Features.PlantEnergies.Queries;

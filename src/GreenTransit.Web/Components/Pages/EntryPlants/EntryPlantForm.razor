@@ -521,7 +521,26 @@ else
         var residuesResult = await Mediator.Send(new GetResiduesQuery(PageSize: 500));
         _residues = [.. residuesResult.Items];
 
-        AddLine();
+        // Pre-cargar líneas desde los residuos del traslado
+        if (_wasteMove is not null && _wasteMove.Residues.Count > 0)
+        {
+            foreach (var r in _wasteMove.Residues.Where(r => r.IdResidue.HasValue))
+            {
+                _lines.Add(new LineModel
+                {
+                    IdResidue   = r.IdResidue!.Value,
+                    Weight      = r.Weight ?? 0m,
+                    MeasureUnit = r.MeasureUnit ?? "kg",
+                    Units       = null,
+                    PriceWeight = null,
+                    PriceUnit   = null
+                });
+            }
+        }
+
+        // Si no hay residuos en el traslado, añadir una línea vacía para que el usuario pueda rellenar
+        if (_lines.Count == 0)
+            AddLine();
         _loading = false;
     }
 

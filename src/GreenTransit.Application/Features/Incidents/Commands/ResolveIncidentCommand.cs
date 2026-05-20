@@ -5,7 +5,6 @@ using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Incidents.DTOs;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.Incidents.Commands;

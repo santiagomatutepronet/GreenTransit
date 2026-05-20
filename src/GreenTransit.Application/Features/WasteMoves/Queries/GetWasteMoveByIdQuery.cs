@@ -1,7 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.WasteMoves.DTOs;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.WasteMoves.Queries;
 
@@ -33,6 +32,8 @@ public sealed class GetWasteMoveByIdQueryHandler
                 .ThenInclude(r => r.Residue)
                     .ThenInclude(res => res!.LerCode)
             .Include(x => x.WasteMoveResidues)
+                .ThenInclude(r => r.LerCode)
+            .Include(x => x.WasteMoveResidues)
                 .ThenInclude(r => r.TreatmentOperationDestiny)
             .Include(x => x.WasteMoveResidues)
                 .ThenInclude(r => r.Carrier)
@@ -48,7 +49,9 @@ public sealed class GetWasteMoveByIdQueryHandler
                 r.Residue?.Name,
                 r.Residue?.IsDangerous ?? false,
                 r.Residue?.IsRAEE ?? false,
-                r.Residue?.LerCode?.Code,
+                r.IdLerCode,
+                r.LerCode?.Code ?? r.Residue?.LerCode?.Code,
+                r.LerCode?.Description ?? r.Residue?.LerCode?.Description,
                 r.Weight,
                 r.MeasureUnit,
                 r.Units,

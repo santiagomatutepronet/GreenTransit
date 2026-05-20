@@ -2875,6 +2875,9 @@ namespace GreenTransit.Infrastructure.Migrations
                     b.Property<Guid?>("IdCarrier")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("IdLerCode")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("IdResidue")
                         .HasColumnType("uniqueidentifier");
 
@@ -2882,6 +2885,9 @@ namespace GreenTransit.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("IdWasteMove")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("LerCodeId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("MeasureUnit")
@@ -2935,6 +2941,8 @@ namespace GreenTransit.Infrastructure.Migrations
 
                     b.HasIndex("IdWasteMove")
                         .HasDatabaseName("IX_WasteMoveResidues_IdWasteMove");
+
+                    b.HasIndex("LerCodeId");
 
                     b.ToTable("WasteMoveResidues", (string)null);
                 });
@@ -3523,9 +3531,15 @@ namespace GreenTransit.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("GreenTransit.Domain.Entities.LerCode", "LerCode")
+                        .WithMany()
+                        .HasForeignKey("LerCodeId");
+
                     b.Navigation("Carrier");
 
                     b.Navigation("EmissionFactorSet");
+
+                    b.Navigation("LerCode");
 
                     b.Navigation("Residue");
 

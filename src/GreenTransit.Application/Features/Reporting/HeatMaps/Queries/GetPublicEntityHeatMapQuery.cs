@@ -2,7 +2,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Reporting.HeatMaps.DTOs;
 using GreenTransit.Application.Features.Reporting.HeatMaps.Services;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Reporting.HeatMaps.Queries;
 

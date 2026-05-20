@@ -5,7 +5,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Constants;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.ServiceOrders.Commands;
 
@@ -128,7 +127,7 @@ public sealed class CreateServiceOrderCommandHandler
             });
         }
 
-        _context.ServiceOrders.Add(so);
+        _context.Add(so);
         await _context.SaveChangesAsync(cancellationToken);
 
         return so.Id;

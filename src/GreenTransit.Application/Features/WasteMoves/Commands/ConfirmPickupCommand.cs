@@ -3,7 +3,6 @@ using GreenTransit.Application.Features.Emissions.Commands;
 using GreenTransit.Application.Features.WasteMoves.DTOs;
 using GreenTransit.Domain.Constants;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.WasteMoves.Commands;

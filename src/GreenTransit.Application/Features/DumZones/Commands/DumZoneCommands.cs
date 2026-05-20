@@ -5,7 +5,6 @@ using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.DumZones.Commands;
 
@@ -100,7 +99,7 @@ public sealed class CreateDumZoneCommandHandler
             IdUser       = _currentUser.IdUser
         };
 
-        _context.DumZones.Add(zone);
+        _context.Add(zone);
         await _context.SaveChangesAsync(ct);
         return zone.Id;
     }
@@ -307,7 +306,7 @@ public sealed class AddRestrictionRuleCommandHandler
             UpdatedAt      = now
         };
 
-        _context.DumRestrictionRules.Add(rule);
+        _context.Add(rule);
         await _context.SaveChangesAsync(ct);
         return rule.Id;
     }

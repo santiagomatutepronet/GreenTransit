@@ -1,7 +1,6 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Exceptions;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.Entities.Commands;
@@ -16,16 +15,13 @@ public sealed record DeactivateEntityCommand(Guid Id) : IRequest<DeactivateEntit
 public sealed class DeactivateEntityCommandHandler
     : IRequestHandler<DeactivateEntityCommand, DeactivateEntityResult>
 {
-    private readonly IUnitOfWork           _uow;
     private readonly IApplicationDbContext _context;
     private readonly ILogger<DeactivateEntityCommandHandler> _logger;
 
     public DeactivateEntityCommandHandler(
-        IUnitOfWork uow,
         IApplicationDbContext context,
         ILogger<DeactivateEntityCommandHandler> logger)
     {
-        _uow     = uow;
         _context = context;
         _logger  = logger;
     }
@@ -38,8 +34,7 @@ public sealed class DeactivateEntityCommandHandler
             ?? throw new DomainException($"Entidad {request.Id} no encontrada.");
 
         entity.IsActive = false;
-        _uow.BusinessEntities.Update(entity);
-        await _uow.SaveChangesAsync(ct);
+        await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("Entidad {Id} desactivada.", entity.Id);
 

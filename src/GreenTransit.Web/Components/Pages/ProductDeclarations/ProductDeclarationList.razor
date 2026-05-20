@@ -182,8 +182,12 @@ else
                 </div>
                 <div class="modal-body">
                     <label class="form-label">Motivo de rechazo <span class="text-danger">*</span></label>
-                    <textarea class="form-control" rows="4" @bind="_rejectReason"
+                    <textarea class="form-control" rows="4" @bind="_rejectReason" @bind:event="oninput"
                               placeholder="Indica el motivo del rechazo (mínimo 10 caracteres)…"></textarea>
+                    @if (!string.IsNullOrEmpty(_rejectError))
+                    {
+                        <div class="alert alert-danger mt-2 py-2">@_rejectError</div>
+                    }
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-ghost btn-sm" @onclick="CloseRejectModal">Cancelar</button>
@@ -214,9 +218,10 @@ else
     private DateTime? _dateTo;
     private string?   _errorMessage;
 
-    private bool   _showRejectModal = false;
-    private Guid   _rejectTargetId;
-    private string _rejectReason    = "";
+    private bool    _showRejectModal = false;
+    private Guid    _rejectTargetId;
+    private string  _rejectReason    = "";
+    private string? _rejectError;
 
     private GreenTransit.Application.Common.Models.PaginatedResult<ProductDeclarationDto>? _result;
 
@@ -276,6 +281,7 @@ else
     {
         _rejectTargetId  = pd.Id;
         _rejectReason    = "";
+        _rejectError     = null;
         _showRejectModal = true;
     }
 
@@ -283,18 +289,19 @@ else
 
     private async Task ConfirmRejectAsync()
     {
-        if (_rejectReason.Length < 10)
+        _rejectError = null;
+        if (_rejectReason.Trim().Length < 10)
         {
-            _errorMessage = "El motivo debe tener al menos 10 caracteres.";
+            _rejectError = "El motivo debe tener al menos 10 caracteres.";
             return;
         }
         try
         {
-            await Mediator.Send(new RejectProductDeclarationCommand(_rejectTargetId, _rejectReason));
+            await Mediator.Send(new RejectProductDeclarationCommand(_rejectTargetId, _rejectReason.Trim()));
             _showRejectModal = false;
             await LoadAsync();
         }
-        catch (Exception ex) { _errorMessage = ex.Message; }
+        catch (Exception ex) { _rejectError = ex.Message; }
     }
 
     private static string StateBadge(string? state) => state switch

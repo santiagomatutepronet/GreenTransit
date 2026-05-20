@@ -130,7 +130,7 @@ public sealed class EntityUserProvisioningService : IEntityUserProvisioningServi
             CreateDate      = DateTime.UtcNow
         };
 
-        _context.AppUsers.Add(user);
+        _context.Add(user);
 
         _logger.LogInformation(
             "ProvisionUser: usuario {Login} (perfil {Profile}) provisionado para entidad {EntityId}. Pendiente de SaveChanges.",

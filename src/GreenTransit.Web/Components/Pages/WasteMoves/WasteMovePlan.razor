@@ -8,6 +8,8 @@
 @using GreenTransit.Application.Features.WasteMoves.Queries
 @using GreenTransit.Application.Features.Entities.Queries
 @using GreenTransit.Application.Features.Entities.DTOs
+@using GreenTransit.Application.Features.ServiceOrders.Queries
+@using GreenTransit.Application.Features.ServiceOrders.DTOs
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
@@ -143,6 +145,15 @@ else
                     <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Asignación de transporte por residuo</h5>
                 </div>
                 <div class="card-body p-0">
+                    @if (_lineModels.Count == 0)
+                    {
+                        <div class="alert alert-warning m-3">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            Este traslado no tiene líneas de residuo asociadas. No es posible asignar transporte.
+                        </div>
+                    }
+                    else
+                    {
                     <table class="table table-sm mb-0">
                         <thead>
                             <tr>
@@ -201,6 +212,7 @@ else
                             }
                         </tbody>
                     </table>
+                    }
                 </div>
             </div>
 
@@ -263,21 +275,45 @@ else
                 [WasteMoveStatuses.Solicitado] = _detail.DateCreateSys
             };
 
-            // Líneas de residuo
-            _lineModels = _detail.Residues.Select(r => new LineModel
+            // Líneas de residuo: usar las del traslado si existen; si no, cargar desde la SO vinculada
+            if (_detail.Residues.Count > 0)
             {
-                WasteMoveResidueId         = r.Id,
-                ResidueId                  = r.IdResidue ?? Guid.Empty,
-                ResidueName                = r.ResidueName,
-                Weight                     = r.Weight,
-                MeasureUnit                = r.MeasureUnit,
-                IdCarrier                  = r.IdCarrier ?? Guid.Empty,
-                VehicleRegistration        = "",
-                VehicleRegistrationTrailer = null,
-                VehicleType                = null,
-                FuelType                   = null,
-                EuroClass                  = null
-            }).ToList();
+                _lineModels = _detail.Residues.Select(r => new LineModel
+                {
+                    WasteMoveResidueId         = r.Id,
+                    ResidueId                  = r.IdResidue ?? Guid.Empty,
+                    ResidueName                = r.ResidueName,
+                    Weight                     = r.Weight,
+                    MeasureUnit                = r.MeasureUnit,
+                    IdCarrier                  = r.IdCarrier ?? Guid.Empty,
+                    VehicleRegistration        = "",
+                    VehicleRegistrationTrailer = null,
+                    VehicleType                = null,
+                    FuelType                   = null,
+                    EuroClass                  = null
+                }).ToList();
+            }
+            else if (_detail.ServiceOrderId.HasValue)
+            {
+                // Traslado legacy sin líneas propias: poblar desde la SO
+                var soResidues = await Mediator.Send(
+                    new GetServiceOrderResiduesByIdsQuery([_detail.ServiceOrderId.Value]));
+
+                _lineModels = soResidues.Select(r => new LineModel
+                {
+                    WasteMoveResidueId         = Guid.Empty,   // se creará al planificar
+                    ResidueId                  = Guid.Empty,
+                    ResidueName                = r.LerCodeDescription ?? r.LerCodeCode,
+                    Weight                     = r.EstimatedWeight,
+                    MeasureUnit                = "kg",
+                    IdCarrier                  = Guid.Empty,
+                    VehicleRegistration        = "",
+                    VehicleRegistrationTrailer = null,
+                    VehicleType                = null,
+                    FuelType                   = null,
+                    EuroClass                  = null
+                }).ToList();
+            }
 
             // Cargar entidades para selectores
             var allEntities = await Mediator.Send(
@@ -301,8 +337,8 @@ else
         _globalError = null;
         _dumResult   = null;
 
-        // Validar líneas mínimas
-        if (_lineModels.Any(l => l.IdCarrier == Guid.Empty || string.IsNullOrWhiteSpace(l.VehicleRegistration)))
+        // Validar líneas mínimas (solo si hay líneas)
+        if (_lineModels.Count > 0 && _lineModels.Any(l => l.IdCarrier == Guid.Empty || string.IsNullOrWhiteSpace(l.VehicleRegistration)))
         {
             _globalError = "Todas las líneas deben tener transportista y matrícula.";
             return;

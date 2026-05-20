@@ -1,7 +1,6 @@
 using FluentValidation;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.LerCodes.Commands;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.LerCodes.Validators;
 

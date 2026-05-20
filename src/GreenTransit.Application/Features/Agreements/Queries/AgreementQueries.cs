@@ -4,7 +4,6 @@ using GreenTransit.Application.Features.Agreements.DTOs;
 using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace GreenTransit.Application.Features.Agreements.Queries;
 

@@ -3,7 +3,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Authorization;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 
 namespace GreenTransit.Application.Features.ProductDeclarations.Commands;
@@ -114,7 +113,7 @@ public sealed class ImportProductsFromFileCommandHandler
         // ── Persistir filas válidas ───────────────────────────────────────────
         if (products.Count > 0)
         {
-            _context.Products.AddRange(products);
+            _context.AddRange(products);
             foreach (var p in products) declaration.Products.Add(p);
             declaration.Amount = declaration.Products.Sum(p => (p.Quantity ?? 0) * (p.Price ?? 0));
             declaration.DateModifiedSys = DateTime.UtcNow;

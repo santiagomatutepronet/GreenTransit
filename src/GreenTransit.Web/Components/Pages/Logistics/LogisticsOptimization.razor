@@ -9,7 +9,6 @@
 @using GreenTransit.Domain.Authorization
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
-@using Microsoft.EntityFrameworkCore
 @using Microsoft.JSInterop
 @using System.Globalization
 
@@ -17,7 +16,6 @@
 @inject ICurrentUserService CurrentUser
 @inject ILogger<LogisticsOptimization> Logger
 @inject IJSRuntime          JS
-@inject IApplicationDbContext DbContext
 
 <PageTitle>Optimización Logística — GreenTransit</PageTitle>
 
@@ -433,20 +431,10 @@ else if (_error is not null)
         _isCoordinator = CurrentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Coordinator);
         if (_isCoordinator && CurrentUser.LinkedEntityId.HasValue)
         {
-            _coordinatorScraps = await DbContext.Agreements
-                .AsNoTracking()
-                .Where(a => a.IdCoordinator == CurrentUser.LinkedEntityId.Value
-                         && (CurrentUser.OwnerId == Guid.Empty || a.OwnerId == CurrentUser.OwnerId)
-                         && a.IdScrap != null)
-                .Join(DbContext.BusinessEntities,
-                    a => a.IdScrap,
-                    e => e.Id,
-                    (a, e) => new { Id = a.IdScrap!.Value, e.Name })
-                .Distinct()
-                .OrderBy(x => x.Name)
-                .Select(x => new { x.Id, x.Name })
-                .ToListAsync()
-                .ContinueWith(t => t.Result.Select(x => (x.Id, x.Name ?? x.Id.ToString())).ToList());
+            var scraps = await Mediator.Send(new GetCoordinatorScrapsQuery(
+                CoordinatorId: CurrentUser.LinkedEntityId.Value,
+                OwnerId:       CurrentUser.OwnerId));
+            _coordinatorScraps = scraps.Select(s => (s.Id, s.Name)).ToList();
         }
         await LoadDataAsync();
     }

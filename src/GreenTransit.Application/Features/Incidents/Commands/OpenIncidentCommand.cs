@@ -6,7 +6,6 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.Incidents.DTOs;
 using GreenTransit.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.Incidents.Commands;
@@ -132,7 +131,7 @@ public sealed class OpenIncidentCommandHandler
 
         incident.Hash = ComputeHash(incident);
 
-        _context.Incidents.Add(incident);
+        _context.Add(incident);
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(
