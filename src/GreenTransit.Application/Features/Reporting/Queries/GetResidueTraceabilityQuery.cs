@@ -65,7 +65,6 @@ public sealed class GetResidueTraceabilityQueryHandler
         // 2. Por DINumber o NTNumber en WasteMoveResidues
         var wmByDoc = await _db.WasteMoveResidues
             .AsNoTracking()
-            .Include(r => r.WasteMove)
             .Where(r => (ownerId == Guid.Empty || r.WasteMove!.OwnerId == ownerId)
                      && (r.DINumber == term || r.NTNumber == term))
             .Select(r => (Guid?)r.IdWasteMove)

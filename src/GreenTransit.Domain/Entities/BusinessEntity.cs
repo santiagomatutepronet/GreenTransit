@@ -1,11 +1,9 @@
-using System.ComponentModel.DataAnnotations.Schema;
 using GreenTransit.Domain.Interfaces;
 
 namespace GreenTransit.Domain.Entities;
 
 /// <summary>Actores del sistema (SCRAP, Carrier, Plant, CAC, Producer…). Tabla: Entities</summary>
-[Table("Entities")]
-public class BusinessEntity : IAuditableEntity
+public class BusinessEntity
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = null!;

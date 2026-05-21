@@ -1,10 +1,8 @@
-using System.ComponentModel.DataAnnotations.Schema;
 using GreenTransit.Domain.Interfaces;
 
 namespace GreenTransit.Domain.Entities;
 
 /// <summary>Perfiles de autorización. Tabla: Profiles</summary>
-[Table("Profiles")]
 public class UserProfile
 {
     public int Id { get; set; }
@@ -17,8 +15,7 @@ public class UserProfile
 }
 
 /// <summary>Usuarios del sistema. Tabla: Users</summary>
-[Table("Users")]
-public class AppUser : ITenantEntity
+public class AppUser
 {
     public int Id { get; set; }
     public string Login { get; set; } = null!;
@@ -49,7 +46,6 @@ public class AppUser : ITenantEntity
 }
 
 /// <summary>Credenciales SharePoint por usuario. Tabla: UserSharePointCredentials</summary>
-[Table("UserSharePointCredentials")]
 public class UserSharePointCredential
 {
     public int Id { get; set; }

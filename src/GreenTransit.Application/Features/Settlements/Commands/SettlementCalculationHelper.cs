@@ -32,35 +32,36 @@ internal static class SettlementCalculationHelper
         var periodStart = new DateTime(year, month, 1);
         var periodEnd   = periodStart.AddMonths(1);
 
-        var entryPlants = await context.EntryPlants
+        // Proyección directa — evita cargar Residue completo con CompositionJson/PotentialLERCodesJson
+        var flatResidues = await context.EntryPlants
             .AsNoTracking()
-            .Include(ep => ep.EntryPlantResidues)
-                .ThenInclude(r => r.Residue)
-                    .ThenInclude(r => r!.LerCode)
             .Where(ep =>
                 ep.OwnerId == ownerId &&
                 ep.PlantEntryDate >= periodStart &&
                 ep.PlantEntryDate < periodEnd)
+            .SelectMany(ep => ep.EntryPlantResidues, (ep, r) => new
+            {
+                SourceId        = ep.Id,
+                ep.NetWeight,
+                IdLERCode       = r.Residue != null ? r.Residue.IdLERCode       : (Guid?)null,
+                ProductCategory = r.Residue != null ? r.Residue.ProductCategory : null,
+                LerCode         = r.Residue != null && r.Residue.LerCode != null
+                                    ? r.Residue.LerCode.Code        : null,
+                LerDescription  = r.Residue != null && r.Residue.LerCode != null
+                                    ? r.Residue.LerCode.Description : null
+            })
             .ToListAsync(ct);
 
-        var groups = entryPlants
-            .SelectMany(ep => ep.EntryPlantResidues
-                .Select(r => new
-                {
-                    ep.Id,
-                    ep.NetWeight,
-                    IdLERCode       = r.Residue?.IdLERCode,
-                    ProductCategory = r.Residue?.ProductCategory,
-                    LerCode         = r.Residue?.LerCode
-                }))
+        var groups = flatResidues
             .GroupBy(x => new { x.IdLERCode, x.ProductCategory })
             .Select(g => new
             {
                 g.Key.IdLERCode,
                 g.Key.ProductCategory,
-                WeightKg  = g.Sum(x => x.NetWeight ?? 0m),
-                LerCode   = g.FirstOrDefault(x => x.LerCode != null)?.LerCode,
-                SourceIds = g.Select(x => x.Id).Distinct().ToList()
+                WeightKg    = g.Sum(x => x.NetWeight ?? 0m),
+                LerCode     = g.FirstOrDefault(x => x.LerCode != null)?.LerCode,
+                LerDescr    = g.FirstOrDefault(x => x.LerDescription != null)?.LerDescription,
+                SourceIds   = g.Select(x => x.SourceId).Distinct().ToList()
             })
             .ToList();
 
@@ -93,8 +94,8 @@ internal static class SettlementCalculationHelper
                 lineId,
                 productCategoryInt,
                 g.IdLERCode,
-                g.LerCode?.Code,
-                g.LerCode?.Description,
+                g.LerCode,
+                g.LerDescr,
                 g.WeightKg,
                 pricePerKg,
                 amount,

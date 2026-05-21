@@ -39,6 +39,7 @@ public class BusinessEntityConfiguration : IEntityTypeConfiguration<BusinessEnti
         builder.HasIndex(e => e.NationalId).HasDatabaseName("IX_Entities_NationalId");
         builder.HasIndex(e => e.EntityRole).HasDatabaseName("IX_Entities_EntityRole");
         builder.HasIndex(e => e.CenterCode).HasDatabaseName("IX_Entities_CenterCode");
+        builder.HasIndex(e => e.Name).HasDatabaseName("IX_Entities_Name");
     }
 }
 
@@ -192,5 +193,16 @@ public class DicProductDeclarationUseConfiguration
         builder.ToTable("dicProductDeclarationUse");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Ref).HasMaxLength(128).IsRequired();
+    }
+}
+
+public class DocStateConfiguration : IEntityTypeConfiguration<DocState>
+{
+    public void Configure(EntityTypeBuilder<DocState> builder)
+    {
+        builder.ToTable("DocStates");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.IdRef).HasMaxLength(64).IsRequired();
+        builder.Property(e => e.Name).HasMaxLength(256);
     }
 }

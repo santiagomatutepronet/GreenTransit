@@ -85,36 +85,52 @@ public sealed class GetRecyclingRateByFlowQueryHandler
             .Where(t => t.OwnerId == ownerId && t.Year == request.Year)
             .ToListAsync(ct);
 
+        // ── Una sola query para pesos de entrada agrupados por categoría ──────
+        var entryByCategory = await _db.EntryPlants.AsNoTracking()
+            .Where(ep => ep.WasteMove.OwnerId == ownerId
+                      && (!request.IdScrap.HasValue || ep.WasteMove.IdScrap == request.IdScrap.Value)
+                      && ep.WasteMove.ActualPickupStart.HasValue
+                      && ep.WasteMove.ActualPickupStart.Value.Year == request.Year)
+            .SelectMany(ep => ep.EntryPlantResidues)
+            .Where(epr => epr.Residue.ProductCategory != null)
+            .GroupBy(epr => epr.Residue.ProductCategory)
+            .Select(g => new { Category = g.Key, Weight = g.Sum(epr => (decimal?)epr.Weight ?? 0m) })
+            .ToListAsync(ct);
+
+        var entryMap = entryByCategory.ToDictionary(x => x.Category!, x => x.Weight);
+
+        // ── Una sola query para pesos de tratamiento agrupados por categoría y tipo ──
+        var treatBase = _db.TreatmentPlants.AsNoTracking()
+            .Where(tp => tp.WasteMove!.OwnerId == ownerId
+                      && (!request.IdScrap.HasValue || tp.WasteMove.IdScrap == request.IdScrap.Value)
+                      && tp.WasteMove.ActualPickupStart.HasValue
+                      && tp.WasteMove.ActualPickupStart.Value.Year == request.Year);
+
+        var treatByCategory = await treatBase
+            .SelectMany(tp => tp.TreatmentPlantResidues, (tp, r) => new
+            {
+                r.Residue!.ProductCategory,
+                r.WeightTotal,
+                IsRecycling          = tp.TreatmentOperation != null && tp.TreatmentOperation.IsRecycling,
+                IsEnergyRecovery     = tp.TreatmentOperation != null && tp.TreatmentOperation.IsEnergyRecovery,
+                IsPreparationForReuse = tp.TreatmentOperation != null && tp.TreatmentOperation.IsPreparationForReuse
+            })
+            .ToListAsync(ct);
+
         var result = new List<RecyclingRateByFlowDto>();
         foreach (var flow in flows)
         {
-            var entryW = await _db.EntryPlants.AsNoTracking()
-                .Where(ep => ep.WasteMove.OwnerId == ownerId
-                          && (!request.IdScrap.HasValue || ep.WasteMove.IdScrap == request.IdScrap.Value)
-                          && ep.WasteMove.ActualPickupStart.HasValue
-                          && ep.WasteMove.ActualPickupStart.Value.Year == request.Year)
-                .SelectMany(ep => ep.EntryPlantResidues)
-                .Where(epr => epr.Residue.ProductCategory == flow.Category)
-                .SumAsync(epr => (decimal?)epr.Weight ?? 0m, ct);
+            if (!entryMap.TryGetValue(flow.Category ?? "", out var entryW) || entryW == 0)
+                continue;
 
-            if (entryW == 0) continue;
+            var catRows = treatByCategory.Where(r => r.ProductCategory == flow.Category).ToList();
+            var recyclingW    = catRows.Where(r => r.IsRecycling)           .Sum(r => r.WeightTotal ?? 0m);
+            var valorizationW = catRows.Where(r => r.IsEnergyRecovery)      .Sum(r => r.WeightTotal ?? 0m);
+            var reuseW        = catRows.Where(r => r.IsPreparationForReuse) .Sum(r => r.WeightTotal ?? 0m);
 
-            var treatBase = _db.TreatmentPlants.AsNoTracking()
-                .Where(tp => tp.WasteMove!.OwnerId == ownerId
-                          && (!request.IdScrap.HasValue || tp.WasteMove.IdScrap == request.IdScrap.Value)
-                          && tp.WasteMove.ActualPickupStart.HasValue
-                          && tp.WasteMove.ActualPickupStart.Value.Year == request.Year);
+            var targetPct     = (decimal)(targets.FirstOrDefault(t => t.Category == flow.Category)?.MinRecyclingPercent ?? 65);
+            var recyclingPct  = recyclingW / entryW * 100m;
 
-            var recyclingW    = await treatBase.Where(tp => tp.TreatmentOperation!.IsRecycling)
-                .SelectMany(tp => tp.TreatmentPlantResidues).SumAsync(r => (decimal?)r.WeightTotal ?? 0m, ct);
-            var valorizationW = await treatBase.Where(tp => tp.TreatmentOperation!.IsEnergyRecovery)
-                .SelectMany(tp => tp.TreatmentPlantResidues).SumAsync(r => (decimal?)r.WeightTotal ?? 0m, ct);
-            var reuseW        = await treatBase.Where(tp => tp.TreatmentOperation!.IsPreparationForReuse)
-                .SelectMany(tp => tp.TreatmentPlantResidues).SumAsync(r => (decimal?)r.WeightTotal ?? 0m, ct);
-
-            var targetPct = (decimal)(targets.FirstOrDefault(t => t.Category == flow.Category)?.MinRecyclingPercent ?? 65);
-
-            var recyclingPct = recyclingW / entryW * 100m;
             result.Add(new RecyclingRateByFlowDto(
                 flow.FlowType ?? "",
                 flow.Category ?? "",

@@ -8,9 +8,11 @@ public class CountryConfiguration : IEntityTypeConfiguration<Country>
 {
     public void Configure(EntityTypeBuilder<Country> builder)
     {
+        builder.ToTable("Country");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Ref).HasMaxLength(64).IsRequired();
         builder.Property(e => e.Code).HasMaxLength(2).IsRequired();
+        builder.Property(e => e.CodeIso3).HasColumnName("CODE_ISO3").HasMaxLength(3);
         builder.HasIndex(e => e.Code).IsUnique().HasDatabaseName("IX_Country");
 
         builder.HasMany(e => e.States)
@@ -24,6 +26,7 @@ public class TerritoryStateConfiguration : IEntityTypeConfiguration<TerritorySta
 {
     public void Configure(EntityTypeBuilder<TerritoryState> builder)
     {
+        builder.ToTable("TerritoryState");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Ref).HasMaxLength(64).IsRequired();
         builder.Property(e => e.Code).HasMaxLength(2).IsRequired();
@@ -40,6 +43,7 @@ public class ProvinceConfiguration : IEntityTypeConfiguration<Province>
 {
     public void Configure(EntityTypeBuilder<Province> builder)
     {
+        builder.ToTable("Province");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Ref).HasMaxLength(64).IsRequired();
         builder.Property(e => e.Code).HasMaxLength(2).IsRequired();
@@ -56,7 +60,9 @@ public class MunicipalityConfiguration : IEntityTypeConfiguration<Municipality>
 {
     public void Configure(EntityTypeBuilder<Municipality> builder)
     {
+        builder.ToTable("Municipality");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.IdProvince).HasColumnName("Id_Province");
         builder.Property(e => e.Code).HasMaxLength(6).IsRequired();
         builder.Property(e => e.Name).HasMaxLength(256).IsRequired();
         builder.Property(e => e.CodeControlNumber).HasMaxLength(1);
@@ -77,6 +83,7 @@ public class MunicipalityZipCodeConfiguration : IEntityTypeConfiguration<Municip
 {
     public void Configure(EntityTypeBuilder<MunicipalityZipCode> builder)
     {
+        builder.ToTable("MunicipalityZipCode");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.ZipCode).HasMaxLength(5).IsRequired();
         builder.Property(e => e.Description).HasMaxLength(256);
@@ -87,6 +94,7 @@ public class MunicipalityPopulationConfiguration : IEntityTypeConfiguration<Muni
 {
     public void Configure(EntityTypeBuilder<MunicipalityPopulation> builder)
     {
+        builder.ToTable("MunicipalityPopulation");
         builder.HasKey(e => e.Id);
     }
 }

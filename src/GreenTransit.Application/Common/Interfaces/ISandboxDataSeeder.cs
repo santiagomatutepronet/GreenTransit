@@ -16,4 +16,10 @@ public interface ISandboxDataSeeder
     /// Elimina todos los datos sandbox (SourceSystem='SEED') en orden inverso de FK.
     /// </summary>
     Task CleanAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Elimina TODOS los datos del tenant actual (no solo los sandbox) en las mismas
+    /// entidades que CleanAsync, en orden inverso de FK. No afecta catálogos globales.
+    /// </summary>
+    Task CleanAllAsync(CancellationToken cancellationToken = default);
 }

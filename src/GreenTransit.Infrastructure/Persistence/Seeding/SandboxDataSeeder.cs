@@ -182,6 +182,111 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // CleanAllAsync — igual que CleanAsync pero elimina TODOS los datos del tenant,
+    // no solo los marcados con SourceSystem='SEED'. No toca catálogos globales.
+    // ─────────────────────────────────────────────────────────────────────────
+    public async Task CleanAllAsync(CancellationToken ct = default)
+    {
+        _ownerId = _currentUser.OwnerId != Guid.Empty ? _currentUser.OwnerId : DemoOwnerId;
+        _now = DateTime.UtcNow;
+        _log.LogInformation("🧹 SandboxDataSeeder — limpieza total (OwnerId={OwnerId})", _ownerId);
+        _db.IgnoreTenantFilter();
+        try
+        {
+            // Nivel 5 – hojas de TreatmentPlants
+            await _db.TreatmentPlantResidues
+                .Where(x => x.TreatmentPlant.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.PlantEnergies
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.TreatmentPlants
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+
+            // Nivel 4 – hojas de EntryPlants / EntryCACs
+            await _db.EntryPlantResidues
+                .Where(x => x.EntryPlant.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.EntryPlants
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.EntryCACResidues
+                .Where(x => x.EntryCAC.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.EntryCACs
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+
+            // Nivel 3 – hojas de WasteMoves / ServiceOrders / Incidents
+            await _db.WasteMoveResidues
+                .Where(x => x.WasteMove.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.WasteMoves
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.Incidents
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.ServiceOrders
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+
+            // Nivel 2 – Settlements / MarketShares / Declarations / Agreements
+            await _db.SettlementLines
+                .Where(x => x.Settlement.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.Settlements
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.MarketShares
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.Products
+                .Where(x => x.ProductDeclaration.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.ProductDeclarations
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.AgreementDocuments
+                .Where(x => x.Agreement.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.Agreements
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+
+            // Nivel 1 – DUM, Ecomodulación, Regulatory, Residues del tenant
+            await _db.DumRestrictionRules
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.DumZones
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.EcoModulationRules
+                .Where(x => x.RuleSet.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.EcoModulationRuleSets
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.RegulatoryTargets
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            await _db.ProductSpecs
+                .Where(x => x.OwnerId == _ownerId).ExecuteDeleteAsync(ct);
+            // Residues: se filtran por IdProducer vinculado a entidades del tenant
+            var tenantEntityIds = await _db.BusinessEntities
+                .Where(e => _db.AppUsers.IgnoreQueryFilters()
+                    .Any(u => u.OwnerId == _ownerId))
+                .Select(e => e.Id)
+                .ToListAsync(ct);
+            await _db.Residues
+                .Where(x => x.IdProducer != null && tenantEntityIds.Contains(x.IdProducer.Value))
+                .ExecuteDeleteAsync(ct);
+
+            // Nivel 0 – usuarios no-admin y entidades del tenant
+            var adminProfileId = await _db.UserProfiles
+                .IgnoreQueryFilters()
+                .Where(p => p.Reference == "ADMIN")
+                .Select(p => p.Id)
+                .FirstOrDefaultAsync(ct);
+            await _db.AppUsers
+                .IgnoreQueryFilters()
+                .Where(u => u.OwnerId == _ownerId && u.IdProfile != adminProfileId)
+                .ExecuteDeleteAsync(ct);
+            // BusinessEntities no tienen OwnerId; se eliminan las referenciadas por el tenant
+            // a través de Agreements, ServiceOrders, etc. que ya fueron borrados en pasos anteriores.
+            // Solo se borran las que tienen SourceSystem del tenant mediante AppUsers existentes.
+            await _db.BusinessEntities
+                .Where(x => x.IdUser != 0 &&
+                    _db.AppUsers.IgnoreQueryFilters().Any(u => u.OwnerId == _ownerId && u.Id == x.IdUser))
+                .ExecuteDeleteAsync(ct);
+
+            _log.LogInformation("✅ SandboxDataSeeder — limpieza total completada");
+        }
+        finally
+        {
+            _db.RestoreTenantFilter();
+        }
+    }
+
     // =========================================================================
     // FASE 0 — Catálogos
     // =========================================================================

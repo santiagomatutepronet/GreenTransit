@@ -51,12 +51,15 @@ public sealed class GetDashboardSummaryQueryHandler
         bool HasOwner(Guid? entityOwnerId) => ownerId == Guid.Empty || entityOwnerId == ownerId;
 
         // ── Preparar IDs de SCRAPs para perfil COORDINATOR ────────────────────
-        List<Guid>? coordinatorScrapIds = null;
+        // IQueryable — EF lo traduce a subquery SQL, sin materializar lista en C#
+        IQueryable<Guid>? coordinatorScrapQuery = null;
         if (_currentUser.IsInProfile(GreenTransit.Domain.Authorization.ProfileConstants.Coordinator) && linkedEntityId.HasValue)
-            coordinatorScrapIds = (await _context.Agreements
-                .Where(a => a.IdCoordinator == linkedEntityId.Value && (ownerId == Guid.Empty || a.OwnerId == ownerId))
-                .Select(a => a.IdScrap).Distinct().ToListAsync(ct))
-                .Where(id => id.HasValue).Select(id => id!.Value).ToList();
+        {
+            coordinatorScrapQuery = _context.Agreements
+                .Where(a => a.IdCoordinator == linkedEntityId.Value && (ownerId == Guid.Empty || a.OwnerId == ownerId) && a.IdScrap != null)
+                .Select(a => a.IdScrap!.Value)
+                .Distinct();
+        }
 
         // ── 1. WasteMoves by status ───────────────────────────────────────────
         var wmQuery = _context.WasteMoves
@@ -88,8 +91,8 @@ public sealed class GetDashboardSummaryQueryHandler
             wmQuery = wmQuery.Where(wm =>
                 wm.IdDestination == linkedEntityId.Value ||
                 wm.IdSource == linkedEntityId.Value);
-        else if (coordinatorScrapIds != null)
-            wmQuery = wmQuery.Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value));
+        else if (coordinatorScrapQuery != null)
+            wmQuery = wmQuery.Where(wm => wm.IdScrap.HasValue && coordinatorScrapQuery.Contains(wm.IdScrap.Value));
 
         var wasteMovesByStatus = (await wmQuery
             .GroupBy(wm => wm.ServiceStatus ?? "DESCONOCIDO")
@@ -127,8 +130,8 @@ public sealed class GetDashboardSummaryQueryHandler
             wmrBase = wmrBase.Where(r =>
                 r.WasteMove.IdDestination == linkedEntityId.Value ||
                 r.WasteMove.IdSource == linkedEntityId.Value);
-        else if (coordinatorScrapIds != null)
-            wmrBase = wmrBase.Where(r => r.WasteMove.IdScrap.HasValue && coordinatorScrapIds.Contains(r.WasteMove.IdScrap.Value));
+        else if (coordinatorScrapQuery != null)
+            wmrBase = wmrBase.Where(r => r.WasteMove.IdScrap.HasValue && coordinatorScrapQuery.Contains(r.WasteMove.IdScrap.Value));
 
         // ── Base de residuos de tratamiento (secciones 3, 4 y 9) ─────────────
         var tpResiduesBase = _context.TreatmentPlantResidues
@@ -159,11 +162,11 @@ public sealed class GetDashboardSummaryQueryHandler
             tpResiduesBase = tpResiduesBase.Where(r =>
                 r.TreatmentPlant.WasteMove != null &&
                 r.TreatmentPlant.WasteMove.IdDestination == linkedEntityId.Value);
-        else if (coordinatorScrapIds != null)
+        else if (coordinatorScrapQuery != null)
             tpResiduesBase = tpResiduesBase.Where(r =>
                 r.TreatmentPlant.WasteMove != null &&
                 r.TreatmentPlant.WasteMove.IdScrap.HasValue &&
-                coordinatorScrapIds.Contains(r.TreatmentPlant.WasteMove.IdScrap.Value));
+                coordinatorScrapQuery.Contains(r.TreatmentPlant.WasteMove.IdScrap.Value));
 
         var kgCollectedThisMonth = await wmrBase
             .Where(r =>
@@ -270,10 +273,10 @@ public sealed class GetDashboardSummaryQueryHandler
             incidentBase = incidentBase.Where(i =>
                 i.WasteMoveReference != null && wmRefIds.Contains(i.WasteMoveReference));
         }
-        else if (coordinatorScrapIds != null)
+        else if (coordinatorScrapQuery != null)
         {
             var wmRefIds = _context.WasteMoves
-                .Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value))
+                .Where(wm => wm.IdScrap.HasValue && coordinatorScrapQuery.Contains(wm.IdScrap.Value))
                 .Select(wm => wm.WasteMoveReference)
                 .Where(r => r != null);
             incidentBase = incidentBase.Where(i =>
@@ -391,10 +394,10 @@ public sealed class GetDashboardSummaryQueryHandler
             soQuery = soQuery.Where(so =>
                 so.IdPickupPoint == linkedEntityId.Value || soIdsForCac.Contains(so.Id));
         }
-        else if (coordinatorScrapIds != null)
+        else if (coordinatorScrapQuery != null)
         {
             var soIdsForCoord = _context.WasteMoves
-                .Where(wm => wm.IdScrap.HasValue && coordinatorScrapIds.Contains(wm.IdScrap.Value)
+                .Where(wm => wm.IdScrap.HasValue && coordinatorScrapQuery.Contains(wm.IdScrap.Value)
                           && wm.ServiceOrderId != null)
                 .Select(wm => wm.ServiceOrderId!.Value);
             soQuery = soQuery.Where(so => soIdsForCoord.Contains(so.Id));

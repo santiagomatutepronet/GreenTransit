@@ -48,30 +48,30 @@ public sealed class GetEntitiesQueryHandler
 
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))
         {
-            var term = request.SearchTerm.ToLower();
+            var pattern = $"%{request.SearchTerm.Trim()}%";
             query = query.Where(e =>
-                e.Name.ToLower().Contains(term)
-                || (e.NationalId  != null && e.NationalId.ToLower().Contains(term))
-                || (e.CenterCode  != null && e.CenterCode.ToLower().Contains(term)));
+                EF.Functions.Like(e.Name, pattern)
+                || (e.NationalId  != null && EF.Functions.Like(e.NationalId,  pattern))
+                || (e.CenterCode  != null && EF.Functions.Like(e.CenterCode,  pattern)));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
 
-        // Left join con AppUsers para obtener el usuario vinculado (por Email = Login)
+        // Left join con AppUsers para obtener el usuario vinculado — evita subconsulta correlacionada por fila
         var items = await query
             .OrderBy(e => e.Name)
             .Skip((request.PageNumber - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Select(e => new
-            {
-                e.Id, e.Name, e.NationalId, e.CenterCode,
-                e.EntityRole, e.ProvinceCode, e.IsActive,
-                LinkedUserLogin = _context.AppUsers
-                    .IgnoreQueryFilters()
-                    .Where(u => u.Email == e.Email || u.Login == e.Email)
-                    .Select(u => u.Login)
-                    .FirstOrDefault()
-            })
+            .GroupJoin(
+                _context.AppUsers.IgnoreQueryFilters(),
+                e => e.Email,
+                u => u.Email,
+                (e, users) => new
+                {
+                    e.Id, e.Name, e.NationalId, e.CenterCode,
+                    e.EntityRole, e.ProvinceCode, e.IsActive,
+                    LinkedUserLogin = users.Select(u => u.Login).FirstOrDefault()
+                })
             .ToListAsync(cancellationToken);
 
         var dtos = items.Select(e => new EntityDto(

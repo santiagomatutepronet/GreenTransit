@@ -135,19 +135,20 @@ public sealed class GetServiceOrdersQueryHandler
 
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))
         {
-            var term = request.SearchTerm.ToLower();
-            q = q.Where(s => s.ServiceOrderNumber.ToLower().Contains(term)
-                           || (s.WasteMoveReference != null && s.WasteMoveReference.ToLower().Contains(term)));
+            var pattern = $"%{request.SearchTerm.Trim()}%";
+            q = q.Where(s => EF.Functions.Like(s.ServiceOrderNumber, pattern)
+                           || (s.WasteMoveReference != null && EF.Functions.Like(s.WasteMoveReference, pattern)));
         }
 
         var total = await q.CountAsync(cancellationToken);
 
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
-        var items = await q
+        var raw = await q
             .OrderByDescending(s => s.IssuedAt)
             .Skip((request.PageNumber - 1) * pageSize)
             .Take(pageSize)
-            .Select(s => new ServiceOrderDto(
+            .Select(s => new
+            {
                 s.Id,
                 s.ServiceOrderNumber,
                 s.Status,
@@ -155,20 +156,43 @@ public sealed class GetServiceOrdersQueryHandler
                 s.IssuedAt,
                 s.PlannedPickupStart,
                 s.IdPickupPoint,
-                s.PickupPoint != null ? s.PickupPoint.Name : null,
+                PickupPointName  = s.PickupPoint != null ? s.PickupPoint.Name : null,
                 s.WasteStream,
-                s.Residues.Sum(r => (decimal?)r.EstimatedWeight),
+                EstimatedWeight  = s.Residues.Sum(r => (decimal?)r.EstimatedWeight),
                 s.MeasureUnit,
                 s.WasteMoveReference,
                 s.IdLERCode,
-                s.LerCode != null ? s.LerCode.Code : null,
-                s.LerCode != null ? s.LerCode.Description : null,
-                string.Join(", ", s.Residues
+                LerCodeCode        = s.LerCode != null ? s.LerCode.Code        : null,
+                LerCodeDescription = s.LerCode != null ? s.LerCode.Description : null,
+                // Proyección de colección de códigos — EF traduce a subconsulta, sin string.Join en SQL
+                LerCodes = s.Residues
                     .Where(r => r.LerCode != null && r.LerCode.Code != null)
                     .Select(r => r.LerCode!.Code!)
                     .Distinct()
-                    .OrderBy(c => c))))
+                    .OrderBy(c => c)
+                    .ToList()
+            })
             .ToListAsync(cancellationToken);
+
+        // string.Join se ejecuta en memoria sobre la colección ya materializada
+        var items = raw.Select(s => new ServiceOrderDto(
+                s.Id,
+                s.ServiceOrderNumber,
+                s.Status,
+                s.Priority,
+                s.IssuedAt,
+                s.PlannedPickupStart,
+                s.IdPickupPoint,
+                s.PickupPointName,
+                s.WasteStream,
+                s.EstimatedWeight,
+                s.MeasureUnit,
+                s.WasteMoveReference,
+                s.IdLERCode,
+                s.LerCodeCode,
+                s.LerCodeDescription,
+                string.Join(", ", s.LerCodes)))
+            .ToList();
 
         return PaginatedResult<ServiceOrderDto>.Create(items, total, request.PageNumber, pageSize);
     }

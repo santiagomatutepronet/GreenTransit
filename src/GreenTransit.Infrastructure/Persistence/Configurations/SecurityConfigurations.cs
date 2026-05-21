@@ -74,7 +74,8 @@ public class PageDefinitionConfiguration : IEntityTypeConfiguration<PageDefiniti
         builder.Property(e => e.ModuleName).HasMaxLength(128).IsRequired();
         builder.Property(e => e.ComponentName).HasMaxLength(256);
         builder.HasIndex(e => e.Route).IsUnique().HasDatabaseName("UQ_PageDefinitions_Route");
-        builder.HasMany(e => e.Permissions).WithOne(p => p.PageDefinition).HasForeignKey(p => p.IdPageDefinition);
+        builder.HasMany(e => e.Permissions).WithOne(p => p.PageDefinition).HasForeignKey(p => p.IdPageDefinition)
+               .OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -87,7 +88,21 @@ public class PagePermissionConfiguration : IEntityTypeConfiguration<PagePermissi
         builder.Property(e => e.AccessLevel).HasMaxLength(16).IsRequired();
         builder.HasIndex(e => new { e.IdPageDefinition, e.IdProfile }).IsUnique()
                .HasDatabaseName("UQ_PagePermissions_Page_Profile");
-        builder.HasOne(e => e.PageDefinition).WithMany(p => p.Permissions).HasForeignKey(e => e.IdPageDefinition);
-        builder.HasOne(e => e.Profile).WithMany().HasForeignKey(e => e.IdProfile);
+        builder.HasOne(e => e.PageDefinition).WithMany(p => p.Permissions).HasForeignKey(e => e.IdPageDefinition)
+               .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(e => e.Profile).WithMany().HasForeignKey(e => e.IdProfile)
+               .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class UserSharePointCredentialConfiguration : IEntityTypeConfiguration<UserSharePointCredential>
+{
+    public void Configure(EntityTypeBuilder<UserSharePointCredential> builder)
+    {
+        builder.ToTable("UserSharePointCredentials");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.TenantId).HasMaxLength(128).IsRequired();
+        builder.Property(e => e.ClientId).HasMaxLength(128).IsRequired();
+        builder.Property(e => e.ClientSecret).HasMaxLength(512).IsRequired();
     }
 }

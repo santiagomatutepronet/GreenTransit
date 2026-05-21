@@ -47,6 +47,8 @@ public class AgreementConfiguration : IEntityTypeConfiguration<Agreement>
 
         builder.HasIndex(e => e.AgreementNumber).IsUnique().HasDatabaseName("UX_Agreements_Number");
         builder.HasIndex(e => e.IdScrap).HasDatabaseName("IX_Agreements_IdScrap");
+        builder.HasIndex(e => e.IdCoordinator).HasDatabaseName("IX_Agreements_IdCoordinator");
+        builder.HasIndex(e => e.OwnerId).HasDatabaseName("IX_Agreements_OwnerId");
     }
 }
 
@@ -204,6 +206,9 @@ public class ServiceOrderConfiguration : IEntityTypeConfiguration<ServiceOrder>
         builder.HasIndex(e => e.OwnerId).HasDatabaseName("IX_ServiceOrders_OwnerId");
         builder.HasIndex(e => e.IdIssuedBy).HasDatabaseName("IX_ServiceOrders_IdIssuedBy");
         builder.HasIndex(e => new { e.OwnerId, e.IdIssuedBy }).HasDatabaseName("IX_ServiceOrders_OwnerId_IssuedBy");
+        builder.HasIndex(e => e.PlannedPickupStart).HasDatabaseName("IX_ServiceOrders_PlannedPickupStart");
+        builder.HasIndex(e => e.IdPickupPoint).HasDatabaseName("IX_ServiceOrders_IdPickupPoint");
+        builder.HasIndex(e => e.Status).HasDatabaseName("IX_ServiceOrders_Status");
     }
 }
 
@@ -230,7 +235,7 @@ public class ServiceOrderResidueConfiguration : IEntityTypeConfiguration<Service
     }
 }
 
-// ── Traslados ─────────────────────────────────────────────────────────────────
+// ── Traslados// ── Traslados
 
 public class WasteMoveConfiguration : IEntityTypeConfiguration<WasteMove>
 {
@@ -246,6 +251,8 @@ public class WasteMoveConfiguration : IEntityTypeConfiguration<WasteMove>
         builder.Property(e => e.DocumentId).HasMaxLength(128);
         builder.Property(e => e.DocumentHash).HasMaxLength(128);
         builder.Property(e => e.Version).HasDefaultValue(1);
+        builder.Property(e => e.DateCreateSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
+        builder.Property(e => e.DateModifiedSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
 
         // ── FK a BusinessEntity con inverse navigations ────────────────────────
         builder.HasOne(e => e.Scrap)
@@ -287,6 +294,10 @@ public class WasteMoveConfiguration : IEntityTypeConfiguration<WasteMove>
         builder.HasIndex(e => e.ActualPickupStart).HasDatabaseName("IX_WasteMoves_ActualPickupStart");
         builder.HasIndex(e => e.PlannedPickupStart).HasDatabaseName("IX_WasteMoves_PlannedPickupStart");
         builder.HasIndex(e => new { e.OwnerId, e.ServiceStatus }).HasDatabaseName("IX_WasteMoves_OwnerId_Status");
+        builder.HasIndex(e => new { e.OwnerId, e.PlannedPickupStart }).HasDatabaseName("IX_WasteMoves_OwnerId_PlannedPickupStart");
+        builder.HasIndex(e => e.IdSource).HasDatabaseName("IX_WasteMoves_IdSource");
+        builder.HasIndex(e => e.IdDestination).HasDatabaseName("IX_WasteMoves_IdDestination");
+        builder.HasIndex(e => e.ServiceOrderId).HasFilter("[ServiceOrderId] IS NOT NULL").HasDatabaseName("IX_WasteMoves_ServiceOrderId");
     }
 }
 
@@ -296,8 +307,8 @@ public class WasteMoveResidueConfiguration : IEntityTypeConfiguration<WasteMoveR
     {
         builder.ToTable("WasteMoveResidues");
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Weight).HasColumnType("decimal(18,2)");
-        builder.Property(e => e.UnitPriceKg).HasColumnType("decimal(18,2)");
+        builder.Property(e => e.Weight).HasColumnType("decimal(18,3)");
+        builder.Property(e => e.UnitPriceKg).HasColumnType("decimal(18,6)");
         builder.Property(e => e.TransportInfo_TransportDuration).HasColumnType("decimal(18,2)");
         builder.Property(e => e.TransportInfo_TransportDistance).HasColumnType("decimal(18,2)");
         builder.Property(e => e.TransportInfo_TransportCarbonEmissions).HasColumnType("decimal(18,2)");
@@ -339,6 +350,7 @@ public class WasteMoveResidueConfiguration : IEntityTypeConfiguration<WasteMoveR
 
         builder.HasIndex(e => e.IdWasteMove).HasDatabaseName("IX_WasteMoveResidues_IdWasteMove");
         builder.HasIndex(e => e.IdCarrier).HasDatabaseName("IX_WasteMoveResidues_IdCarrier");
+        builder.HasIndex(e => e.IdLerCode).HasDatabaseName("IX_WasteMoveResidues_IdLerCode");
     }
 }
 
@@ -358,6 +370,8 @@ public class EntryPlantConfiguration : IEntityTypeConfiguration<EntryPlant>
         builder.Property(e => e.TareWeight).HasColumnType("decimal(18,3)");
         builder.Property(e => e.NetWeight).HasColumnType("decimal(18,3)");
         builder.Property(e => e.WeighbridgeId).HasMaxLength(64);
+        builder.Property(e => e.DateCreateSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
+        builder.Property(e => e.DateModifiedSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
 
         builder.HasOne(e => e.WasteMove)
             .WithMany()
@@ -370,6 +384,7 @@ public class EntryPlantConfiguration : IEntityTypeConfiguration<EntryPlant>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => e.IdWasteMove).HasDatabaseName("IX_EntryPlants_IdWasteMove");
+        builder.HasIndex(e => e.OwnerId).HasDatabaseName("IX_EntryPlants_OwnerId");
     }
 }
 
@@ -393,6 +408,8 @@ public class EntryPlantResidueConfiguration : IEntityTypeConfiguration<EntryPlan
             .WithMany(r => r.EntryPlantResidues)
             .HasForeignKey(e => e.IdResidue)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.IdEntryPlant).HasDatabaseName("IX_EntryPlantResidues_IdEntryPlant");
     }
 }
 
@@ -410,6 +427,8 @@ public class TreatmentPlantConfiguration : IEntityTypeConfiguration<TreatmentPla
         builder.Property(e => e.PriceContainer).HasColumnType("decimal(18,2)");
         builder.Property(e => e.ImproperWeight).HasColumnType("decimal(18,3)");
         builder.Property(e => e.SourceSystem).HasMaxLength(64);
+        builder.Property(e => e.DateCreateSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
+        builder.Property(e => e.DateModifiedSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
 
         builder.HasOne(e => e.WasteMove)
             .WithMany()
@@ -494,11 +513,16 @@ public class EntryCACConfiguration : IEntityTypeConfiguration<EntryCAC>
         builder.Property(e => e.TypeContainer).HasMaxLength(256);
         builder.Property(e => e.PriceContainer).HasColumnType("decimal(18,2)");
         builder.Property(e => e.CollectionMethod).HasMaxLength(32);
+        builder.Property(e => e.DateCreateSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
+        builder.Property(e => e.DateModifiedSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
 
         builder.HasOne(e => e.WasteMove)
             .WithMany()
             .HasForeignKey(e => e.IdWasteMove)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.OwnerId).HasDatabaseName("IX_EntryCACs_OwnerId");
+        builder.HasIndex(e => e.CACEntryDate).HasDatabaseName("IX_EntryCACs_CACEntryDate");
     }
 }
 
@@ -522,10 +546,12 @@ public class EntryCACResidueConfiguration : IEntityTypeConfiguration<EntryCACRes
             .WithMany(r => r.EntryCACResidues)
             .HasForeignKey(e => e.IdResidue)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.IdEntryCAC).HasDatabaseName("IX_EntryCACResidues_IdEntryCAC");
     }
 }
 
-// ── Producto y declaraciones ──────────────────────────────────────────────────
+// ── Producto y declaraciones
 
 public class ProductDeclarationConfiguration : IEntityTypeConfiguration<ProductDeclaration>
 {
@@ -538,6 +564,10 @@ public class ProductDeclarationConfiguration : IEntityTypeConfiguration<ProductD
         builder.Property(e => e.Reference).HasMaxLength(128);
         builder.Property(e => e.Amount).HasColumnType("decimal(18,2)");
         builder.Property(e => e.Type).HasMaxLength(64);
+        builder.Property(e => e.DateCreate).HasColumnType("datetime2(0)");
+        builder.Property(e => e.DateEmit).HasColumnType("datetime2(0)");
+        builder.Property(e => e.DateCreateSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
+        builder.Property(e => e.DateModifiedSys).HasColumnType("datetime2(0)").HasDefaultValueSql("SYSUTCDATETIME()");
 
         builder.HasOne(e => e.Producer)
             .WithMany(b => b.ProductDeclarations)
@@ -557,7 +587,7 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(e => e.ProductUse).HasMaxLength(128);
         builder.Property(e => e.ProductCategory).HasMaxLength(256);
         builder.Property(e => e.Quantity).HasColumnType("decimal(18,2)");
-        builder.Property(e => e.Price).HasColumnType("decimal(18,0)");
+        builder.Property(e => e.Price).HasColumnType("decimal(18,2)");
         builder.Property(e => e.MeasureUnit).HasMaxLength(64);
 
         builder.HasOne(e => e.ProductDeclaration)
@@ -618,6 +648,8 @@ public class MarketShareConfiguration : IEntityTypeConfiguration<MarketShare>
             .WithMany(b => b.MarketShares)
             .HasForeignKey(e => e.IdScrap)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => new { e.OwnerId, e.Year, e.Period }).HasDatabaseName("IX_MarketShares_OwnerId_Period");
     }
 }
 
@@ -748,10 +780,12 @@ public class IncidentConfiguration : IEntityTypeConfiguration<Incident>
             .WithMany()
             .HasForeignKey(e => e.ServiceOrderId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.OwnerId).HasDatabaseName("IX_Incidents_OwnerId");
     }
 }
 
-// ── Zonas DUM ─────────────────────────────────────────────────────────────────
+// ── Zonas DUM
 
 public class DumZoneConfiguration : IEntityTypeConfiguration<DumZone>
 {

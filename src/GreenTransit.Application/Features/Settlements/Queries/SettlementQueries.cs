@@ -35,9 +35,6 @@ public sealed class GetSettlementsQueryHandler
     {
         var q = _context.Settlements
             .AsNoTracking()
-            .Include(s => s.Agreement)
-            .Include(s => s.Scrap)
-            .Include(s => s.PublicEntity)
             .AsQueryable();
 
         if (request.Status is not null)
@@ -185,9 +182,6 @@ public sealed class GetSettlementsByAgreementQueryHandler
         GetSettlementsByAgreementQuery request, CancellationToken ct)
         => await _context.Settlements
             .AsNoTracking()
-            .Include(s => s.Agreement)
-            .Include(s => s.Scrap)
-            .Include(s => s.PublicEntity)
             .Where(s => s.AgreementId == request.AgreementId)
             .OrderByDescending(s => s.CreatedAt)
             .Select(s => new SettlementSummaryDto(

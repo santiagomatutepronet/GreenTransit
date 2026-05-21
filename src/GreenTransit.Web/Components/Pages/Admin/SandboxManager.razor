@@ -77,19 +77,39 @@
                     <i class="bi bi-exclamation-triangle-fill me-1"></i>
                     Esta operación es <strong>irreversible</strong>. Los datos demo se borrarán permanentemente.
                 </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="chkCleanAll"
+                           @bind="_cleanAll" disabled="@(_busy || _confirmClean)" />
+                    <label class="form-check-label small" for="chkCleanAll">
+                        Incluir también datos <strong>no-sandbox</strong> del tenant
+                        <span class="text-danger fw-bold">(elimina TODOS los datos operativos)</span>
+                    </label>
+                </div>
+
+                @if (_cleanAll && !_confirmClean)
+                {
+                    <div class="alert alert-danger py-2 small mb-3">
+                        <i class="bi bi-radioactive me-1"></i>
+                        <strong>¡Atención!</strong> Se eliminarán <strong>todos</strong> los registros del tenant,
+                        incluyendo datos reales. Esta acción es <strong>irreversible</strong>.
+                    </div>
+                }
+
                 @if (!_confirmClean)
                 {
-                    <button class="btn btn-outline-danger w-100"
+                    <button class="btn @(_cleanAll ? "btn-danger" : "btn-outline-danger") w-100"
                             @onclick="RequestConfirm"
                             disabled="@_busy">
-                        <i class="bi bi-trash3 me-2"></i>Limpiar datos demo…
+                        <i class="bi bi-trash3 me-2"></i>
+                        @(_cleanAll ? "Limpiar TODOS los datos del tenant…" : "Limpiar datos demo…")
                     </button>
                 }
                 else
                 {
                     <div class="d-flex gap-2">
                         <button class="btn btn-danger flex-grow-1"
-                                @onclick="CleanAsync"
+                                @onclick="ExecuteCleanAsync"
                                 disabled="@_busy">
                             @if (_busy && _action == "clean")
                             {
@@ -140,6 +160,7 @@
 @code {
     private bool   _busy         = false;
     private bool   _confirmClean = false;
+    private bool   _cleanAll     = false;
     private string _action       = string.Empty;
 
     private sealed record LogMessage(string Text, string Level);
@@ -172,7 +193,7 @@
         }
     }
 
-    private async Task CleanAsync()
+    private async Task ExecuteCleanAsync()
     {
         _busy         = true;
         _action       = "clean";
@@ -181,26 +202,38 @@
 
         try
         {
-            Log("Iniciando limpieza de datos sandbox…", "warning");
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            await Seeder.CleanAsync();
-            sw.Stop();
-            Log($"✅ Limpieza completada en {sw.Elapsed.TotalSeconds:F1}s", "success");
+            if (_cleanAll)
+            {
+                Log("Iniciando limpieza TOTAL de datos del tenant…", "warning");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                await Seeder.CleanAllAsync();
+                sw.Stop();
+                Log($"✅ Limpieza total completada en {sw.Elapsed.TotalSeconds:F1}s", "success");
+            }
+            else
+            {
+                Log("Iniciando limpieza de datos sandbox…", "warning");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                await Seeder.CleanAsync();
+                sw.Stop();
+                Log($"✅ Limpieza completada en {sw.Elapsed.TotalSeconds:F1}s", "success");
+            }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error en SandboxManager.CleanAsync");
+            Logger.LogError(ex, "Error en SandboxManager.ExecuteCleanAsync");
             Log($"❌ Error: {ex.Message}", "danger");
         }
         finally
         {
-            _busy   = false;
-            _action = string.Empty;
+            _busy     = false;
+            _action   = string.Empty;
+            _cleanAll = false;
         }
     }
 
     private void RequestConfirm()  => _confirmClean = true;
-    private void CancelConfirm()   => _confirmClean = false;
+    private void CancelConfirm()   { _confirmClean = false; _cleanAll = false; }
     private void ClearLog()        => _messages.Clear();
 
     private void Log(string text, string level)
