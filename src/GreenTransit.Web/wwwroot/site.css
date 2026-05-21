@@ -3372,3 +3372,105 @@ select:disabled {
 .app-shell.dark-mode .badge-warning { background: #2e2000; color: #FFE39B; border-color: #FFA800; }
 .app-shell.dark-mode .badge-danger  { background: #2e0d0d; color: #FFBEC2; border-color: #DC2B2B; }
 .app-shell.dark-mode .badge-info    { background: #071a38; color: #8FC3FF; border-color: #086CD9; }
+
+
+/* ============================================================
+   XX. RADZEN SIDEBAR — OVERRIDES IDENTIDAD CORPORATIVA
+   Estos estilos sobreescriben el tema Humanistic de Radzen para
+   alinear el sidebar con la paleta corporativa GreenTransit.
+   IMPORTANTE: Este bloque debe cargarse DESPUÉS de humanistic.css.
+   ============================================================ */
+
+/* 1. Fondo del sidebar */
+.rz-sidebar {
+    background-color: var(--gt-dark-blue, #17233C);
+}
+
+/* 2. Ítem activo / seleccionado */
+.rz-sidebar .rz-panel-menu .rz-navigation-item-active,
+.rz-sidebar .rz-panel-menu .rz-navigation-item-active > .rz-navigation-item-link {
+    background-color: rgba(10, 64, 75, 0.25);
+    border-left: 3px solid var(--gt-secondary-1, #8ACCC3);
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+.rz-sidebar .rz-panel-menu .rz-navigation-item-active .rz-navigation-item-text {
+    color: #FFFFFF;
+}
+
+.rz-sidebar .rz-panel-menu .rz-navigation-item-active .rz-navigation-item-icon {
+    color: var(--gt-secondary-1, #8ACCC3);
+}
+
+/* 3. Grupos padre de primer nivel — labels de sección */
+.rz-sidebar .rz-panel-menu > .rz-navigation-item > .rz-navigation-item-link {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.5);
+    padding: 0.75rem 1rem 0.4rem 1rem;
+}
+
+.rz-sidebar .rz-panel-menu > .rz-navigation-item.rz-expanded > .rz-navigation-item-link {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* 4. Items hijos — tamaño y peso normal con indentación */
+.rz-sidebar .rz-panel-menu .rz-navigation-item .rz-navigation-item .rz-navigation-item-link {
+    font-size: 0.85rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: rgba(255, 255, 255, 0.8);
+    padding: 0.5rem 1rem 0.5rem 2.5rem;
+}
+
+/* 5. Hover en items */
+.rz-sidebar .rz-panel-menu .rz-navigation-item-link:hover {
+    background-color: rgba(138, 204, 195, 0.1);
+    color: #FFFFFF;
+    transition: background-color 0.2s ease;
+}
+
+.rz-sidebar .rz-panel-menu .rz-navigation-item-link:hover .rz-navigation-item-icon {
+    color: var(--gt-secondary-1, #8ACCC3);
+    transition: color 0.2s ease;
+}
+
+/* 6. Chevrons */
+.rz-sidebar .rz-panel-menu .rz-navigation-item-icon-children {
+    color: rgba(255, 255, 255, 0.35);
+    transition: transform 0.25s ease, color 0.2s ease;
+    font-size: 0.75rem;
+}
+
+.rz-sidebar .rz-panel-menu .rz-navigation-item-link:hover .rz-navigation-item-icon-children {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* 7. Separadores entre grupos principales */
+.rz-sidebar .rz-panel-menu > .rz-navigation-item + .rz-navigation-item {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+}
+
+/* 8. Scrollbar personalizada del sidebar */
+.rz-sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.rz-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.rz-sidebar::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+}
+
+.rz-sidebar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+}
