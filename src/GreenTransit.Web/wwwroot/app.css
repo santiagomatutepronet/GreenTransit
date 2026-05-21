@@ -1,5 +1,15 @@
 /* app.css — Blazor-specific overrides + Bootstrap → site.css alignment layer */
 
+/* ── RadzenBadge — estilo global outline (sin relleno de color) ────────────── *
+ * Se eliminan los fondos sólidos de todos los badges (Primary, Secondary, Info,
+ * Success, Warning, Danger, etc.) y se muestra solo texto + borde del color.
+ * Aplica a cualquier badge en toda la aplicación de forma automática.        */
+.rz-badge {
+    background-color: transparent !important;
+    border: 1px solid currentColor;
+    font-weight: 500;
+}
+
 /* ── GlobalSearchBar ───────────────────────────────────────────────────────── */
 
 .global-search {

@@ -29,7 +29,7 @@ else
                     EmptyText="No hay perfiles registrados.">
         <Columns>
             <RadzenDataGridColumn TItem="ProfileDto" Property="Reference" Title="Referencia" Width="180px">
-                <Template Context="p"><RadzenBadge Text="@p.Reference" BadgeStyle="BadgeStyle.Secondary" /></Template>
+                <Template Context="p"><code>@(p.Reference ?? "—")</code></Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="ProfileDto" Property="Description" Title="Descripción">
                 <Template Context="p">@(p.Description ?? "—")</Template>

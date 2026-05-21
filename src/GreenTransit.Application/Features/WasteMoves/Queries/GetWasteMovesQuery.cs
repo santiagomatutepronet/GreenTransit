@@ -2,6 +2,7 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.WasteMoves.DTOs;
 using GreenTransit.Domain.Authorization;
+using GreenTransit.Domain.Entities;
 using MediatR;
 
 namespace GreenTransit.Application.Features.WasteMoves.Queries;
@@ -18,7 +19,9 @@ public sealed record GetWasteMovesQuery(
     DateTime? DateTo             = null,
     string?   SearchTerm         = null,
     int       PageNumber         = 1,
-    int       PageSize           = 15
+    int       PageSize           = 15,
+    string?   SortBy             = null,
+    bool      SortDescending     = true
 ) : IRequest<PaginatedResult<WasteMoveDto>>;
 
 public sealed class GetWasteMovesQueryHandler
@@ -133,9 +136,19 @@ public sealed class GetWasteMovesQueryHandler
         var total = await q.CountAsync(ct);
 
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
-        var items = await q
-            .OrderByDescending(w => w.RequestDate)
-            .ThenByDescending(w => w.DateCreateSys)
+
+        IQueryable<GreenTransit.Domain.Entities.WasteMove> sorted = (request.SortBy?.ToLowerInvariant()) switch
+        {
+            "wastemovereference"  => request.SortDescending ? q.OrderByDescending(w => w.WasteMoveReference)  : q.OrderBy(w => w.WasteMoveReference),
+            "servicestatus"       => request.SortDescending ? q.OrderByDescending(w => w.ServiceStatus)        : q.OrderBy(w => w.ServiceStatus),
+            "sourcename"          => request.SortDescending ? q.OrderByDescending(w => w.Source!.Name)         : q.OrderBy(w => w.Source!.Name),
+            "destinationname"     => request.SortDescending ? q.OrderByDescending(w => w.Destination!.Name)    : q.OrderBy(w => w.Destination!.Name),
+            "plannedpickupstart"  => request.SortDescending ? q.OrderByDescending(w => w.PlannedPickupStart)   : q.OrderBy(w => w.PlannedPickupStart),
+            "requestdate"         => request.SortDescending ? q.OrderByDescending(w => w.RequestDate)          : q.OrderBy(w => w.RequestDate),
+            _                     => q.OrderByDescending(w => w.RequestDate).ThenByDescending(w => w.DateCreateSys),
+        };
+
+        var items = await sorted
             .Skip((request.PageNumber - 1) * pageSize)
             .Take(pageSize)
             .Select(w => new WasteMoveDto(

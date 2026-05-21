@@ -132,7 +132,7 @@
             <RadzenDataGridColumn TItem="ServiceOrderDto" Property="EstimatedWeight" Title="Peso est." Width="100px" TextAlign="TextAlign.Right">
                 <Template Context="so">@(so.EstimatedWeight.HasValue ? $"{so.EstimatedWeight:N0} kg" : "—")</Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="ServiceOrderDto" Title="" Width="120px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+            <RadzenDataGridColumn TItem="ServiceOrderDto" Title="" Width="120px" Filterable="false" Sortable="false" TextAlign="TextAlign.Left">
                 <Template Context="so">
                     @{ var detailUrl = "/service-orders/" + so.Id; var editUrl = "/service-orders/" + so.Id + "/edit"; }
                     <RadzenButton Icon="visibility" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
@@ -173,6 +173,8 @@
     private RadzenDataGrid<ServiceOrderDto> _grid = default!;
     private bool   _loading = true;
     private int    _page    = 1;
+    private string _sortBy          = "";
+    private bool   _sortDescending  = true;
     private string _search            = "";
     private string _filterStatus      = "";
     private string _filterPriority    = "";
@@ -196,6 +198,12 @@
     private async Task OnLoadData(LoadDataArgs args)
     {
         _page = args.Skip.HasValue ? (args.Skip.Value / PageSize) + 1 : 1;
+        var sort = args.Sorts?.FirstOrDefault();
+        if (sort != null)
+        {
+            _sortBy         = sort.Property ?? "";
+            _sortDescending = sort.SortOrder == SortOrder.Descending;
+        }
         await LoadAsync();
     }
 
@@ -232,7 +240,9 @@
                 PlannedPickupFrom: _pickupFrom,
                 PlannedPickupTo:   _pickupTo,
                 PageNumber:        _page,
-                PageSize:          PageSize));
+                PageSize:          PageSize,
+                SortBy:            string.IsNullOrEmpty(_sortBy) ? null : _sortBy,
+                SortDescending:    _sortDescending));
         }
         catch (Exception ex) { _errorMessage = ex.Message; }
         finally { _loading = false; }

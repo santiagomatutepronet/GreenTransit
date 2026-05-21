@@ -212,6 +212,8 @@
     private bool    _loading         = true;
     private bool    _isAdmin         = false;
     private int     _currentPage     = 1;
+    private string  _sortBy          = "";
+    private bool    _sortDescending  = false;
     private string? _searchTerm;
     private string  _filterDangerous = "";
     private string  _filterRaee      = "";
@@ -233,17 +235,25 @@
     {
         _loading = true;
         _pagedResult = await Mediator.Send(new GetLerCodesPagedQuery(
-            IsDangerous: ParseBool(_filterDangerous),
-            IsRAEE:      ParseBool(_filterRaee),
-            SearchTerm:  _searchTerm,
-            PageNumber:  _currentPage,
-            PageSize:    PageSize));
+            IsDangerous:   ParseBool(_filterDangerous),
+            IsRAEE:        ParseBool(_filterRaee),
+            SearchTerm:    _searchTerm,
+            PageNumber:    _currentPage,
+            PageSize:      PageSize,
+            SortBy:        string.IsNullOrEmpty(_sortBy) ? null : _sortBy,
+            SortDescending: _sortDescending));
         _loading = false;
     }
 
     private async Task OnLoadData(LoadDataArgs args)
     {
         _currentPage = args.Skip.HasValue ? (args.Skip.Value / PageSize) + 1 : 1;
+        var sort = args.Sorts?.FirstOrDefault();
+        if (sort != null)
+        {
+            _sortBy         = sort.Property ?? "";
+            _sortDescending = sort.SortOrder == SortOrder.Descending;
+        }
         await LoadAsync();
     }
 

@@ -2,6 +2,7 @@ using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Common.Models;
 using GreenTransit.Application.Features.ServiceOrders.DTOs;
 using GreenTransit.Domain.Authorization;
+using GreenTransit.Domain.Entities;
 using MediatR;
 
 namespace GreenTransit.Application.Features.ServiceOrders.Queries;
@@ -21,7 +22,9 @@ public sealed record GetServiceOrdersQuery(
     int       PageNumber           = 1,
     int       PageSize             = 15,
     string[]? Statuses             = null,
-    bool      OnlyWithoutWasteMove = false
+    bool      OnlyWithoutWasteMove = false,
+    string?   SortBy               = null,
+    bool      SortDescending       = true
 ) : IRequest<PaginatedResult<ServiceOrderDto>>;
 
 public sealed class GetServiceOrdersQueryHandler
@@ -143,8 +146,20 @@ public sealed class GetServiceOrdersQueryHandler
         var total = await q.CountAsync(cancellationToken);
 
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
-        var raw = await q
-            .OrderByDescending(s => s.IssuedAt)
+
+        IQueryable<GreenTransit.Domain.Entities.ServiceOrder> sorted = (request.SortBy?.ToLowerInvariant()) switch
+        {
+            "serviceordernumber"  => request.SortDescending ? q.OrderByDescending(s => s.ServiceOrderNumber)  : q.OrderBy(s => s.ServiceOrderNumber),
+            "status"              => request.SortDescending ? q.OrderByDescending(s => s.Status)              : q.OrderBy(s => s.Status),
+            "priority"            => request.SortDescending ? q.OrderByDescending(s => s.Priority)            : q.OrderBy(s => s.Priority),
+            "issuedat"            => request.SortDescending ? q.OrderByDescending(s => s.IssuedAt)            : q.OrderBy(s => s.IssuedAt),
+            "plannedpickupstart"  => request.SortDescending ? q.OrderByDescending(s => s.PlannedPickupStart)  : q.OrderBy(s => s.PlannedPickupStart),
+            "pickuppointname"     => request.SortDescending ? q.OrderByDescending(s => s.PickupPoint!.Name)   : q.OrderBy(s => s.PickupPoint!.Name),
+            "wastestream"         => request.SortDescending ? q.OrderByDescending(s => s.WasteStream)         : q.OrderBy(s => s.WasteStream),
+            _                     => q.OrderByDescending(s => s.IssuedAt),
+        };
+
+        var raw = await sorted
             .Skip((request.PageNumber - 1) * pageSize)
             .Take(pageSize)
             .Select(s => new

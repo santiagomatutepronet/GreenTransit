@@ -87,7 +87,7 @@
             <Template Context="e"><code>@(e.NationalId ?? "—")</code></Template>
         </RadzenDataGridColumn>
         <RadzenDataGridColumn TItem="EntityDto" Property="EntityRole" Title="Rol" Width="130px">
-            <Template Context="e"><RadzenBadge Text="@e.EntityRole" /></Template>
+            <Template Context="e"><code>@(e.EntityRole ?? "—")</code></Template>
         </RadzenDataGridColumn>
         <RadzenDataGridColumn TItem="EntityDto" Property="ProvinceCode" Title="Provincia" Width="110px">
             <Template Context="e">@(e.ProvinceCode ?? "—")</Template>
@@ -179,6 +179,8 @@
 
     private EntityDto? _deactivateTarget;
     private bool _canWrite;
+    private string _sortBy        = "";
+    private bool   _sortDescending = false;
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
     protected override async Task OnInitializedAsync()
@@ -191,6 +193,12 @@
     private async Task OnLoadData(LoadDataArgs args)
     {
         _pageNumber = args.Skip.HasValue ? (args.Skip.Value / PageSize) + 1 : 1;
+        var sort = args.Sorts?.FirstOrDefault();
+        if (sort != null)
+        {
+            _sortBy         = sort.Property ?? "";
+            _sortDescending = sort.SortOrder == SortOrder.Descending;
+        }
         await LoadAsync();
     }
 
@@ -209,12 +217,14 @@
             };
 
             _result = await Mediator.Send(new GetEntitiesQuery(
-                EntityRole:   string.IsNullOrEmpty(_filterRole)    ? null : _filterRole,
-                ProvinceCode: string.IsNullOrEmpty(_filterProvince) ? null : _filterProvince,
-                IsActive:     activeFilter,
-                SearchTerm:   string.IsNullOrEmpty(_searchTerm)    ? null : _searchTerm,
-                PageNumber:   _pageNumber,
-                PageSize:     PageSize));
+                EntityRole:    string.IsNullOrEmpty(_filterRole)     ? null : _filterRole,
+                ProvinceCode:  string.IsNullOrEmpty(_filterProvince) ? null : _filterProvince,
+                IsActive:      activeFilter,
+                SearchTerm:    string.IsNullOrEmpty(_searchTerm)     ? null : _searchTerm,
+                PageNumber:    _pageNumber,
+                PageSize:      PageSize,
+                SortBy:        string.IsNullOrEmpty(_sortBy) ? null : _sortBy,
+                SortDescending: _sortDescending));
         }
         catch (Exception ex)
         {

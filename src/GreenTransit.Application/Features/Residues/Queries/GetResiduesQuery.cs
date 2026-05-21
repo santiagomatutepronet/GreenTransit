@@ -20,7 +20,9 @@ public sealed record GetResiduesQuery(
     Guid?   IdProducer  = null,
     string? SearchTerm  = null,
     int     PageNumber  = 1,
-    int     PageSize    = 15
+    int     PageSize    = 15,
+    string? SortBy      = null,
+    bool    SortDescending = false
 ) : IRequest<PaginatedResult<ResidueDto>>;
 
 public sealed class GetResiduesQueryHandler
@@ -81,9 +83,19 @@ public sealed class GetResiduesQueryHandler
         var totalCount = await query.CountAsync(cancellationToken);
 
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
-        var items = await query
-            .OrderBy(r => r.ResidueType)
-            .ThenBy(r => r.Name)
+
+        IQueryable<GreenTransit.Domain.Entities.Residue> sorted = (request.SortBy?.ToLowerInvariant()) switch
+        {
+            "name"         => request.SortDescending ? query.OrderByDescending(r => r.Name)         : query.OrderBy(r => r.Name),
+            "residuetype"  => request.SortDescending ? query.OrderByDescending(r => r.ResidueType)  : query.OrderBy(r => r.ResidueType),
+            "reference"    => request.SortDescending ? query.OrderByDescending(r => r.Reference)    : query.OrderBy(r => r.Reference),
+            "isdangerous"  => request.SortDescending ? query.OrderByDescending(r => r.IsDangerous)  : query.OrderBy(r => r.IsDangerous),
+            "israee"       => request.SortDescending ? query.OrderByDescending(r => r.IsRAEE)       : query.OrderBy(r => r.IsRAEE),
+            "isactive"     => request.SortDescending ? query.OrderByDescending(r => r.IsActive)     : query.OrderBy(r => r.IsActive),
+            _              => query.OrderBy(r => r.ResidueType).ThenBy(r => r.Name),
+        };
+
+        var items = await sorted
             .Skip((request.PageNumber - 1) * pageSize)
             .Take(pageSize)
             .Select(r => new ResidueDto(

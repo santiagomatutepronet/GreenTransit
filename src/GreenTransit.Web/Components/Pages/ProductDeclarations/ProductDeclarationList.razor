@@ -139,7 +139,7 @@ else
             <RadzenDataGridColumn TItem="ProductDeclarationDto" Property="DateEmit" Title="Emisión" Width="100px">
                 <Template Context="pd">@(pd.DateEmit?.ToString("dd/MM/yyyy") ?? "—")</Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="ProductDeclarationDto" Title="" Width="140px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+            <RadzenDataGridColumn TItem="ProductDeclarationDto" Title="" Width="140px" Filterable="false" Sortable="false" TextAlign="TextAlign.Left">
                 <Template Context="pd">
                     @{ var isEditable = ProductDeclaration.States.Editable.Contains(pd.State ?? "");
                        var canManage  = CurrentUser.IsInAnyProfile(ProfileConstants.Admin, ProfileConstants.Producer);

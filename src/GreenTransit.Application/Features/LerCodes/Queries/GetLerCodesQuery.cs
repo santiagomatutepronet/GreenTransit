@@ -96,7 +96,9 @@ public sealed record GetLerCodesPagedQuery(
     bool?   IsRAEE      = null,
     string? SearchTerm  = null,
     int     PageNumber  = 1,
-    int     PageSize    = 15
+    int     PageSize    = 15,
+    string? SortBy      = null,
+    bool    SortDescending = false
 ) : IRequest<PaginatedResult<LerCodeDto>>;
 
 public sealed class GetLerCodesPagedQueryHandler
@@ -136,10 +138,19 @@ public sealed class GetLerCodesPagedQueryHandler
         var total = await query.CountAsync(ct);
 
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
-        var items = await query
-            .OrderBy(l => l.Chapter)
-            .ThenBy(l => l.SubChapter)
-            .ThenBy(l => l.Code)
+
+        IQueryable<GreenTransit.Domain.Entities.LerCode> sorted = (request.SortBy?.ToLowerInvariant()) switch
+        {
+            "code"               => request.SortDescending ? query.OrderByDescending(l => l.Code)               : query.OrderBy(l => l.Code),
+            "description"        => request.SortDescending ? query.OrderByDescending(l => l.Description)        : query.OrderBy(l => l.Description),
+            "chapter"            => request.SortDescending ? query.OrderByDescending(l => l.Chapter)            : query.OrderBy(l => l.Chapter),
+            "subchapter"         => request.SortDescending ? query.OrderByDescending(l => l.SubChapter)         : query.OrderBy(l => l.SubChapter),
+            "isdangerous"        => request.SortDescending ? query.OrderByDescending(l => l.IsDangerous)        : query.OrderBy(l => l.IsDangerous),
+            "israee"             => request.SortDescending ? query.OrderByDescending(l => l.IsRAEE)             : query.OrderBy(l => l.IsRAEE),
+            _                    => query.OrderBy(l => l.Chapter).ThenBy(l => l.SubChapter).ThenBy(l => l.Code),
+        };
+
+        var items = await sorted
             .Skip((request.PageNumber - 1) * pageSize)
             .Take(pageSize)
             .Select(l => new LerCodeDto(

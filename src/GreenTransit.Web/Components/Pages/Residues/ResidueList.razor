@@ -143,6 +143,8 @@
     private string  _filterDangerous = "";
     private string  _filterRaee      = "";
     private int     _page            = 1;
+    private string  _sortBy          = "";
+    private bool    _sortDescending  = false;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -154,13 +156,21 @@
             IsDangerous: ParseBool(_filterDangerous),
             IsRAEE:      ParseBool(_filterRaee),
             SearchTerm:  _searchTerm,
-            PageNumber:  _page));
+            PageNumber:  _page,
+            SortBy:      string.IsNullOrEmpty(_sortBy) ? null : _sortBy,
+            SortDescending: _sortDescending));
         _loading = false;
     }
 
     private async Task OnLoadData(LoadDataArgs args)
     {
         _page = args.Skip.HasValue ? (args.Skip.Value / 20) + 1 : 1;
+        var sort = args.Sorts?.FirstOrDefault();
+        if (sort != null)
+        {
+            _sortBy         = sort.Property ?? "";
+            _sortDescending = sort.SortOrder == SortOrder.Descending;
+        }
         await LoadAsync();
     }
 

@@ -136,7 +136,7 @@ else
                 <Template Context="wm">@(wm.PlannedPickupStart?.ToString("dd/MM/yyyy") ?? "—")</Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="WasteMoveDto" Property="ResidueCount" Title="Líneas" Width="80px" TextAlign="TextAlign.Right" />
-            <RadzenDataGridColumn TItem="WasteMoveDto" Title="" Width="110px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+            <RadzenDataGridColumn TItem="WasteMoveDto" Title="" Width="110px" Filterable="false" Sortable="false" TextAlign="TextAlign.Left">
                 <Template Context="wm">
                     @{ var detailUrl = "/waste-moves/" + wm.Id; var editUrl = "/waste-moves/" + wm.Id + "/edit"; }
                     <RadzenButton Icon="visibility" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
@@ -160,6 +160,8 @@ else
     private RadzenDataGrid<WasteMoveDto> _grid = default!;
     private bool   _loading = true;
     private int    _page    = 1;
+    private string _sortBy         = "";
+    private bool   _sortDescending = true;
     private string _search             = "";
     private string _filterStatus       = "";
     private Guid?  _filterSource;
@@ -184,6 +186,12 @@ else
     private async Task OnLoadData(LoadDataArgs args)
     {
         _page = args.Skip.HasValue ? (args.Skip.Value / PageSize) + 1 : 1;
+        var sort = args.Sorts?.FirstOrDefault();
+        if (sort != null)
+        {
+            _sortBy         = sort.Property ?? "";
+            _sortDescending = sort.SortOrder == SortOrder.Descending;
+        }
         await ReloadDataAsync();
     }
 
@@ -208,7 +216,9 @@ else
             DateTo        : _dateTo,
             SearchTerm    : string.IsNullOrWhiteSpace(_search) ? null : _search,
             PageNumber    : _page,
-            PageSize      : PageSize
+            PageSize      : PageSize,
+            SortBy        : string.IsNullOrEmpty(_sortBy) ? null : _sortBy,
+            SortDescending: _sortDescending
         ));
         _loading = false;
     }
