@@ -252,6 +252,33 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["ProducerCarbonReport"]       = "Huella de Carbono — Reporte Productor",
             ["PublicEntityCarbonView"]     = "Huella de Carbono — Vista Entidad Pública",
             ["PublishData"]                = "Publicar Datos — EcoDataNet",
+            // EcoDataNet Dataspace — Configuración
+            ["EdcConfigDispatchOffice"]    = "EDN — Configuración Oficina Asignación",
+            ["EdcConfigScrap"]             = "EDN — Configuración SCRAP",
+            ["EdcConfigPublicEntity"]      = "EDN — Configuración Ayuntamiento",
+            ["EdcConfigCarrier"]           = "EDN — Configuración Transportista",
+            ["EdcConfigCac"]               = "EDN — Configuración CAC",
+            ["EdcConfigPlant"]             = "EDN — Configuración Planta Tratamiento",
+            ["EdcConfigProducer"]          = "EDN — Configuración Productor",
+            ["EdcConfigCoordinator"]       = "EDN — Configuración Coordinador",
+            // EcoDataNet Dataspace — Publicar datos
+            ["EdcPublishDispatchOffice"]   = "EDN — Publicar Datos Oficina Asignación",
+            ["EdcPublishScrap"]            = "EDN — Publicar Datos SCRAP",
+            ["EdcPublishPublicEntity"]     = "EDN — Publicar Datos Ayuntamiento",
+            ["EdcPublishCarrier"]          = "EDN — Publicar Datos Transportista",
+            ["EdcPublishCac"]              = "EDN — Publicar Datos CAC",
+            ["EdcPublishPlant"]            = "EDN — Publicar Datos Planta Tratamiento",
+            ["EdcPublishProducer"]         = "EDN — Publicar Datos Productor",
+            ["EdcPublishCoordinator"]      = "EDN — Publicar Datos Coordinador",
+            // EcoDataNet Dataspace — Consumir datos
+            ["EdcConsumeDispatchOffice"]   = "EDN — Consumir Datos Oficina Asignación",
+            ["EdcConsumeScrap"]            = "EDN — Consumir Datos SCRAP",
+            ["EdcConsumePublicEntity"]     = "EDN — Consumir Datos Ayuntamiento",
+            ["EdcConsumeCarrier"]          = "EDN — Consumir Datos Transportista",
+            ["EdcConsumeCac"]              = "EDN — Consumir Datos CAC",
+            ["EdcConsumePlant"]            = "EDN — Consumir Datos Planta Tratamiento",
+            ["EdcConsumeProducer"]         = "EDN — Consumir Datos Productor",
+            ["EdcConsumeCoordinator"]      = "EDN — Consumir Datos Coordinador",
         };
 
         if (map.TryGetValue(componentName, out var name)) return name;

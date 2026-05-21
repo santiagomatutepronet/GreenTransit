@@ -1,0 +1,10 @@
+﻿@page "/ecodatanet/coordinator/config"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEcoDataNet)]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<PageTitle>Configuración EDC — Coordinador del acuerdo — GreenTransit</PageTitle>
+
+<EdcConfigBase ProfileId="coordinator" ProfileLabel="Coordinador del acuerdo" />

@@ -428,14 +428,120 @@
 
     </RadzenPanelMenuItem>
 
-    @* ?? EcoDataNet ?????????????????????????????????????????????????????? *@
-    @if (Allow("/ecodatanet/publish"))
+    @* 🌐 EcoDataNet ⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡ *@
+    @if (AllowAny("/ecodatanet/publish",
+                  "/ecodatanet/dispatch-office/config", "/ecodatanet/dispatch-office/publish", "/ecodatanet/dispatch-office/consume",
+                  "/ecodatanet/scrap/config",           "/ecodatanet/scrap/publish",           "/ecodatanet/scrap/consume",
+                  "/ecodatanet/public-entity/config",   "/ecodatanet/public-entity/publish",   "/ecodatanet/public-entity/consume",
+                  "/ecodatanet/carrier/config",         "/ecodatanet/carrier/publish",         "/ecodatanet/carrier/consume",
+                  "/ecodatanet/cac/config",             "/ecodatanet/cac/publish",             "/ecodatanet/cac/consume",
+                  "/ecodatanet/plant/config",           "/ecodatanet/plant/publish",           "/ecodatanet/plant/consume",
+                  "/ecodatanet/producer/config",        "/ecodatanet/producer/publish",        "/ecodatanet/producer/consume",
+                  "/ecodatanet/coordinator/config",     "/ecodatanet/coordinator/publish",     "/ecodatanet/coordinator/consume"))
     {
         <RadzenPanelMenuItem Text="EcoDataNet" Icon="broadcast_on_personal"
                              Expanded="@IsGroupExpanded("ecodatanet")"
                              ExpandedChanged="@(e => OnGroupExpandedChanged("ecodatanet", e))">
+
             <RadzenPanelMenuItem Text="Publicar Datos" Icon="cloud_upload" Path="/ecodatanet/publish"
-                                 Visible="@Allow("/ecodatanet/publish")" />
+                                 Visible="false" />
+
+            @* ── Oficina de Asignación ── *@
+            @if (AllowAny("/ecodatanet/dispatch-office/config", "/ecodatanet/dispatch-office/publish", "/ecodatanet/dispatch-office/consume"))
+            {
+                <RadzenPanelMenuItem Text="Oficina de Asignación" Icon="business_center"
+                                     Expanded="@IsGroupExpanded("edn-dispatch-office")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("edn-dispatch-office", e))">
+                    <RadzenPanelMenuItem Text="Configuración"  Icon="settings"       Path="/ecodatanet/dispatch-office/config"   Visible="@Allow("/ecodatanet/dispatch-office/config")" />
+                    <RadzenPanelMenuItem Text="Publicar datos" Icon="cloud_upload"   Path="/ecodatanet/dispatch-office/publish"  Visible="@Allow("/ecodatanet/dispatch-office/publish")" />
+                    <RadzenPanelMenuItem Text="Consumir datos" Icon="cloud_download" Path="/ecodatanet/dispatch-office/consume"  Visible="@Allow("/ecodatanet/dispatch-office/consume")" />
+                </RadzenPanelMenuItem>
+            }
+
+            @* ── SCRAP ── *@
+            @if (AllowAny("/ecodatanet/scrap/config", "/ecodatanet/scrap/publish", "/ecodatanet/scrap/consume"))
+            {
+                <RadzenPanelMenuItem Text="SCRAP" Icon="recycling"
+                                     Expanded="@IsGroupExpanded("edn-scrap")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("edn-scrap", e))">
+                    <RadzenPanelMenuItem Text="Configuración"  Icon="settings"       Path="/ecodatanet/scrap/config"   Visible="@Allow("/ecodatanet/scrap/config")" />
+                    <RadzenPanelMenuItem Text="Publicar datos" Icon="cloud_upload"   Path="/ecodatanet/scrap/publish"  Visible="@Allow("/ecodatanet/scrap/publish")" />
+                    <RadzenPanelMenuItem Text="Consumir datos" Icon="cloud_download" Path="/ecodatanet/scrap/consume"  Visible="@Allow("/ecodatanet/scrap/consume")" />
+                </RadzenPanelMenuItem>
+            }
+
+            @* ── Ayuntamiento ── *@
+            @if (AllowAny("/ecodatanet/public-entity/config", "/ecodatanet/public-entity/publish", "/ecodatanet/public-entity/consume"))
+            {
+                <RadzenPanelMenuItem Text="Ayuntamiento" Icon="account_balance"
+                                     Expanded="@IsGroupExpanded("edn-public-entity")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("edn-public-entity", e))">
+                    <RadzenPanelMenuItem Text="Configuración"  Icon="settings"       Path="/ecodatanet/public-entity/config"   Visible="@Allow("/ecodatanet/public-entity/config")" />
+                    <RadzenPanelMenuItem Text="Publicar datos" Icon="cloud_upload"   Path="/ecodatanet/public-entity/publish"  Visible="@Allow("/ecodatanet/public-entity/publish")" />
+                    <RadzenPanelMenuItem Text="Consumir datos" Icon="cloud_download" Path="/ecodatanet/public-entity/consume"  Visible="@Allow("/ecodatanet/public-entity/consume")" />
+                </RadzenPanelMenuItem>
+            }
+
+            @* ── Transportista ── *@
+            @if (AllowAny("/ecodatanet/carrier/config", "/ecodatanet/carrier/publish", "/ecodatanet/carrier/consume"))
+            {
+                <RadzenPanelMenuItem Text="Transportista" Icon="local_shipping"
+                                     Expanded="@IsGroupExpanded("edn-carrier")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("edn-carrier", e))">
+                    <RadzenPanelMenuItem Text="Configuración"  Icon="settings"       Path="/ecodatanet/carrier/config"   Visible="@Allow("/ecodatanet/carrier/config")" />
+                    <RadzenPanelMenuItem Text="Publicar datos" Icon="cloud_upload"   Path="/ecodatanet/carrier/publish"  Visible="@Allow("/ecodatanet/carrier/publish")" />
+                    <RadzenPanelMenuItem Text="Consumir datos" Icon="cloud_download" Path="/ecodatanet/carrier/consume"  Visible="@Allow("/ecodatanet/carrier/consume")" />
+                </RadzenPanelMenuItem>
+            }
+
+            @* ── CAC ── *@
+            @if (AllowAny("/ecodatanet/cac/config", "/ecodatanet/cac/publish", "/ecodatanet/cac/consume"))
+            {
+                <RadzenPanelMenuItem Text="CAC" Icon="warehouse"
+                                     Expanded="@IsGroupExpanded("edn-cac")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("edn-cac", e))">
+                    <RadzenPanelMenuItem Text="Configuración"  Icon="settings"       Path="/ecodatanet/cac/config"   Visible="@Allow("/ecodatanet/cac/config")" />
+                    <RadzenPanelMenuItem Text="Publicar datos" Icon="cloud_upload"   Path="/ecodatanet/cac/publish"  Visible="@Allow("/ecodatanet/cac/publish")" />
+                    <RadzenPanelMenuItem Text="Consumir datos" Icon="cloud_download" Path="/ecodatanet/cac/consume"  Visible="@Allow("/ecodatanet/cac/consume")" />
+                </RadzenPanelMenuItem>
+            }
+
+            @* ── Planta de tratamiento ── *@
+            @if (AllowAny("/ecodatanet/plant/config", "/ecodatanet/plant/publish", "/ecodatanet/plant/consume"))
+            {
+                <RadzenPanelMenuItem Text="Planta tratamiento" Icon="factory"
+                                     Expanded="@IsGroupExpanded("edn-plant")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("edn-plant", e))">
+                    <RadzenPanelMenuItem Text="Configuración"  Icon="settings"       Path="/ecodatanet/plant/config"   Visible="@Allow("/ecodatanet/plant/config")" />
+                    <RadzenPanelMenuItem Text="Publicar datos" Icon="cloud_upload"   Path="/ecodatanet/plant/publish"  Visible="@Allow("/ecodatanet/plant/publish")" />
+                    <RadzenPanelMenuItem Text="Consumir datos" Icon="cloud_download" Path="/ecodatanet/plant/consume"  Visible="@Allow("/ecodatanet/plant/consume")" />
+                </RadzenPanelMenuItem>
+            }
+
+            @* ── Productor ── *@
+            @if (AllowAny("/ecodatanet/producer/config", "/ecodatanet/producer/publish", "/ecodatanet/producer/consume"))
+            {
+                <RadzenPanelMenuItem Text="Productor" Icon="precision_manufacturing"
+                                     Expanded="@IsGroupExpanded("edn-producer")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("edn-producer", e))">
+                    <RadzenPanelMenuItem Text="Configuración"  Icon="settings"       Path="/ecodatanet/producer/config"   Visible="@Allow("/ecodatanet/producer/config")" />
+                    <RadzenPanelMenuItem Text="Publicar datos" Icon="cloud_upload"   Path="/ecodatanet/producer/publish"  Visible="@Allow("/ecodatanet/producer/publish")" />
+                    <RadzenPanelMenuItem Text="Consumir datos" Icon="cloud_download" Path="/ecodatanet/producer/consume"  Visible="@Allow("/ecodatanet/producer/consume")" />
+                </RadzenPanelMenuItem>
+            }
+
+            @* ── Coordinador ── *@
+            @if (AllowAny("/ecodatanet/coordinator/config", "/ecodatanet/coordinator/publish", "/ecodatanet/coordinator/consume"))
+            {
+                <RadzenPanelMenuItem Text="Coordinador" Icon="groups"
+                                     Expanded="@IsGroupExpanded("edn-coordinator")"
+                                     ExpandedChanged="@(e => OnGroupExpandedChanged("edn-coordinator", e))">
+                    <RadzenPanelMenuItem Text="Configuración"  Icon="settings"       Path="/ecodatanet/coordinator/config"   Visible="@Allow("/ecodatanet/coordinator/config")" />
+                    <RadzenPanelMenuItem Text="Publicar datos" Icon="cloud_upload"   Path="/ecodatanet/coordinator/publish"  Visible="@Allow("/ecodatanet/coordinator/publish")" />
+                    <RadzenPanelMenuItem Text="Consumir datos" Icon="cloud_download" Path="/ecodatanet/coordinator/consume"  Visible="@Allow("/ecodatanet/coordinator/consume")" />
+                </RadzenPanelMenuItem>
+            }
+
         </RadzenPanelMenuItem>
     }
 

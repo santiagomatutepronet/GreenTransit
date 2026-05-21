@@ -1,0 +1,10 @@
+﻿@page "/ecodatanet/public-entity/consume"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEcoDataNet)]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<PageTitle>Consumir Datos — Entidad Pública / Ayuntamiento — GreenTransit</PageTitle>
+
+<EdcConsumeDataBase ProfileId="public-entity" ProfileLabel="Entidad Pública / Ayuntamiento" />

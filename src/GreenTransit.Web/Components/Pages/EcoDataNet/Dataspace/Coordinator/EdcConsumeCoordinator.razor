@@ -1,0 +1,10 @@
+﻿@page "/ecodatanet/coordinator/consume"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEcoDataNet)]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<PageTitle>Consumir Datos — Coordinador del acuerdo — GreenTransit</PageTitle>
+
+<EdcConsumeDataBase ProfileId="coordinator" ProfileLabel="Coordinador del acuerdo" />

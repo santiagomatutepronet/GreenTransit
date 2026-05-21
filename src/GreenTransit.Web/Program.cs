@@ -650,6 +650,11 @@ try
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.PublicEnt, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
 
+        // EcoDataNet Dataspace — cualquier usuario autenticado puede acceder.
+        // El control fino se gestiona desde /security/page-permissions.
+        options.AddPolicy(PolicyConstants.CanAccessEcoDataNet, policy =>
+            policy.RequireAuthenticatedUser());
+
         // Operaciones exclusivas de administración del sistema.
         options.AddPolicy(PolicyConstants.AdminOnly, policy =>
             policy.AddRequirements(new ProfileRequirement(

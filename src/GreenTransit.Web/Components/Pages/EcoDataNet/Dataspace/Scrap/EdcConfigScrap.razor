@@ -1,0 +1,10 @@
+﻿@page "/ecodatanet/scrap/config"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEcoDataNet)]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<PageTitle>Configuración EDC — SCRAP — GreenTransit</PageTitle>
+
+<EdcConfigBase ProfileId="scrap" ProfileLabel="SCRAP" />

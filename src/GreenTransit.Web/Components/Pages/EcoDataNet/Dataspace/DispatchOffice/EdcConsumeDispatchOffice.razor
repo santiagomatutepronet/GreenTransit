@@ -1,0 +1,10 @@
+﻿@page "/ecodatanet/dispatch-office/consume"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEcoDataNet)]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<PageTitle>Consumir Datos — Oficina de Asignación — GreenTransit</PageTitle>
+
+<EdcConsumeDataBase ProfileId="dispatch-office" ProfileLabel="Oficina de Asignación" />

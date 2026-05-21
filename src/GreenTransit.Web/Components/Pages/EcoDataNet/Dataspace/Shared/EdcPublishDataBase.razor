@@ -1,0 +1,78 @@
+@using Radzen
+@using Radzen.Blazor
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<RadzenCard class="mb-4">
+    <RadzenStack Gap="0.5rem">
+        <RadzenText TextStyle="TextStyle.H5">
+            <RadzenIcon Icon="cloud_upload" class="me-2" />Datasets publicados — @ProfileLabel
+        </RadzenText>
+        <RadzenText TextStyle="TextStyle.Body2" Style="color: var(--rz-text-secondary-color)">
+            Catálogo de datasets que este participante publica en el espacio de datos EcoDataNet.
+        </RadzenText>
+    </RadzenStack>
+</RadzenCard>
+
+@if (_profile is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
+        No se encontraron datos para el perfil «@ProfileId».
+    </RadzenAlert>
+}
+else if (_profile.Publish.Count == 0)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        Este perfil no publica datasets en el espacio de datos. Solo consume datos de otros participantes.
+    </RadzenAlert>
+}
+else
+{
+    <RadzenDataGrid TItem="DatasetInfo" Data="@_profile.Publish"
+                    AllowSorting="true" AllowPaging="false"
+                    GridLines="DataGridGridLines.Both" class="mb-4">
+        <Columns>
+            <RadzenDataGridColumn TItem="DatasetInfo" Property="Uc" Title="UC" Width="90px">
+                <Template Context="item">
+                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@item.Uc" IsPill="true" />
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="DatasetInfo" Property="Desc" Title="Descripción" />
+            <RadzenDataGridColumn TItem="DatasetInfo" Property="Ref" Title="Referencia" Width="360px">
+                <Template Context="item">
+                    <code style="font-size:0.8rem">@item.Ref</code>
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" class="mb-3">
+        <RadzenText TextStyle="TextStyle.Caption" Style="color: var(--rz-text-secondary-color)">
+            Endpoint base: <code>@EcoDataNetDatasetStore.BaseDatasetEndpointHint</code>
+        </RadzenText>
+    </RadzenStack>
+
+    <RadzenTooltip />
+    <RadzenButton Text="Publicar datos" Icon="cloud_upload" ButtonStyle="ButtonStyle.Primary"
+                  Disabled="true"
+                  MouseEnter="@(args => ShowTooltip(args, "Funcionalidad pendiente de integración con conector EDC"))" />
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public string ProfileId { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string ProfileLabel { get; set; } = string.Empty;
+
+    [Inject] private TooltipService TooltipService { get; set; } = default!;
+
+    private ProfileDatasets? _profile;
+
+    protected override void OnParametersSet()
+    {
+        _profile = EcoDataNetDatasetStore.GetBySlug(ProfileId);
+    }
+
+    private void ShowTooltip(ElementReference elementRef, string text)
+        => TooltipService.Open(elementRef, text, new TooltipOptions { Duration = 3000 });
+}

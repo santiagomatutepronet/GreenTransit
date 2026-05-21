@@ -1,0 +1,10 @@
+﻿@page "/ecodatanet/plant/publish"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEcoDataNet)]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<PageTitle>Publicar Datos — Planta de tratamiento — GreenTransit</PageTitle>
+
+<EdcPublishDataBase ProfileId="plant" ProfileLabel="Planta de tratamiento" />

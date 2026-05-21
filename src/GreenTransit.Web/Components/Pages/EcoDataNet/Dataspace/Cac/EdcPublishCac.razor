@@ -1,0 +1,10 @@
+﻿@page "/ecodatanet/cac/publish"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEcoDataNet)]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<PageTitle>Publicar Datos — Operador de Centro de Acopio — GreenTransit</PageTitle>
+
+<EdcPublishDataBase ProfileId="cac" ProfileLabel="Operador de Centro de Acopio" />

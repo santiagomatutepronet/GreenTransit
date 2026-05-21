@@ -1,0 +1,10 @@
+﻿@page "/ecodatanet/producer/config"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEcoDataNet)]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<PageTitle>Configuración EDC — Productor — GreenTransit</PageTitle>
+
+<EdcConfigBase ProfileId="producer" ProfileLabel="Productor" />

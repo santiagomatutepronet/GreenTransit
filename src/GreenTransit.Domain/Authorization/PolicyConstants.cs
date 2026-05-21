@@ -1,4 +1,4 @@
-namespace GreenTransit.Domain.Authorization;
+﻿namespace GreenTransit.Domain.Authorization;
 
 /// <summary>
 /// Constantes con los nombres de las policies de autorización de ASP.NET Core.
@@ -219,6 +219,12 @@ public static class PolicyConstants
     /// <summary>Dashboard EC-C — Preparación DPP por productor: PRODUCER, SCRAP, ADMIN.</summary>
     public const string CanViewDPPPreparation = "CanViewDPPPreparation";
 
+
+    // --- EcoDataNet Dataspace ----------------------------------------------------
+
+    /// <summary>Acceso a las pantallas del modulo EcoDataNet Dataspace (configuracion, publicar y consumir datos por perfil).
+    /// Cualquier usuario autenticado puede acceder; el control fino se gestiona desde /security/page-permissions.</summary>
+    public const string CanAccessEcoDataNet = "CanAccessEcoDataNet";
     // ─── Administración del sistema ──────────────────────────────────
 
     /// <summary>Operaciones exclusivas del administrador del sistema (ej. seed de datos).</summary>

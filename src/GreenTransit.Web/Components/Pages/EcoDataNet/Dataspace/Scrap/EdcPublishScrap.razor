@@ -1,0 +1,10 @@
+﻿@page "/ecodatanet/scrap/publish"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEcoDataNet)]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using GreenTransit.Web.Components.Pages.EcoDataNet.Dataspace.Shared
+
+<PageTitle>Publicar Datos — SCRAP — GreenTransit</PageTitle>
+
+<EdcPublishDataBase ProfileId="scrap" ProfileLabel="SCRAP" />

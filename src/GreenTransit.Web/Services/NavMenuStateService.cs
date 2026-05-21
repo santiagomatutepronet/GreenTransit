@@ -12,7 +12,10 @@ public sealed class NavMenuStateService
         "config", "operaciones", "economia", "declaraciones",
         "sostenibilidad", "reporting", "reporting-logistics", "reporting-mobility",
         "reporting-tr", "reporting-eco", "reporting-hm", "reporting-carbon", "reporting-cn",
-        "ecodatanet", "seguridad"
+        "ecodatanet",
+        "edn-dispatch-office", "edn-scrap", "edn-public-entity", "edn-carrier",
+        "edn-cac", "edn-plant", "edn-producer", "edn-coordinator",
+        "seguridad"
     ];
 
     public bool IsCollapsed(string key) => _collapsed.Contains(key);
