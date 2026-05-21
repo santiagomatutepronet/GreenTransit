@@ -42,7 +42,7 @@ public sealed class CreateEntryCACCommandValidator : AbstractValidator<CreateEnt
     {
         RuleFor(x => x.WasteMoveId).NotEmpty();
         RuleFor(x => x.CACEntryDate).NotEmpty()
-            .LessThanOrEqualTo(DateTime.UtcNow.AddMinutes(5))
+            .LessThanOrEqualTo(_ => DateTime.Now.AddMinutes(5))
             .WithMessage("La fecha de entrada no puede ser futura.");
         RuleFor(x => x.Lines).NotEmpty()
             .WithMessage("Debe incluir al menos una línea de residuo.");

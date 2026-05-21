@@ -4,7 +4,6 @@
 
 @using GreenTransit.Application.Features.WasteMoves.DTOs
 @using GreenTransit.Application.Features.WasteMoves.Queries
-@using GreenTransit.Application.Features.WasteMoves.Commands
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
@@ -621,8 +620,10 @@ else
         _exportingPdf = true;
         try
         {
-            await Mediator.Send(new ExportWasteMoveTimelinePdfCommand(WasteMoveId));
-            Nav.NavigateTo($"/waste-moves/{WasteMoveId}/timeline/pdf", forceLoad: true);
+            var bytes = GreenTransit.Web.Services.WasteMoveTimelinePdfGenerator.Generate(_tl);
+            var b64   = Convert.ToBase64String(bytes);
+            var fn    = $"expediente_{_tl.WasteMoveReference ?? WasteMoveId.ToString()}.pdf";
+            await JS.InvokeVoidAsync("downloadBase64File", b64, fn, "application/pdf");
         }
         finally
         {

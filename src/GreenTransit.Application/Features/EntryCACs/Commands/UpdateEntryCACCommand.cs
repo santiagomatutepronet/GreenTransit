@@ -43,7 +43,7 @@ public sealed class UpdateEntryCACCommandValidator : AbstractValidator<UpdateEnt
     {
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.CACEntryDate).NotEmpty()
-            .LessThanOrEqualTo(DateTime.UtcNow.AddMinutes(5))
+            .LessThanOrEqualTo(_ => DateTime.Now.AddMinutes(5))
             .WithMessage("La fecha de entrada no puede ser futura.");
         RuleFor(x => x.Lines).NotEmpty()
             .WithMessage("Debe incluir al menos una línea de residuo.");
