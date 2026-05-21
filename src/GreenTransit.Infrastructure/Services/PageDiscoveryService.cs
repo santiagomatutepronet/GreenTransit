@@ -179,11 +179,12 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             var r when r.StartsWith("/agreements")         ||
                        r.StartsWith("/settlements")        ||
                        r.StartsWith("/market-shares")      => "Contratos y Liquidaciones",
-            var r when r.StartsWith("/incidents")          ||
-                       r.StartsWith("/dum-zones")          ||
-                       r.StartsWith("/emissions")          ||
-                       r.StartsWith("/plant-energies")     ||
-                       r.StartsWith("/emission-factor")    => "Sostenibilidad",
+            var r when r.StartsWith("/incidents")              ||
+                       r.StartsWith("/dum-zones")              ||
+                       r.StartsWith("/emissions")              ||
+                       r.StartsWith("/plant-energies")         ||
+                       r.StartsWith("/emission-factor")        ||
+                       r.StartsWith("/ecomodulation-rule-sets") => "Sostenibilidad",
             var r when r.StartsWith("/users")              ||
                        r.StartsWith("/profiles")           ||
                        r.StartsWith("/security")           ||
@@ -230,6 +231,7 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["EmissionList"]          = "Emisiones",
             ["PlantEnergyList"]       = "Energía Planta",
             ["EmissionFactorSetList"] = "Factores de Emisión",
+            ["EcoModulationRuleSetList"] = "Reglas de Ecomodulación",
             ["ProductDeclarationList"]= "Declaraciones de Producto",
             ["LogisticsOptimization"] = "Optimización Logística SCRAP",
             ["PublicMonitoring"]      = "Monitorización Pública",

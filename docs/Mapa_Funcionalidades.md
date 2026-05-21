@@ -1142,6 +1142,95 @@ Los KPIs muestran datos agregados de cumplimiento normativo (tasas de reciclaje,
 - **Funciones**: editor visual de zonas sobre mapa (Leaflet/Mapbox), simulador "¿puedo entrar aquí con mi vehículo?", log de bloqueos y notificaciones.
 - **Roles**: **Administrador** (alta/edición); resto (validación automática al planificar).
 
+### 4.5. Reglas de Ecomodulación (`EcoModulationRuleSets` / `EcoModulationRules`) ✅ IMPLEMENTADO
+
+#### ¿Qué es la ecomodulación?
+
+Mecanismo por el que las tarifas RAP (**Responsabilidad Ampliada del Productor**) se **ajustan al alza o a la baja** según criterios de ecodiseño del producto. Un producto con mejor diseño ambiental paga menos; uno con peor diseño paga más. La normativa obliga a los SCRAP a aplicar este ajuste al calcular las liquidaciones de sus productores adheridos.
+
+#### Entidades implicadas
+
+```
+EcoModulationRuleSets          ← cabecera del conjunto (versionado, vigencia, estado)
+    └── EcoModulationRules     ← reglas individuales (criterio JSON + impacto económico)
+           ↑
+     se evalúan contra
+           ↓
+ProductDeclarations → Products ← productos declarados por el Productor
+           ↓
+       Settlements             ← AdjustmentsAmount recoge el ajuste resultante
+```
+
+| Entidad | Campos clave | Descripción |
+|---|---|---|
+| `EcoModulationRuleSet` | `Id`, `OwnerId`, `RuleSetName`, `Version`, `Status` (`Active`/`Inactive`), `ValidFrom`, `ValidTo`, `PublisherName`, `PublisherNationalId`, `PublisherCenterCode`, `Hash` | Contenedor versionado de reglas. Solo puede haber **uno activo** simultáneamente; activar uno desactiva el resto automáticamente |
+| `EcoModulationRule` | `Id`, `RuleSetId`, `RuleCode`, `ProductCategory` (int), `CriteriaJson`, `FeeImpactType` (`None`/`Reduction`/`Surcharge`), `FeeImpactValue` (decimal) | Regla individual. El `CriteriaJson` define los criterios de aplicación (categoría de producto, peso mínimo, etc.) |
+
+#### ¿Quién publica los conjuntos de reglas?
+
+El **SCRAP** es el actor que administra y publica los conjuntos de reglas. En la aplicación, solo el perfil **ADMIN** puede crear, editar y activar conjuntos a través del módulo de gestión. El campo `PublisherName / PublisherNationalId / PublisherCenterCode` identifica la entidad publicadora.
+
+#### Tipos de impacto económico
+
+| `FeeImpactType` | Efecto | Ejemplo |
+|---|---|---|
+| `None` | Sin ajuste | 0 % → tarifa base |
+| `Reduction` | Bonificación (descuento) | −10 % → producto bien diseñado |
+| `Surcharge` | Recargo | +15 % → producto difícil de reciclar |
+
+#### Criterios de aplicación (`CriteriaJson`)
+
+Cada regla almacena sus criterios en JSON libre. Ejemplo mínimo:
+
+```json
+{ "productCategory": "RAEE", "minWeightKg": 100 }
+```
+
+Los criterios se evalúan en la capa Application al calcular la liquidación. La estructura del JSON es extensible sin cambios de esquema.
+
+#### Flujo de integración completo
+
+```
+1. ADMIN       →  crea y activa un EcoModulationRuleSet en /ecomodulation-rule-sets
+                     (activar uno desactiva automáticamente los demás)
+
+2. PRODUCER    →  crea una ProductDeclaration con líneas de Products
+                     (cada línea tiene ProductCategory como clave de matching)
+
+3. Sistema     →  evalúa las EcoModulationRules del set activo
+                     matching: ProductCategory + criterios del CriteriaJson
+
+4. Sistema     →  calcula AdjustmentsAmount
+                     Fórmula: BaseAmount × FeeImpactValue / 100
+
+5. SCRAP       →  valida la declaración y genera Settlement
+                     TotalAmount = BaseAmount + AdjustmentsAmount + TaxAmount
+
+6. PRODUCER    →  recibe la liquidación con el ajuste de ecomodulación reflejado
+```
+
+#### Módulo de gestión — Ruta `/ecomodulation-rule-sets`
+
+- **Ruta**: `/ecomodulation-rule-sets`
+- **Módulo**: Sostenibilidad
+- **Archivos implementados**:
+  - `Application/Features/Ecomodulation/DTOs/EcoModulationRuleSetDtos.cs` — DTOs: `EcoModulationRuleSetDto` (lista), `EcoModulationRuleSetDetailDto` (detalle con reglas), `EcoModulationRuleDto`, `EcoModulationRuleLineDto` (formulario).
+  - `Application/Features/Ecomodulation/Queries/GetEcoModulationRuleSetsQuery.cs` — listado paginado filtrado por estado; `GetEcoModulationRuleSetByIdQuery` para detalle.
+  - `Application/Features/Ecomodulation/Commands/EcoModulationRuleSetCommands.cs` — `CreateEcoModulationRuleSetCommand`, `UpdateEcoModulationRuleSetCommand`, `ActivateEcoModulationRuleSetCommand` (desactiva el resto), `DeleteEcoModulationRuleSetCommand` (solo si no está activo).
+  - `Web/Components/Pages/Ecomodulation/EcoModulationRuleSetList.razor` — página master-detail: lista de conjuntos a la izquierda, reglas del conjunto seleccionado a la derecha. Modal de creación/edición con líneas de reglas editables en tabla.
+  - `Infrastructure/Services/PageDiscoveryService.cs` — ruta mapeada al módulo "Sostenibilidad"; nombre humanizado "Reglas de Ecomodulación".
+- **UI**: layout master-detail. Botones de Activar / Editar / Eliminar condicionados por `_canWrite` (permisos por pantalla dinámicos, igual que el resto de módulos).
+- **Autorización**: `@attribute [Authorize]` + `IPagePermissionService.CanWriteRouteAsync("/ecomodulation-rule-sets")`. Acceso y permisos de escritura gestionados desde `/security/page-permissions`.
+- **Roles**: lectura → **SCRAP**, **ADMIN**; escritura (crear/editar/activar/eliminar) → **ADMIN**.
+
+#### Aparición en dashboards
+
+| Dashboard | Widget | Descripción |
+|---|---|---|
+| **RAP** (`/product-declarations`) | Aplicación de eco-modulación | Reglas aplicadas y ajuste económico resultante por declaración |
+| **Normativo** | Panel timeline cambios normativos | Cambios recientes en `EcoModulationRuleSets` |
+| **Panel SCRAP** | Vista económica agregada | Impacto económico acumulado por categoría de producto |
+
 ---
 
 ## 5. 📈 Módulo de Reporting, Trazabilidad y Data Space

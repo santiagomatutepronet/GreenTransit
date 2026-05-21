@@ -55,6 +55,7 @@
   - [4.5 Módulo de Entradas a Planta y CAC](#45-módulo-de-entradas-a-planta-y-cac)
   - [4.6 Módulo de Declaraciones de Producto](#46-módulo-de-declaraciones-de-producto)
   - [4.7 Módulo de Sostenibilidad y DUM](#47-módulo-de-sostenibilidad-y-dum)
+    - [4.7.4 Reglas de Ecomodulación](#474-reglas-de-ecomodulación)
   - [4.8 Módulo de Trazabilidad y KPIs](#48-módulo-de-trazabilidad-y-kpis)
   - [4.9 Módulo de Seguridad](#49-módulo-de-seguridad)
 - [5. 🔄 Flujo Global de Operaciones](#5--flujo-global-de-operaciones)
@@ -1362,6 +1363,102 @@ CO₂e (kg) = TransportDistanceKm × EmissionFactor.kgCO₂ePerKm
 - **Entidades:** `PlantEnergies`
 - **Base para:** Cálculo Scope 2 de huella de carbono (electricidad)
 - **Roles:** `PLANT_OP`, `ADMIN`
+
+### 4.7.4 Reglas de Ecomodulación ✅ IMPLEMENTADO
+
+**Ruta:** `/ecomodulation-rule-sets`
+**Módulo:** Sostenibilidad
+
+#### ¿Qué es la ecomodulación?
+
+Mecanismo por el que las tarifas RAP (**Responsabilidad Ampliada del Productor**) se **ajustan al alza o a la baja** según criterios de ecodiseño del producto. La normativa obliga a los SCRAP a aplicar este ajuste al calcular las liquidaciones de sus productores adheridos. Un producto con mejor diseño ambiental paga menos; uno con peor diseño paga más.
+
+#### Entidades implicadas
+
+```
+EcoModulationRuleSets          ← cabecera del conjunto (versionado, vigencia, estado)
+    └── EcoModulationRules     ← reglas individuales (criterio JSON + impacto económico)
+           ↑
+     se evalúan contra
+           ↓
+ProductDeclarations → Products ← productos declarados por el Productor
+           ↓
+       Settlements             ← AdjustmentsAmount recoge el ajuste resultante
+```
+
+| Entidad | Campos clave | Descripción |
+|---|---|---|
+| `EcoModulationRuleSet` | `Id`, `OwnerId`, `RuleSetName`, `Version`, `Status` (`Active`/`Inactive`), `ValidFrom`, `ValidTo`, `PublisherName`, `PublisherNationalId`, `PublisherCenterCode`, `Hash` | Contenedor versionado de reglas. Solo puede haber **uno activo** simultáneamente; activar uno desactiva el resto automáticamente |
+| `EcoModulationRule` | `Id`, `RuleSetId`, `RuleCode`, `ProductCategory` (int), `CriteriaJson`, `FeeImpactType` (`None`/`Reduction`/`Surcharge`), `FeeImpactValue` (decimal) | Regla individual. El `CriteriaJson` define los criterios de aplicación |
+
+#### ¿Quién publica los conjuntos de reglas?
+
+El **SCRAP** es el actor que administra y publica los conjuntos de reglas. En la aplicación, solo el perfil **ADMIN** puede crear, editar y activar conjuntos. El campo `PublisherName / PublisherNationalId / PublisherCenterCode` identifica la entidad publicadora.
+
+#### Tipos de impacto económico
+
+| `FeeImpactType` | Efecto | Ejemplo |
+|---|---|---|
+| `None` | Sin ajuste | 0 % → tarifa base |
+| `Reduction` | Bonificación (descuento) | −10 % → producto bien diseñado |
+| `Surcharge` | Recargo | +15 % → producto difícil de reciclar |
+
+#### Criterios de aplicación (`CriteriaJson`)
+
+Cada regla almacena sus criterios en JSON libre. Ejemplo mínimo:
+
+```json
+{ "productCategory": "RAEE", "minWeightKg": 100 }
+```
+
+Los criterios se evalúan en la capa Application al calcular la liquidación. La estructura es extensible sin cambios de esquema.
+
+#### Flujo de integración completo
+
+```
+1. ADMIN       →  crea y activa un EcoModulationRuleSet en /ecomodulation-rule-sets
+                     (activar uno desactiva automáticamente los demás)
+
+2. PRODUCER    →  crea una ProductDeclaration con líneas de Products
+                     (cada línea tiene ProductCategory como clave de matching)
+
+3. Sistema     →  evalúa las EcoModulationRules del set activo
+                     matching: ProductCategory + criterios del CriteriaJson
+
+4. Sistema     →  calcula AdjustmentsAmount
+                     Fórmula: BaseAmount × FeeImpactValue / 100
+
+5. SCRAP       →  valida la declaración y genera Settlement
+                     TotalAmount = BaseAmount + AdjustmentsAmount + TaxAmount
+
+6. PRODUCER    →  recibe la liquidación con el ajuste de ecomodulación reflejado
+```
+
+#### Archivos implementados
+
+| Archivo | Descripción |
+|---|---|
+| `Application/Features/Ecomodulation/DTOs/EcoModulationRuleSetDtos.cs` | DTOs: `EcoModulationRuleSetDto` (lista), `EcoModulationRuleSetDetailDto` (detalle con reglas), `EcoModulationRuleDto`, `EcoModulationRuleLineDto` (formulario) |
+| `Application/Features/Ecomodulation/Queries/GetEcoModulationRuleSetsQuery.cs` | Listado paginado filtrado por estado; `GetEcoModulationRuleSetByIdQuery` para detalle |
+| `Application/Features/Ecomodulation/Commands/EcoModulationRuleSetCommands.cs` | `CreateEcoModulationRuleSetCommand`, `UpdateEcoModulationRuleSetCommand`, `ActivateEcoModulationRuleSetCommand` (desactiva el resto), `DeleteEcoModulationRuleSetCommand` (solo si no está activo) |
+| `Web/Components/Pages/Ecomodulation/EcoModulationRuleSetList.razor` | Página master-detail: lista de conjuntos a la izquierda, reglas del conjunto seleccionado a la derecha. Modal de creación/edición con líneas de reglas editables en tabla |
+| `Infrastructure/Services/PageDiscoveryService.cs` | Ruta `/ecomodulation-rule-sets` mapeada al módulo "Sostenibilidad"; nombre humanizado "Reglas de Ecomodulación" |
+
+#### Modelo de autorización
+
+- `@attribute [Authorize]` — requiere autenticación; acceso controlado desde `/security/page-permissions`
+- `IPagePermissionService.CanWriteRouteAsync("/ecomodulation-rule-sets")` — controla visibilidad de botones de escritura
+- Igual que el resto de módulos: sin policies hardcodeadas, gestionado dinámicamente por la ventana de permisos por pantalla
+
+#### Aparición en dashboards
+
+| Dashboard | Widget | Descripción |
+|---|---|---|
+| **RAP** (`/product-declarations`) | Aplicación de eco-modulación | Reglas aplicadas y ajuste económico resultante por declaración |
+| **Normativo** | Panel timeline cambios normativos | Cambios recientes en `EcoModulationRuleSets` |
+| **Panel SCRAP** | Vista económica agregada | Impacto económico acumulado por categoría de producto |
+
+- **Roles:** lectura → `SCRAP`, `ADMIN`; escritura → `ADMIN`
 
 ---
 

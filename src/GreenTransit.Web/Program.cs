@@ -395,7 +395,7 @@ try
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Admin)));
 
-        // ── CONTRATACIÓN Y ECONOMÍA ───────────────────────────────────────────
+        // ── CONTRATACIÓN Y ECONOMÍA
 
         // CRUD de Acuerdos: SCRAP (propios) y ADMIN.
         options.AddPolicy(PolicyConstants.CanManageAgreements, policy =>

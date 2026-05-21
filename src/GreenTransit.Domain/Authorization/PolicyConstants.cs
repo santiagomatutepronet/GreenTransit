@@ -66,7 +66,7 @@ public static class PolicyConstants
     /// <summary>CRUD de conjuntos de factores de emisión: ADMIN.</summary>
     public const string CanManageEmissionFactors = "CanManageEmissionFactors";
 
-    // ─── Contratación y economía ─────────────────────────────────────────────
+    // ─── Contratación y economía
 
     /// <summary>CRUD de Acuerdos: SCRAP (propios), ADMIN.</summary>
     public const string CanManageAgreements = "CanManageAgreements";
