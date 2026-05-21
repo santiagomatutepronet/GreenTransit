@@ -95,10 +95,7 @@
 
 @if (_loading)
 {
-    <div class="text-center py-5">
-        <div class="spinner-border text-success" role="status"></div>
-        <p class="mt-2 text-muted">Cargando datos de movilidad…</p>
-    </div>
+    <LoadingSpinner Message="Cargando datos de movilidad…" />
 }
 else if (_data is not null)
 {

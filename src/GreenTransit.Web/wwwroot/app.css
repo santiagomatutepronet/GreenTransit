@@ -197,16 +197,25 @@
     flex-shrink: 0;
 }
 
-.kpi-icon--green  { background: #d1e7dd; color: #198754; }
-.kpi-icon--blue   { background: #cfe2ff; color: #0d6efd; }
-.kpi-icon--teal   { background: #d2f4ea; color: #20c997; }
-.kpi-icon--red    { background: #f8d7da; color: #dc3545; }
+.kpi-icon--green  { background: var(--success-bg,  #DEF2E6); color: var(--success,  #05C168); }
+.kpi-icon--blue   { background: var(--primary-light, #BEE2E4); color: var(--primary, #0A404B); }
+.kpi-icon--teal   { background: rgba(138,204,195,.18); color: var(--primary-muted, #8ACCC3); }
+.kpi-icon--red    { background: var(--danger-bg,  #FFEFF0); color: var(--danger,  #DC2B2B); }
+.kpi-icon--orange { background: var(--warning-bg, #FFF6E4); color: var(--gt-secondary-4, #D36F15); }
 
 /* ── Extra small button ───────────────────────────────────────────────────── */
 .btn-xs {
     padding: .1rem .35rem;
     font-size: .75rem;
     border-radius: .25rem;
+}
+
+/* ── Severity dot (incidencias list) ─────────────────────────────────────── */
+.kpi-severity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
    Bootstrap → site.css alignment layer
    Estos overrides garantizan que las clases Bootstrap existentes

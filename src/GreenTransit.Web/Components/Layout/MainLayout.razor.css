@@ -308,6 +308,28 @@
     background-image: linear-gradient(180deg, #1E4232 0%, #172E24 100%);
 }
 
+/* ── Botón cerrar sesión (topbar) ──────────────────────────────────────────── */
+.topbar-logout-btn {
+    display:       flex;
+    align-items:   center;
+    justify-content: center;
+    width:         32px;
+    height:        32px;
+    padding:       0;
+    border:        1px solid var(--border, #D1D5D4);
+    border-radius: 6px;
+    background:    transparent;
+    color:         var(--text-secondary, #4F5E5A);
+    font-size:     1rem;
+    cursor:        pointer;
+    transition:    color .15s, background .15s, border-color .15s;
+}
+
+.topbar-logout-btn:hover {
+    background:    var(--danger-bg, #FFEFF0);
+    border-color:  var(--danger, #DC2B2B);
+    color:         var(--danger, #DC2B2B);
+}
 .top-row {
     background-color: #f7f7f7;
     border-bottom: 1px solid #d6d5d5;

@@ -15,26 +15,36 @@ public sealed class AccountController : Controller
 {
     /// <summary>
     /// Inicia el flujo de login desafiando al proveedor OIDC.
+    /// Si se recibe prompt=login (p.ej. tras logout) se fuerza al IdP
+    /// a pedir credenciales aunque tenga sesión activa.
     /// </summary>
     [HttpGet("login")]
-    public IActionResult Login([FromQuery] string? returnUrl)
+    public IActionResult Login([FromQuery] string? returnUrl, [FromQuery] string? prompt)
     {
         var redirectUrl = Url.Content(
             string.IsNullOrEmpty(returnUrl) ? "~/dashboard" : returnUrl);
-        return Challenge(
-            new AuthenticationProperties { RedirectUri = redirectUrl },
-            OpenIdConnectDefaults.AuthenticationScheme);
+
+        var props = new AuthenticationProperties { RedirectUri = redirectUrl };
+
+        if (!string.IsNullOrEmpty(prompt))
+            props.Items["prompt"] = prompt;
+
+        return Challenge(props, OpenIdConnectDefaults.AuthenticationScheme);
     }
 
     /// <summary>
-    /// Cierra la sesión local (elimina la cookie de la app) y redirige
-    /// a la página de confirmación. No redirige al IdP para evitar errores
-    /// del endpoint de logout del servidor de identidad externo.
+    /// Elimina la sesión local (cookie) y redirige a /account/login,
+    /// que emite el Challenge OIDC completo con client_id=GreenTransit.
+    /// No se llama al end_session_endpoint del IdP porque el
+    /// post_logout_redirect_uri no está registrado en el cliente externo
+    /// y provocaría que el IdP mostrase su pantalla de login genérica.
     /// </summary>
     [HttpGet("logout")]
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return LocalRedirect("/signed-out");
+        // Redirigir al login con prompt=login para que el IdP pida
+        // credenciales aunque tenga sesión SSO activa.
+        return LocalRedirect("/account/login?prompt=login");
     }
 }

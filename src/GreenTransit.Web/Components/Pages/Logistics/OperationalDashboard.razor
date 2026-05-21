@@ -78,10 +78,7 @@
 @* ── Estado de carga ──────────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="d-flex align-items-center gap-2 text-muted py-5 justify-content-center">
-        <div class="spinner-border spinner-border-sm"></div>
-        <span>Cargando datos operativos…</span>
-    </div>
+    <LoadingSpinner Message="Cargando datos operativos…" />
 }
 else if (_error is not null)
 {

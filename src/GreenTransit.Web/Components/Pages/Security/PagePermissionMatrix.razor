@@ -63,10 +63,7 @@
 
 @if (_loading)
 {
-    <div class="text-center py-5">
-        <div class="spinner-border text-success" role="status"></div>
-        <p class="mt-2 text-muted">Cargando matriz de permisos…</p>
-    </div>
+    <LoadingSpinner Message="Cargando matriz de permisos…" />
 }
 else if (_matrix is not null)
 {

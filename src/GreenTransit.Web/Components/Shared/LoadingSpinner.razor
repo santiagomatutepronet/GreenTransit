@@ -1,0 +1,11 @@
+@* Indicador de carga estándar de GreenTransit.
+   Uso: <LoadingSpinner /> o <LoadingSpinner Message="Cargando datos…" /> *@
+
+<div class="text-center py-5">
+    <div class="spinner-border text-success" role="status"></div>
+    <p class="mt-2 text-muted">@Message</p>
+</div>
+
+@code {
+    [Parameter] public string Message { get; set; } = "Cargando…";
+}

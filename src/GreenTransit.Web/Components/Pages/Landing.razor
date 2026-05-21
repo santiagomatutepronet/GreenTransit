@@ -1,0 +1,429 @@
+@page "/"
+@layout AnonymousLayout
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using Radzen
+@using Radzen.Blazor
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthState
+
+<!-- ================================================================
+     LANDING PAGE — GreenTransit by EcoDataNet
+     Página pública (sin autenticación). AnonymousLayout (sin sidebar).
+     ================================================================ -->
+
+<!-- ════════════════════════════════════════════════════════════════
+     SECCIÓN 1 — HERO
+     ════════════════════════════════════════════════════════════════ -->
+<section class="landing-hero" role="banner" aria-label="GreenTransit — Cabecera principal">
+    <div class="landing-hero__overlay"></div>
+    <div class="landing-hero__content">
+        <img src="images/logo_icono.png"
+             alt="Logo GreenTransit"
+             class="landing-hero__logo" />
+
+        <span class="landing-hero__badge">
+            <span class="material-icons">hub</span>
+            Integrado con EcoDataNet · IDSA / Gaia-X
+        </span>
+
+        <h1 class="landing-hero__title">GreenTransit by EcoDataNet</h1>
+        <h2 class="landing-hero__subtitle">
+            La plataforma operativa del espacio de datos para la gestión integral de residuos y sostenibilidad
+        </h2>
+        <span class="landing-hero__divider"></span>
+        <p class="landing-hero__desc">
+            GreenTransit conecta a todos los actores del ecosistema de residuos (Oficina de asignación, SCRAP, productores, transportistas, plantas de tratamiento, entidades públicas y coordinadores)  en una única plataforma trazable, auditable e interoperable, integrada nativamente con el espacio de datos EcoDataNet.
+        </p>
+
+        <RadzenRow JustifyContent="JustifyContent.Center" Gap="16px" class="landing-hero__buttons">
+            @if (_isAuthenticated)
+            {
+                <RadzenButton ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Large"
+                              Icon="dashboard" Text="Ir al dashboard"
+                              aria-label="Ir al dashboard"
+                              Click="@(() => Navigation.NavigateTo("/dashboard"))" />
+            }
+            else
+            {
+                <RadzenButton ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Large"
+                              Icon="login" Text="Iniciar sesión"
+                              aria-label="Iniciar sesión en GreenTransit"
+                              Click="@(() => Navigation.NavigateTo("/account/login", forceLoad: true))" />
+            }
+            <RadzenButton ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Large"
+                          Variant="Variant.Outlined"
+                          Icon="arrow_downward" Text="Explorar la plataforma"
+                          aria-label="Explorar la plataforma"
+                          Click="@ScrollToModulos" />
+        </RadzenRow>
+    </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SECCIÓN 2 — QUÉ ES GREENTRANSIT
+     ════════════════════════════════════════════════════════════════ -->
+<section id="que-es" class="landing-section">
+    <!-- Fila superior: texto izquierda + tarjetas derecha -->
+    <RadzenRow Gap="40px" class="rz-align-items-start rz-mb-6">
+        <RadzenColumn Size="12" SizeMD="5">
+            <RadzenText TagName="TagName.H2" TextStyle="TextStyle.DisplayH4" class="section-heading">
+                ¿Qué es GreenTransit?
+            </RadzenText>
+            <RadzenText class="section-body">
+                GreenTransit es una plataforma web multi-rol, multi-tenant y preparada para espacios
+                de datos (IDSA/Gaia-X) que cubre el ciclo completo de la gestión integral de residuos:
+                desde la planificación de órdenes de servicio, pasando por la ejecución logística, el
+                pesaje y entrada en planta, el tratamiento y clasificación, la gestión documental, las
+                liquidaciones económicas, hasta el reporting regulatorio y el análisis de KPIs.
+            </RadzenText>
+        </RadzenColumn>
+        <RadzenColumn Size="12" SizeMD="7">
+            <RadzenRow Gap="16px">
+                <RadzenColumn Size="12" SizeMD="6">
+                    <RadzenCard class="highlight-card">
+                        <span class="material-icons highlight-icon">link</span>
+                        <strong>Interoperable</strong>
+                        <RadzenText>Conectada con EcoDataNet mediante conectores EDC (Eclipse Dataspace Components).</RadzenText>
+                    </RadzenCard>
+                </RadzenColumn>
+                <RadzenColumn Size="12" SizeMD="6">
+                    <RadzenCard class="highlight-card">
+                        <span class="material-icons highlight-icon highlight-icon--teal">lock</span>
+                        <strong>Soberanía del dato</strong>
+                        <RadzenText>Cada participante controla qué datos comparte y bajo qué condiciones (políticas ODRL).</RadzenText>
+                    </RadzenCard>
+                </RadzenColumn>
+                <RadzenColumn Size="12" SizeMD="6">
+                    <RadzenCard class="highlight-card">
+                        <span class="material-icons highlight-icon highlight-icon--yellow">bar_chart</span>
+                        <strong>Analítica operativa</strong>
+                        <RadzenText>Más de 25 dashboards especializados con KPIs en tiempo real.</RadzenText>
+                    </RadzenCard>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenColumn>
+    </RadzenRow>
+    <!-- Imagen a ancho completo -->
+    <RadzenRow>
+        <RadzenColumn Size="12">
+            <RadzenImage Path="images/integracion-greentransit-ecodatanet-landing.png"
+                         AlternateText="Diagrama de integración GreenTransit – EcoDataNet"
+                         Style="width: 100%; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.12); cursor: zoom-in;"
+                         @onclick="() => _showDiagram = true" />
+        </RadzenColumn>
+    </RadzenRow>
+    @if (_showDiagram)
+    {
+        <div class="diagram-overlay" @onclick="() => _showDiagram = false">
+            <img src="images/integracion-greentransit-ecodatanet-landing.png"
+                 alt="Diagrama de integración GreenTransit – EcoDataNet"
+                 class="diagram-overlay__img" />
+            <span class="diagram-overlay__hint">Haz clic para cerrar</span>
+        </div>
+    }
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SECCIÓN 3 — INTEGRACIÓN ECODATANET
+     ════════════════════════════════════════════════════════════════ -->
+<section id="ecodatanet" class="landing-section landing-section-alt">
+    <div class="section-header">
+        <RadzenText TagName="TagName.H2" TextStyle="TextStyle.DisplayH4" class="section-heading rz-text-align-center">
+            Integración nativa con el espacio de datos EcoDataNet
+        </RadzenText>
+        <RadzenText class="section-subtitle">
+            GreenTransit actúa como la capa transaccional que permite a cada participante publicar y
+            consumir datos del espacio de datos sin necesidad de desplegar su propio conector EDC ni
+            conocer los detalles técnicos del protocolo IDSA.
+        </RadzenText>
+    </div>
+    <RadzenRow Gap="24px" class="rz-mt-6">
+        <RadzenColumn Size="12" SizeMD="4">
+            <RadzenCard class="module-card rz-text-align-center">
+                <span class="material-icons card-icon card-icon--primary">cloud_upload</span>
+                <RadzenText TagName="TagName.H3" TextStyle="TextStyle.H6" class="card-title">Publicar datos</RadzenText>
+                <RadzenText>Publica datos operativos de gestión de residuos hacia EcoDataNet directamente desde la interfaz, sin configuración técnica.</RadzenText>
+            </RadzenCard>
+        </RadzenColumn>
+        <RadzenColumn Size="12" SizeMD="4">
+            <RadzenCard class="module-card rz-text-align-center">
+                <span class="material-icons card-icon card-icon--teal">cloud_download</span>
+                <RadzenText TagName="TagName.H3" TextStyle="TextStyle.H6" class="card-title">Consumir datos</RadzenText>
+                <RadzenText>Accede a informes sectoriales, benchmarks y datos de referencia del espacio de datos para tomar decisiones informadas.</RadzenText>
+            </RadzenCard>
+        </RadzenColumn>
+        <RadzenColumn Size="12" SizeMD="4">
+            <RadzenCard class="module-card rz-text-align-center">
+                <span class="material-icons card-icon card-icon--yellow">verified_user</span>
+                <RadzenText TagName="TagName.H3" TextStyle="TextStyle.H6" class="card-title">Trazabilidad soberana</RadzenText>
+                <RadzenText>Cada transacción queda registrada con notarización inmutable. Contratos ODRL garantizan las condiciones de uso de tus datos.</RadzenText>
+            </RadzenCard>
+        </RadzenColumn>
+    </RadzenRow>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SECCIÓN 4 — MÓDULOS DE LA PLATAFORMA
+     ════════════════════════════════════════════════════════════════ -->
+<section id="modulos" class="landing-section">
+    <div class="section-header">
+        <RadzenText TagName="TagName.H2" TextStyle="TextStyle.DisplayH4" class="section-heading rz-text-align-center">
+            Módulos de la plataforma
+        </RadzenText>
+        <RadzenText class="section-subtitle">
+            Cobertura funcional completa del ciclo del residuo, desde la orden de servicio hasta el reporting regulatorio.
+        </RadzenText>
+    </div>
+    <RadzenRow Gap="20px" class="rz-mt-6">
+        @foreach (var mod in _modules)
+        {
+            <RadzenColumn Size="12" SizeSM="6" SizeLG="4">
+                <RadzenCard class="module-card">
+                    <div class="module-card__header">
+                        <span class="material-icons card-icon card-icon--primary">@mod.Icon</span>
+                        <strong class="module-card__name">@mod.Name</strong>
+                    </div>
+                    <RadzenText class="module-card__desc">@mod.Description</RadzenText>
+                </RadzenCard>
+            </RadzenColumn>
+        }
+    </RadzenRow>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SECCIÓN 5 — CASOS DE USO ECODATANET
+     ════════════════════════════════════════════════════════════════ -->
+<section id="casos-de-uso" class="landing-section landing-section-alt">
+    <div class="section-header">
+        <RadzenText TagName="TagName.H2" TextStyle="TextStyle.DisplayH4" class="section-heading rz-text-align-center">
+            7 casos de uso cubiertos por EcoDataNet
+        </RadzenText>
+        <RadzenText class="section-subtitle">
+            GreenTransit genera o consume directamente los datasets definidos para cada caso de uso del proyecto.
+        </RadzenText>
+    </div>
+    <div class="table-responsive rz-mt-6">
+        <table class="landing-table">
+            <thead>
+                <tr>
+                    <th>Caso</th>
+                    <th>Objetivo</th>
+                    <th>Cobertura GreenTransit</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>UC1</strong></td><td>Cumplimiento normativo RAP</td><td>Acuerdos, órdenes de servicio, KPIs de cumplimiento, liquidaciones y cuotas de mercado.</td></tr>
+                <tr><td><strong>UC2</strong></td><td>Optimización recogida RAEE</td><td>Detalle logístico, traslados ejecutados, entradas en planta, KPIs de distancia/puntualidad.</td></tr>
+                <tr><td><strong>UC3</strong></td><td>Movilidad urbana (DUM)</td><td>Zonas DUM con geofencing, simulador de impacto, KPIs por franjas horarias.</td></tr>
+                <tr><td><strong>UC4</strong></td><td>Tratamiento y reciclaje</td><td>Tasas de reciclaje, energía recuperada, reutilización, calidad y rendimiento real.</td></tr>
+                <tr><td><strong>UC5</strong></td><td>Ecomodulación y DPP-lite</td><td>Trazabilidad end-to-end (Vista 360º), reglas de ecomodulación, fichas de producto.</td></tr>
+                <tr><td><strong>UC6</strong></td><td>Mapas de calor de residuos</td><td>Datos georreferenciados de traslados, eventos agregados para heatmaps de densidad.</td></tr>
+                <tr><td><strong>UC7</strong></td><td>Huella de carbono</td><td>Factores de emisión versionados, CO₂ por traslado, energía planta, KPIs ambientales.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SECCIÓN 6 — KPIs Y GRÁFICOS MOCK
+     ════════════════════════════════════════════════════════════════ -->
+<section id="kpis" class="landing-section">
+    <div class="section-header">
+        <RadzenText TagName="TagName.H2" TextStyle="TextStyle.DisplayH4" class="section-heading rz-text-align-center">
+            KPIs y analítica en tiempo real
+        </RadzenText>
+        <RadzenText class="section-subtitle">
+            Ejemplo ilustrativo de los dashboards disponibles en la plataforma (datos de demostración).
+        </RadzenText>
+    </div>
+
+    <RadzenRow Gap="24px" class="rz-mt-6 rz-align-items-start">
+        <!-- Gráfico 1: Donut -->
+        <RadzenColumn Size="12" SizeMD="4">
+            <RadzenCard class="module-card">
+                <RadzenText TagName="TagName.H3" TextStyle="TextStyle.Subtitle2" class="chart-title">
+                    Distribución de residuos por tipología
+                </RadzenText>
+                <RadzenChart Style="height: 220px">
+                    <RadzenDonutSeries Data="@_donutData" CategoryProperty="Label" ValueProperty="Value"
+                                       Fills="@_donutColors" />
+                </RadzenChart>
+            </RadzenCard>
+        </RadzenColumn>
+
+        <!-- Gráfico 2: Barras -->
+        <RadzenColumn Size="12" SizeMD="4">
+            <RadzenCard class="module-card">
+                <RadzenText TagName="TagName.H3" TextStyle="TextStyle.Subtitle2" class="chart-title">
+                    Kg recogidos por mes (ejemplo)
+                </RadzenText>
+                <RadzenChart Style="height: 220px">
+                    <RadzenBarSeries Data="@_barData" CategoryProperty="Month" ValueProperty="Kg"
+                                     Fill="#0A404B" />
+                    <RadzenCategoryAxis>
+                        <RadzenGridLines Visible="false" />
+                    </RadzenCategoryAxis>
+                </RadzenChart>
+            </RadzenCard>
+        </RadzenColumn>
+
+        <!-- KPI Cards -->
+        <RadzenColumn Size="12" SizeMD="4">
+            <RadzenRow Gap="12px">
+                <RadzenColumn Size="6">
+                    <RadzenCard class="kpi-card">
+                        <span class="material-icons kpi-icon">local_shipping</span>
+                        <div class="kpi-value">12.847</div>
+                        <div class="kpi-label">Traslados gestionados</div>
+                    </RadzenCard>
+                </RadzenColumn>
+                <RadzenColumn Size="6">
+                    <RadzenCard class="kpi-card">
+                        <span class="material-icons kpi-icon kpi-icon--teal">recycling</span>
+                        <div class="kpi-value">87,3%</div>
+                        <div class="kpi-label">Tasa de reciclaje</div>
+                    </RadzenCard>
+                </RadzenColumn>
+                <RadzenColumn Size="6">
+                    <RadzenCard class="kpi-card">
+                        <span class="material-icons kpi-icon kpi-icon--green">co2</span>
+                        <div class="kpi-value kpi-value--green">-14,2%</div>
+                        <div class="kpi-label">Reducción CO₂ vs año anterior</div>
+                    </RadzenCard>
+                </RadzenColumn>
+                <RadzenColumn Size="6">
+                    <RadzenCard class="kpi-card">
+                        <span class="material-icons kpi-icon kpi-icon--orange">scale</span>
+                        <div class="kpi-value">1.245 t</div>
+                        <div class="kpi-label">Residuos tratados</div>
+                    </RadzenCard>
+                </RadzenColumn>
+            </RadzenRow>
+        </RadzenColumn>
+    </RadzenRow>
+
+    <RadzenText class="chart-disclaimer">
+        * Datos ilustrativos de demostración. Los dashboards reales muestran información operativa en tiempo real.
+    </RadzenText>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SECCIÓN 7 — PERFILES Y VALOR POR ROL
+     ════════════════════════════════════════════════════════════════ -->
+<section id="perfiles" class="landing-section landing-section-alt">
+    <div class="section-header">
+        <RadzenText TagName="TagName.H2" TextStyle="TextStyle.DisplayH4" class="section-heading rz-text-align-center">
+            Una plataforma, múltiples perspectivas
+        </RadzenText>
+        <RadzenText class="section-subtitle">
+            Cada perfil accede a vistas, acciones y dashboards adaptados a su rol dentro del ecosistema.
+        </RadzenText>
+    </div>
+    <RadzenRow Gap="20px" class="rz-mt-6">
+        @foreach (var profile in _profiles)
+        {
+            <RadzenColumn Size="12" SizeSM="6" SizeLG="4">
+                <RadzenCard class="module-card profile-card">
+                    <div class="module-card__header">
+                        <span class="material-icons card-icon card-icon--primary">@profile.Icon</span>
+                        <strong class="module-card__name">@profile.Name</strong>
+                    </div>
+                    <RadzenText class="module-card__desc">@profile.Value</RadzenText>
+                </RadzenCard>
+            </RadzenColumn>
+        }
+    </RadzenRow>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SECCIÓN 8 — FOOTER CTA
+     ════════════════════════════════════════════════════════════════ -->
+<footer class="landing-footer" role="contentinfo">
+    <div class="landing-footer__content">
+        <img src="images/logo_icono.png"
+             alt="Logo GreenTransit"
+             class="landing-footer__logo" />
+        <h2 class="landing-footer__cta">
+            ¿Preparado para conectar con el espacio de datos?
+        </h2>
+        <RadzenButton ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Large"
+                      Icon="login" Text="Iniciar sesión"
+                      aria-label="Iniciar sesión en GreenTransit"
+                      Click="@(() => Navigation.NavigateTo("/account/login", forceLoad: true))"
+                      class="rz-mt-4" />
+        <p class="landing-footer__legal">
+            GreenTransit by EcoDataNet — powered by Pronet Ise · © 2026<br />
+            Plataforma desarrollada en el marco del proyecto EcoDataNet.
+        </p>
+    </div>
+</footer>
+
+@code {
+    private bool _isAuthenticated;
+    private bool _showDiagram;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _isAuthenticated = state.User?.Identity?.IsAuthenticated ?? false;
+    }
+
+    private void ScrollToModulos()
+    {
+        Navigation.NavigateTo("/#que-es", forceLoad: false);
+    }
+
+    // ── Datos mock gráficos ──────────────────────────────────────────────────
+    private readonly List<DonutItem> _donutData = new()
+    {
+        new("RAEE", 42),
+        new("Envases", 28),
+        new("Papel/Cartón", 18),
+        new("Otros", 12),
+    };
+
+    private readonly string[] _donutColors = new[] { "#0A404B", "#8ACCC3", "#D8B00E", "#D36F15" };
+
+    private readonly List<BarItem> _barData = new()
+    {
+        new("Ene", 12400),
+        new("Feb", 15200),
+        new("Mar", 18700),
+        new("Abr", 14300),
+        new("May", 21500),
+        new("Jun", 19800),
+    };
+
+    private record DonutItem(string Label, double Value);
+    private record BarItem(string Month, double Kg);
+
+    // ── Módulos ──────────────────────────────────────────────────────────────
+    private readonly List<(string Icon, string Name, string Description)> _modules = new()
+    {
+        ("inventory_2",            "Catálogos Maestros",           "Entidades, códigos LER, residuos, operaciones de tratamiento y catálogos normativos."),
+        ("handshake",              "Contratación y Economía",       "Acuerdos marco, liquidaciones con desglose, cuotas de mercado y reglas de ecomodulación versionadas."),
+        ("local_shipping",         "Flujo Operativo (Core Logistics)", "Ciclo completo del traslado: orden de servicio → recogida → CAC → planta → clasificación → tratamiento. Vista 360º."),
+        ("eco",                    "Sostenibilidad y Emisiones",    "Huella de carbono (Scope 1 y 2), incidencias operativas, control de zonas DUM con geofencing."),
+        ("assessment",             "Reporting y Trazabilidad",      "+25 dashboards especializados, KPIs regulatorios, gestión documental con hash SHA-256, exportación XLSX."),
+        ("directions_car",         "Movilidad Urbana (UC3)",        "Análisis de impacto en movilidad, índice de conflicto, simulador DUM, mapas de calor urbanos."),
+        ("description",            "Declaraciones de Producción",   "Declaraciones con flujo de estados, importación masiva CSV/XLSX, anticipación al Pasaporte Digital de Producto (DPP)."),
+        ("cloud_sync",             "EcoDataNet — Espacio de Datos", "Publicación y consumo de datos mediante conectores EDC. Integración IDSA/Gaia-X."),
+        ("gavel",                  "Cumplimiento Normativo (RAP)",  "Dashboards de cumplimiento de la Ley 7/2022, alertas de cuotas, auditoría de acuerdos, desviaciones."),
+        ("co2",                    "Huella de Carbono",             "Emisiones Scope 1 (transporte) y Scope 2 (energía planta), factores versionados, KPIs CO₂ publicables."),
+    };
+
+    // ── Perfiles ─────────────────────────────────────────────────────────────
+    private readonly List<(string Icon, string Name, string Value)> _profiles = new()
+    {
+        ("hub",                   "SCRAP",                  "Reporting regulatorio automatizado, benchmarking sectorial, gestión económica integrada con ecomodulación y trazabilidad verificable end-to-end."),
+        ("factory",               "Productor",              "Declaraciones de producción con flujo de validación, visibilidad sobre el destino de sus residuos y anticipación al Pasaporte Digital de Producto (DPP)."),
+        ("local_shipping",        "Transportista",          "Ejecución de recogidas en campo, confirmación de cargas, registro logístico y KPIs de ruta con cálculo automático de emisiones."),
+        ("precision_manufacturing","Planta de tratamiento", "Registro de entradas, pesaje, clasificación, tratamiento y declaración energética. Panel operativo dedicado con KPIs de rendimiento."),
+        ("account_balance",       "Entidad Pública",        "Supervisión de servicios por SCRAP, histórico de recogidas, liquidaciones, cumplimiento de objetivos municipales y visibilidad ambiental."),
+        ("groups",                "Coordinador",            "Lectura transversal del ámbito de acuerdos, análisis de movilidad y optimización logística entre SCRAPs vinculados."),
+        ("assignment",            "Oficina de Asignación",  "Planificación logística, creación de traslados, asignación de transportistas y visión operativa completa del tenant."),
+        ("warehouse",             "Operador CAC",           "Registro de entradas en centro de acopio ciudadano, gestión de stock y tickets pendientes."),
+        ("admin_panel_settings",  "Administrador",          "CRUD total, gestión de usuarios y perfiles, configuración de permisos por pantalla y catálogos normativos."),
+    };
+}

@@ -83,10 +83,7 @@
 
 @if (_loading)
 {
-    <div class="text-center py-5">
-        <div class="spinner-border text-success"></div>
-        <p class="text-muted mt-2">Calculando KPIs…</p>
-    </div>
+    <LoadingSpinner Message="Calculando KPIs…" />
 }
 else if (_dto is not null)
 {

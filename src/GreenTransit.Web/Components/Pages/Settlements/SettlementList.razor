@@ -68,7 +68,7 @@
 @* ── Grid ──────────────────────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="gt-loading"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
+    <LoadingSpinner />
 }
 else if (_page is null || _page.Items.Count == 0)
 {

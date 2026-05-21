@@ -1,6 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @inject ICurrentUserService CurrentUser
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @implements IAsyncDisposable
 @using GreenTransit.Application.Common.Interfaces
 @using Microsoft.AspNetCore.Components.Authorization
@@ -24,10 +25,12 @@
                          AlignItems="AlignItems.Center"
                          Gap="0.5rem">
                 <RadzenSidebarToggle Click="@(() => _sidebarExpanded = !_sidebarExpanded)" />
-                <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">
-                    <i class="bi bi-recycle" style="color: var(--rz-success)"></i>
-                    GreenTransit
-                </RadzenText>
+                <NavLink href="/dashboard" Match="NavLinkMatch.All" style="text-decoration: none; color: inherit;">
+                    <RadzenText TextStyle="TextStyle.H6" class="rz-m-0" style="cursor: pointer;">
+                        <i class="bi bi-recycle" style="color: var(--rz-success)"></i>
+                        GreenTransit
+                    </RadzenText>
+                </NavLink>
             </RadzenStack>
 
             <RadzenStack Orientation="Orientation.Horizontal"
@@ -55,20 +58,15 @@
                     </div>
                 </div>
 
-                <a class="rz-button rz-button-md rz-button-icon-only rz-variant-text rz-light"
-                   @onclick="ToggleDarkMode"
-                           title="@(_darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro")">
-                    <i class="rzi">@(_darkMode ? "light_mode" : "dark_mode")</i>
-                </a>
+
 
                 <AuthorizeView>
                     <Authorized>
-                        <a class="rz-button rz-button-md rz-button-icon-only rz-variant-text rz-danger"
-                           href="/account/logout"
-                           data-enhance-nav="false"
-                           title="Cerrar sesión">
-                            <i class="rzi">logout</i>
-                        </a>
+                        <button class="topbar-logout-btn"
+                                @onclick="DoLogout"
+                                title="Cerrar sesión">
+                            <i class="bi bi-box-arrow-right"></i>
+                        </button>
                     </Authorized>
                 </AuthorizeView>
 
@@ -147,6 +145,9 @@
         _sidebarExpanded = expanded;
         await JS.InvokeVoidAsync("localStorage.setItem", "gt-sidebar", expanded ? "0" : "1");
     }
+
+    private void DoLogout() =>
+        Nav.NavigateTo("/account/logout", forceLoad: true);
 
     private async Task ToggleDarkMode()
     {

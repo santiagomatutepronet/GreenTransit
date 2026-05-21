@@ -102,7 +102,7 @@
 @* ── Tabla ────────────────────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="d-flex justify-content-center py-5"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
+    <LoadingSpinner />
 }
 else if (_summary is null || _summary.Page.Items.Count == 0)
 {

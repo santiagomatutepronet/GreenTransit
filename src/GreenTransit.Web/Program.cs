@@ -144,6 +144,14 @@ try
         {
             OnRedirectToIdentityProvider = context =>
             {
+                // Si el caller pasó prompt=login (p.ej. tras logout),
+                // reenviarlo al IdP para forzar que muestre su pantalla de login.
+                if (context.Properties.Items.TryGetValue("prompt", out var prompt)
+                    && !string.IsNullOrEmpty(prompt))
+                {
+                    context.ProtocolMessage.Prompt = prompt;
+                }
+
                 var logger = context.HttpContext.RequestServices
                     .GetRequiredService<ILogger<Program>>();
                 logger.LogInformation("🔄 Redirigiendo al servidor OIDC: {Url}",

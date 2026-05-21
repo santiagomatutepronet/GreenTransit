@@ -59,7 +59,7 @@
 
 @if (_loading)
 {
-    <div class="text-center" style="padding:3rem 0"><RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" /></div>
+    <LoadingSpinner />
 }
 else if (!string.IsNullOrEmpty(_errorMessage))
 {

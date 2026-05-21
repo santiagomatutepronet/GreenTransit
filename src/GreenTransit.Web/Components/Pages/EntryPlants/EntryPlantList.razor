@@ -125,9 +125,7 @@
 @* ── Historial ────────────────────────────────────────────────────────────── *@
 @if (_loading)
 {
-    <div class="text-center py-5">
-        <div class="spinner spinner-lg"></div>
-    </div>
+    <LoadingSpinner />
 }
 else if (_result is null || _result.Items.Count == 0)
 {
