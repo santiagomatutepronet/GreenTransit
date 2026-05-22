@@ -1,7 +1,6 @@
 @page "/reporting/ecomodulation/regulatory-view"
 @attribute [Authorize(Policy = PolicyConstants.CanViewEcomodulationRegulatoryView)]
 @rendermode InteractiveServer
-@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Ecomodulation.DTOs
@@ -10,7 +9,6 @@
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
-@using ApexCharts
 
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
@@ -283,5 +281,4 @@ else
         _        => "Crítico"
     };
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-}
+    }

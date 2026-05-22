@@ -1,7 +1,6 @@
 @page "/reporting/tratamiento-reciclaje/municipal-monitoring"
 @attribute [Authorize(Policy = PolicyConstants.CanViewTRMunicipalMonitoring)]
 @rendermode InteractiveServer
-@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
@@ -446,7 +445,4 @@ else if (_data is not null)
     };
 
     private static string TruncateName(string name, int max) =>
-        name.Length <= max ? name : name[..max] + "…";
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-}
+        name.Length <= max ? name : name[..max] + "…";}

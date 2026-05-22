@@ -1,7 +1,6 @@
 @page "/reporting/heat-maps/pattern-analysis"
 @attribute [Authorize(Policy = PolicyConstants.CanViewHeatMapPatternAnalysis)]
 @rendermode InteractiveServer
-@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Geography.DTOs
@@ -296,11 +295,8 @@ else
     private IReadOnlyList<ProvinceDto>       _provinces = [];
     private IReadOnlyList<EntitySelectorDto> _scraps    = [];
 
-    private DotNetObjectReference<WastePatternAnalysis>? _dotNetRef;
-
     protected override async Task OnInitializedAsync()
     {
-        _dotNetRef = DotNetObjectReference.Create(this);
         _provinces = (await Mediator.Send(new GetAllProvincesQuery())).ToList();
         if (CurrentUser.IsInAnyProfile("ADMIN", "DISPATCH_OFFICE"))
             _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery(new[] { EntityRoles.SCRAP }));
@@ -349,9 +345,4 @@ else
         _        => "Baja"
     };
 
-    public async ValueTask DisposeAsync()
-    {
-        _dotNetRef?.Dispose();
-        await Task.CompletedTask;
     }
-}

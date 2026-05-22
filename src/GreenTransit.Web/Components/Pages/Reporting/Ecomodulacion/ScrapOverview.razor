@@ -1,7 +1,6 @@
 @page "/reporting/ecomodulation/scrap-overview"
 @attribute [Authorize(Policy = PolicyConstants.CanViewEcomodulationScrapOverview)]
 @rendermode InteractiveServer
-@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Ecomodulation.DTOs
@@ -343,7 +342,4 @@ else
         "Green"  => "Óptimo",
         "Orange" => "Mejorable",
         _        => "Crítico"
-    };
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-}
+    };}

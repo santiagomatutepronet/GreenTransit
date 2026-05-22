@@ -1,7 +1,6 @@
 @page "/reporting/tratamiento-reciclaje/coordinator-validation"
 @attribute [Authorize(Policy = PolicyConstants.CanViewTRCoordinatorValidation)]
 @rendermode InteractiveServer
-@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
@@ -12,7 +11,6 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
-@using Microsoft.JSInterop
 @using System.Globalization
 
 @inject IMediator              Mediator
@@ -335,7 +333,4 @@ else if (_data is not null)
     }
 
     private static string RecyclingClass(double rate) =>
-        rate > 70 ? "text-success" : rate >= 40 ? "text-warning" : "text-danger";
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-}
+        rate > 70 ? "text-success" : rate >= 40 ? "text-warning" : "text-danger";}
