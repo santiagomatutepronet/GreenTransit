@@ -1,6 +1,7 @@
 @page "/reporting/ecomodulation/regulatory-view-economic"
 @attribute [Authorize(Policy = PolicyConstants.CanViewEcoModulationRegulatoryEconomicView)]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Ecomodulation.DTOs
@@ -243,4 +244,7 @@ else if (_data is not null)
         "Bonus"   => "bg-success",
         "Penalty" => "bg-danger",
         _         => "bg-secondary"
-    };}
+    };
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

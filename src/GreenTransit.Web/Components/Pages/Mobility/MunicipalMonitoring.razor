@@ -1,6 +1,7 @@
 @page "/mobility/municipal-monitoring"
 @attribute [Authorize(Policy = PolicyConstants.CanViewMobilityMunicipalMonitoring)]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
@@ -11,11 +12,13 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
 @using System.Globalization
 
 @inject IMediator            Mediator
 @inject ICurrentUserService  CurrentUser
 @inject ILogger<MunicipalMonitoring> Logger
+@inject IJSRuntime           JS
 
 <PageTitle>Monitorización Movilidad — Ayuntamiento — GreenTransit</PageTitle>
 
@@ -139,19 +142,7 @@ else if (_data is not null)
                     <i class="bi bi-graph-up me-1"></i>Histórico de recogidas e incidencias
                 </div>
                 <div class="card-body">
-                    @if (_historicalItems.Any())
-                    {
-                        <AppChart Height="250" ShowLegend="true" CategoryAxisTitle="Periodo" ValueAxisTitle="Recogidas / Incidencias">
-                            <RadzenLineSeries Data="@_historicalItems" CategoryProperty="Period" ValueProperty="PickupCount"
-                                              Title="Recogidas" Stroke="@ChartPalette.GetColor(0)" StrokeWidth="2" />
-                            <RadzenBarSeries Data="@_historicalItems" CategoryProperty="Period" ValueProperty="IncidentCount"
-                                             Title="Incidencias" Fill="@ChartPalette.GetColor(2)" />
-                        </AppChart>
-                    }
-                    else
-                    {
-                        <p class="text-muted text-center py-4">Sin datos históricos para el periodo.</p>
-                    }
+                    <div id="municipalHistoryChart" style="min-height:250px;"></div>
                 </div>
             </div>
         </div>
@@ -253,10 +244,7 @@ else if (_data is not null)
 }
 
 @code {
-    private record HistoricalItem(string Period, double PickupCount, double IncidentCount);
-
     private MobilityMunicipalMonitoringDto? _data;
-    private List<HistoricalItem> _historicalItems = [];
     private bool    _loading           = true;
     private int     _filterYear        = DateTime.Now.Year;
     private int?    _filterMonth       = DateTime.Now.Month;
@@ -266,6 +254,8 @@ else if (_data is not null)
     private IReadOnlyList<EntitySelectorDto> _scraps = [];
 
     private static readonly CultureInfo _es = new("es-ES");
+    private bool _jsReady = false;
+    private DotNetObjectReference<MunicipalMonitoring>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -281,6 +271,18 @@ else if (_data is not null)
         _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery([EntityRoles.SCRAP]));
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsReady   = true;
+            _dotNetRef = DotNetObjectReference.Create(this);
+            // Si los datos ya están cargados (caché rápida), renderizar ahora
+            if (_data is not null)
+                await RenderChartsAsync();
+        }
+    }
+
     private async Task RefreshAsync()
     {
         _loading = true;
@@ -292,7 +294,6 @@ else if (_data is not null)
                 Month:       _filterMonth,
                 IdScrap:     _filterScrapId,
                 WasteStream: string.IsNullOrEmpty(_filterWasteStream) ? null : _filterWasteStream));
-            _historicalItems = _data?.HistoricalSeries.Select(s => new HistoricalItem(s.Period, (double)s.PickupCount, (double)s.IncidentCount)).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -302,6 +303,33 @@ else if (_data is not null)
         {
             _loading = false;
             StateHasChanged();
+        }
+        // Si JS ya está listo (filtro cambiado después de carga inicial), renderizar directamente
+        if (_jsReady)
+            await RenderChartsAsync();
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        if (!_data.HistoricalSeries.Any())
+        {
+            // Sin datos históricos: ocultar gráfico via JS (no error)
+            try { await JS.InvokeVoidAsync("mobilityMunicipalHistory.clear", "municipalHistoryChart"); } catch { /* ignorar */ }
+            return;
+        }
+        try
+        {
+            var categories = _data.HistoricalSeries.Select(s => s.Period).ToArray();
+            var pickups    = _data.HistoricalSeries.Select(s => (double)s.PickupCount).ToArray();
+            var incidents  = _data.HistoricalSeries.Select(s => (double)s.IncidentCount).ToArray();
+
+            await JS.InvokeVoidAsync("mobilityMunicipalHistory.render",
+                "municipalHistoryChart", categories, pickups, incidents);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráficos de movilidad municipal");
         }
     }
 
@@ -319,4 +347,9 @@ else if (_data is not null)
         _        => "Correcto"
     };
 
+    public ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        return ValueTask.CompletedTask;
     }
+}

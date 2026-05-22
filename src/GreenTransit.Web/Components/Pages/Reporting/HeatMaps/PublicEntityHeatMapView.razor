@@ -158,17 +158,7 @@ else
                     <i class="bi bi-pie-chart me-1"></i>Distribución de residuos por tipología LER
                 </div>
                 <div class="card-body">
-                    @if (!_data.WasteTypology.Any())
-                    {
-                        <p class="text-muted text-center py-4">Sin datos de tipología.</p>
-                    }
-                    else
-                    {
-                        <AppChart Height="280" ShowLegend="true">
-                            <RadzenDonutSeries Data="@_typologyItems" CategoryProperty="LerCode" ValueProperty="TotalKg"
-                                              Fills="@ChartPalette.CorporateColors" />
-                        </AppChart>
-                    }
+                    <div id="chart-typology-hmc" style="min-height:280px;"></div>
                 </div>
             </div>
         </div>
@@ -184,14 +174,7 @@ else
                     }
                     else
                     {
-                        <AppChart Height="280" ShowLegend="true" CategoryAxisTitle="Mes" ValueAxisTitle="kg">
-                            @{ int tmi = 0; }
-                            @foreach (var ts in _trendSeries)
-                            {
-                                <RadzenLineSeries Data="@ts.Items" CategoryProperty="Month" ValueProperty="Kg"
-                                                  Title="@ts.Name" Stroke="@ChartPalette.GetColor(tmi++)" StrokeWidth="2" />
-                            }
-                        </AppChart>
+                        <div id="chart-monthly-hmc" style="min-height:280px;"></div>
                     }
                 </div>
             </div>
@@ -294,15 +277,10 @@ else
 }
 
 @code {
-    private record TypologyItem(string LerCode, double TotalKg);
-    private record TrendPoint(string Month, double Kg);
-    private record TrendSerie(string Name, List<TrendPoint> Items);
-
     private PublicEntityHeatMapDto?       _data;
-    private List<TypologyItem> _typologyItems = [];
-    private List<TrendSerie>   _trendSeries   = [];
     private bool    _loading        = true;
     private bool    _exporting      = false;
+    private bool    _chartsRendered = false;
     private int     _filterYear     = DateTime.Now.Year;
     private int?    _filterMonth    = null;
     private string? _filterLerCode;
@@ -319,9 +297,19 @@ else
         await RefreshAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_data is not null && !_loading && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
     private async Task RefreshAsync()
     {
         _loading        = true;
+        _chartsRendered = false;
         StateHasChanged();
         try
         {
@@ -331,11 +319,6 @@ else
                 Month        : _filterMonth,
                 LerCodeFilter: _filterLerCode,
                 IdScrap      : idScrap));
-            _typologyItems = _data?.WasteTypology.Take(8).Select(t => new TypologyItem(t.LerCode, (double)t.TotalKg)).ToList() ?? [];
-            _trendSeries   = _data?.MonthlyTrends.Select(t => new TrendSerie(
-                t.LerDescription ?? t.LerCode,
-                t.MonthlyKg.Select((kg, i) => new TrendPoint($"{i+1:00}", (double)kg)).ToList()
-            )).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -358,9 +341,28 @@ else
                 .Select(p => new { lat = p.Latitude, lng = p.Longitude, value = (double)p.TotalKg, name = p.EntityName })
                 .ToArray();
             await JS.InvokeVoidAsync("heatMapCharts.renderLeafletHeatMap", "heatmap-public-view", mapPoints);
+
+            // Donut tipología
+            var typologyLabels = _data.WasteTypology.Take(8).Select(t => t.LerCode).ToArray();
+            var typologyValues = _data.WasteTypology.Take(8).Select(t => (double)t.TotalKg).ToArray();
+            await JS.InvokeVoidAsync("heatMapCharts.renderDonut",
+                "chart-typology-hmc", typologyLabels, typologyValues, "Tipología LER (kg)");
+
+            // Evolución mensual por SCRAP
+            if (_data.MonthlyTrends.Any())
+            {
+                var seriesData = _data.MonthlyTrends.Select(t => new
+                {
+                    name = t.LerDescription,
+                    data = t.MonthlyKg.Select(v => (double)v).ToArray()
+                }).ToArray();
+                await JS.InvokeVoidAsync("heatMapCharts.renderMultiLineChart",
+                    "chart-monthly-hmc", seriesData);
+            }
         }
         catch (Exception ex)
         {
+            _chartsRendered = false;   // permitir reintento en el circuito interactivo
             Logger.LogWarning(ex, "Error al renderizar gráficos del mapa de calor — vista pública");
         }
     }

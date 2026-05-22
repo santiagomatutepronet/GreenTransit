@@ -1,6 +1,7 @@
 @page "/mobility/coordinator-analysis"
 @attribute [Authorize(Policy = PolicyConstants.CanViewMobilityCoordinatorAnalysis)]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
@@ -13,11 +14,13 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
 @using System.Globalization
 
 @inject IMediator            Mediator
 @inject ICurrentUserService  CurrentUser
 @inject ILogger<CoordinatorAnalysis> Logger
+@inject IJSRuntime           JS
 
 <PageTitle>Impacto en Movilidad — Coordinador — GreenTransit</PageTitle>
 
@@ -153,42 +156,7 @@ else if (_data is not null)
                     <i class="bi bi-calendar3-week me-1"></i>Distribución semanal de recogidas vs franjas pico
                 </div>
                 <div class="card-body p-0 p-md-3">
-                    @if (_data.WeeklyHeatmap.Any())
-                    {
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered mb-0" style="font-size:0.78rem">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Hora</th>
-                                        @foreach (var d in new[] { "Lun","Mar","Mié","Jue","Vie","Sáb","Dom" }) { <th class="text-center">@d</th> }
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var h in _data.WeeklyHeatmap.Select(c => c.Hour).Distinct().OrderBy(hh => hh))
-                                    {
-                                        var maxC = _data.WeeklyHeatmap.Max(c => c.PickupCount);
-                                        <tr>
-                                            <td>@h:00</td>
-                                            @for (int d = 0; d < 7; d++)
-                                            {
-                                                var cell = _data.WeeklyHeatmap.FirstOrDefault(c => c.DayOfWeek == d && c.Hour == h);
-                                                var pct  = cell is not null && maxC > 0 ? (int)((double)cell.PickupCount / maxC * 100) : 0;
-                                                var bg   = (pct / 100.0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-                                                var fg   = pct > 50 ? "white" : "inherit";
-                                                <td class="text-center" style="background-color:rgba(25,135,84,@bg);color:@fg">
-                                                    @(cell?.PickupCount > 0 ? cell.PickupCount.ToString() : "")
-                                                </td>
-                                            }
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-                    else
-                    {
-                        <p class="text-muted text-center py-4">Sin datos de frecuencia semanal.</p>
-                    }
+                    <div id="mobilityHeatmapChart" style="min-height:200px;"></div>
                 </div>
             </div>
         </div>
@@ -280,15 +248,7 @@ else if (_data is not null)
                         (@_data.EfficiencyComparison.PeriodA vs @_data.EfficiencyComparison.PeriodB)
                     </div>
                     <div class="card-body">
-                        @if (_comparisonItems.Any())
-                        {
-                            <AppChart Height="250" ShowLegend="true" CategoryAxisTitle="Métrica" ValueAxisTitle="Valor">
-                                <RadzenBarSeries Data="@_comparisonItems" CategoryProperty="Metric" ValueProperty="ValueA"
-                                                Title="@(_data.EfficiencyComparison?.PeriodA ?? "A")" Fill="@ChartPalette.GetColor(0)" />
-                                <RadzenBarSeries Data="@_comparisonItems" CategoryProperty="Metric" ValueProperty="ValueB"
-                                                Title="@(_data.EfficiencyComparison?.PeriodB ?? "B")" Fill="@ChartPalette.GetColor(1)" />
-                            </AppChart>
-                        }
+                        <div id="mobilityComparisonChart" style="min-height:250px;"></div>
                     </div>
                 </div>
             </div>
@@ -297,10 +257,7 @@ else if (_data is not null)
 }
 
 @code {
-    private record ComparisonItem(string Metric, double ValueA, double ValueB);
-
     private MobilityCoordinatorAnalysisDto? _data;
-    private List<ComparisonItem> _comparisonItems = [];
     private bool   _loading           = true;
     private int    _filterYear        = DateTime.Now.Year;
     private int?   _filterMonth       = DateTime.Now.Month;
@@ -318,6 +275,9 @@ else if (_data is not null)
     private IReadOnlyList<MunicipalityDto> _municipalities = [];
 
     private static readonly CultureInfo _es = new("es-ES");
+    private bool _jsReady = false;
+    private bool _needsChartRender = false;
+    private DotNetObjectReference<CoordinatorAnalysis>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -346,6 +306,20 @@ else if (_data is not null)
             // pero filtrados en el handler del dashboard; aquí los obtenemos todos para el selector
             // ya que el handler de la query de movilidad aplica la restricción real).
             _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery([EntityRoles.SCRAP]));
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsReady   = true;
+            _dotNetRef = DotNetObjectReference.Create(this);
+        }
+        if (_jsReady && _needsChartRender)
+        {
+            _needsChartRender = false;
+            await RenderChartsAsync();
         }
     }
 
@@ -380,16 +354,6 @@ else if (_data is not null)
                 WasteStream:       _filterWasteStream,
                 MunicipalityCode:  string.IsNullOrEmpty(_filterMunicipalityCode) ? null : _filterMunicipalityCode,
                 ProvinceCode:      string.IsNullOrEmpty(_filterProvinceCode)     ? null : _filterProvinceCode));
-            if (_data?.EfficiencyComparison is { } cmp)
-            {
-                _comparisonItems =
-                [
-                    new("Dist. media (km)",   (double)cmp.AvgDistanceKmA,   (double)cmp.AvgDistanceKmB),
-                    new("Dur. media (min)",   (double)cmp.AvgDurationMinA,  (double)cmp.AvgDurationMinB),
-                    new("CO₂e/t",             (double)cmp.CO2ePerTonneA,    (double)cmp.CO2ePerTonneB),
-                    new("% Hora pico",        cmp.PeakHourPercentA,          cmp.PeakHourPercentB)
-                ];
-            }
         }
         catch (Exception ex)
         {
@@ -400,6 +364,54 @@ else if (_data is not null)
             _loading = false;
             StateHasChanged();
         }
+        if (_jsReady)
+            _needsChartRender = true;
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            // Heatmap 7x24
+            var heatmapSeries = BuildHeatmapSeries();
+            var days = new[] { "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom" };
+            await JS.InvokeVoidAsync("mobilityHeatmap.render", "mobilityHeatmapChart",
+                heatmapSeries);
+
+            // Comparativa
+            if (_data.EfficiencyComparison is not null)
+            {
+                var cmp = _data.EfficiencyComparison;
+                await JS.InvokeVoidAsync("mobilityComparison.render", "mobilityComparisonChart",
+                    new
+                    {
+                        categories  = new[] { "Dist. media (km)", "Dur. media (min)", "CO₂e/t", "% Hora pico" },
+                        periodA     = cmp.PeriodA,
+                        periodB     = cmp.PeriodB,
+                        valuesA     = new double[] { (double)cmp.AvgDistanceKmA, (double)cmp.AvgDurationMinA, (double)cmp.CO2ePerTonneA, cmp.PeakHourPercentA },
+                        valuesB     = new double[] { (double)cmp.AvgDistanceKmB, (double)cmp.AvgDurationMinB, (double)cmp.CO2ePerTonneB, cmp.PeakHourPercentB }
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráficos de movilidad coordinador");
+        }
+    }
+
+    private object BuildHeatmapSeries()
+    {
+        var days = new[] { "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom" };
+        return Enumerable.Range(0, 7).Select(d =>
+        {
+            var data = Enumerable.Range(0, 24).Select(h =>
+            {
+                var cell = _data!.WeeklyHeatmap.FirstOrDefault(c => c.DayOfWeek == d && c.Hour == h);
+                return new { x = $"{h:00}h", y = cell?.PickupCount ?? 0 };
+            }).ToArray();
+            return new { name = days[d], data };
+        }).ToArray();
     }
 
     private static string TrafficLightBadge(string light) => light switch
@@ -416,4 +428,9 @@ else if (_data is not null)
         _        => "Normal"
     };
 
+    public ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

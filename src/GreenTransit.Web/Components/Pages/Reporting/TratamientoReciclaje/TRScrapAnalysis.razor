@@ -1,6 +1,7 @@
 @page "/reporting/tratamiento-reciclaje/scrap-analysis"
 @attribute [Authorize(Policy = PolicyConstants.CanViewTRScrapAnalysis)]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
@@ -476,4 +477,7 @@ else if (_data is not null)
         v >= 1_000 ? $"{v / 1_000:F0}t" : $"{v:F0}";
 
     private static string TruncateName(string name, int max) =>
-        name.Length <= max ? name : name[..max] + "…";}
+        name.Length <= max ? name : name[..max] + "…";
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

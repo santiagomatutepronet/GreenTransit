@@ -1,6 +1,7 @@
 @page "/reporting/regulatory-compliance/dispatch-data"
 @attribute [Authorize(Policy = PolicyConstants.CanViewDispatchOfficeComplianceData)]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
@@ -155,12 +156,9 @@ else
     <div class="card mb-4">
         <div class="card-header"><i class="bi bi-bar-chart-fill me-2"></i>Ranking de SCRAPs por cumplimiento</div>
         <div class="card-body">
-            @if (_rankingItems.Any())
+            @if (_data.ScrapRanking.Any())
             {
-                <AppChart Height="300" ShowLegend="false" CategoryAxisTitle="SCRAP" ValueAxisTitle="%">
-                    <RadzenBarSeries Data="@_rankingItems" CategoryProperty="Name" ValueProperty="Value"
-                                     Title="Cumplimiento %" Fill="@ChartPalette.GetColor(0)" />
-                </AppChart>
+                <div id="chart-cn-e-ranking" style="min-height:300px"></div>
             }
             else
             {
@@ -218,19 +216,9 @@ else
     <div class="card mb-4">
         <div class="card-header"><i class="bi bi-graph-up me-2"></i>Evolución interanual de tasas regulatorias</div>
         <div class="card-body">
-            @if (_trendItems.Any())
+            @if (_data.InterannualTrend.Any())
             {
-                <AppChart Height="280" ShowLegend="true" CategoryAxisTitle="Año" ValueAxisTitle="%">
-                    <RadzenLineSeries Data="@_trendItems" CategoryProperty="Year" ValueProperty="RecyclingPct"
-                                      Title="Reciclaje %" Stroke="@ChartPalette.GetColor(0)" StrokeWidth="2" />
-                    <RadzenLineSeries Data="@_trendItems" CategoryProperty="Year" ValueProperty="ValorizationPct"
-                                      Title="Valorización %" Stroke="@ChartPalette.GetColor(1)" StrokeWidth="2" />
-                    <RadzenLineSeries Data="@_trendItems" CategoryProperty="Year" ValueProperty="ReusePct"
-                                      Title="Reutilización %" Stroke="@ChartPalette.GetColor(2)" StrokeWidth="2" />
-                    <RadzenLineSeries Data="@_trendItems" CategoryProperty="Year" ValueProperty="TargetPct"
-                                      Title="Objetivo Reciclaje" Stroke="@ChartPalette.GetColor(4)" StrokeWidth="1"
-                                      LineType="LineType.Dashed" />
-                </AppChart>
+                <div id="chart-cn-e-trend" style="min-height:280px"></div>
             }
             else
             {
@@ -309,17 +297,13 @@ else
 }
 
 @code {
-    private record RankingItem(string Name, double Value);
-    private record TrendItem(int Year, double RecyclingPct, double ValorizationPct, double ReusePct, double TargetPct);
-
     private const int PageSize = 15;
     private DispatchOfficeComplianceDataDto? _data;
-    private List<RankingItem> _rankingItems = [];
-    private List<TrendItem>   _trendItems   = [];
     private ComplianceFilterOptionsDto  _filterOptions = new([], [], [], []);
     private IReadOnlyList<EntitySelectorDto> _scraps = [];
     private bool    _loading = true;
     private bool    _initialized;
+    private bool    _chartsRendered;
     private int     _year = DateTime.Now.Year;
     private string? _autonomousCommunity;
     private string? _flowType;
@@ -339,9 +323,19 @@ else
         await LoadAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_loading && _data is not null && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
     private async Task LoadAsync()
     {
         _loading        = true;
+        _chartsRendered = false;
         _pgRanking      = 1;
         _pgRegChanges   = 1;
         try
@@ -352,8 +346,6 @@ else
                 string.IsNullOrEmpty(_autonomousCommunity) ? null : _autonomousCommunity,
                 string.IsNullOrEmpty(_flowType)            ? null : _flowType,
                 string.IsNullOrEmpty(_category)            ? null : _category));
-            _rankingItems = _data?.ScrapRanking.Select(r => new RankingItem(r.ScrapName, (double)r.CompliancePct)).ToList() ?? [];
-            _trendItems   = _data?.InterannualTrend.Select(t => new TrendItem(t.Year, (double)t.RecyclingPct, (double)t.ValorizationPct, (double)t.ReusePct, (double)t.TargetRecyclingPct)).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -382,6 +374,34 @@ else
         }
     }
 
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            if (_data.ScrapRanking.Any())
+            {
+                await JS.InvokeVoidAsync("complianceCharts.renderRankingBar", "chart-cn-e-ranking",
+                    _data.ScrapRanking.Select(r => new { name = r.ScrapName, value = (double)r.CompliancePct, status = r.Status }).ToList());
+            }
+            if (_data.InterannualTrend.Any())
+            {
+                await JS.InvokeVoidAsync("complianceCharts.renderInterannualTrend", "chart-cn-e-trend",
+                    _data.InterannualTrend.Select(t => new {
+                        year = t.Year,
+                        recyclingPct    = (double)t.RecyclingPct,
+                        valorizationPct = (double)t.ValorizationPct,
+                        reusePct        = (double)t.ReusePct,
+                        targetPct       = (double)t.TargetRecyclingPct
+                    }).ToList());
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráficos CN-E");
+        }
+    }
+
     private static string StatusColor(string status) => status switch
     {
         "GREEN"  => "success",
@@ -404,4 +424,10 @@ else
         _        => "transparent"
     };
 
+    public ValueTask DisposeAsync()
+    {
+        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-e-ranking");
+        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-e-trend");
+        return ValueTask.CompletedTask;
     }
+}

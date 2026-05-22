@@ -1,6 +1,7 @@
 @page "/mobility/dispatch-data"
 @attribute [Authorize(Policy = PolicyConstants.CanViewMobilityDispatchData)]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
@@ -184,21 +185,7 @@ else if (_data is not null)
                     <i class="bi bi-graph-up-arrow me-1"></i>Evolución mensual de métricas de movilidad
                 </div>
                 <div class="card-body">
-                    @if (_monthlyItems.Any())
-                    {
-                        <AppChart Height="250" ShowLegend="true" CategoryAxisTitle="Periodo" ValueAxisTitle="%">
-                            <RadzenLineSeries Data="@_monthlyItems" CategoryProperty="Period" ValueProperty="PeakHourPct"
-                                              Title="% Hora pico" Stroke="@ChartPalette.GetColor(0)" StrokeWidth="2" />
-                            <RadzenLineSeries Data="@_monthlyItems" CategoryProperty="Period" ValueProperty="DumPct"
-                                              Title="% Cumple DUM" Stroke="@ChartPalette.GetColor(1)" StrokeWidth="2" />
-                            <RadzenLineSeries Data="@_monthlyItems" CategoryProperty="Period" ValueProperty="ConflictIdx"
-                                              Title="Índice conflicto" Stroke="@ChartPalette.GetColor(2)" StrokeWidth="2" />
-                        </AppChart>
-                    }
-                    else
-                    {
-                        <p class="text-muted text-center py-4">Sin datos de tendencia mensual.</p>
-                    }
+                    <div id="dispatchMonthlyChart" style="min-height:250px;"></div>
                 </div>
             </div>
         </div>
@@ -257,10 +244,7 @@ else if (_data is not null)
 }
 
 @code {
-    private record MonthlyItem(string Period, double PeakHourPct, double DumPct, double ConflictIdx);
-
     private MobilityDispatchDataDto? _data;
-    private List<MonthlyItem> _monthlyItems = [];
     private bool   _loading              = true;
     private bool   _exporting            = false;
     private int    _filterYear           = DateTime.Now.Year;
@@ -278,6 +262,8 @@ else if (_data is not null)
     private IReadOnlyList<MunicipalityDto> _municipalities = [];
 
     private static readonly CultureInfo _es = new("es-ES");
+    private bool _jsReady;
+    private DotNetObjectReference<DispatchData>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -285,6 +271,17 @@ else if (_data is not null)
         _provinces = provList.ToList();
         _scraps    = await Mediator.Send(new GetEntitiesForSelectorQuery([EntityRoles.SCRAP]));
         await RefreshAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsReady   = true;
+            _dotNetRef = DotNetObjectReference.Create(this);
+            if (_data is not null)
+                await RenderChartsAsync();
+        }
     }
 
     // Al cambiar provincia: carga municipios y limpia seleccion de municipio
@@ -318,7 +315,6 @@ else if (_data is not null)
                 IdScrap:          _filterScrapId,
                 ProvinceCode:     string.IsNullOrEmpty(_filterProvinceCode)     ? null : _filterProvinceCode,
                 MunicipalityCode: string.IsNullOrEmpty(_filterMunicipalityCode) ? null : _filterMunicipalityCode));
-            _monthlyItems = _data?.MonthlySeries.Select(s => new MonthlyItem(s.Period, s.PeakHourPercent, s.DumCompliancePercent, s.AvgConflictIndex)).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -328,6 +324,27 @@ else if (_data is not null)
         {
             _loading = false;
             StateHasChanged();
+        }
+        if (_jsReady)
+            await RenderChartsAsync();
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null || !_data.MonthlySeries.Any()) return;
+        try
+        {
+            var categories = _data.MonthlySeries.Select(s => s.Period).ToArray();
+            var peakHour   = _data.MonthlySeries.Select(s => s.PeakHourPercent).ToArray();
+            var dumComp    = _data.MonthlySeries.Select(s => s.DumCompliancePercent).ToArray();
+            var conflict   = _data.MonthlySeries.Select(s => s.AvgConflictIndex).ToArray();
+
+            await JS.InvokeVoidAsync("mobilityMonthlyTrend.render",
+                "dispatchMonthlyChart", categories, peakHour, dumComp, conflict);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráfico de tendencia mensual de movilidad");
         }
     }
 
@@ -374,4 +391,9 @@ else if (_data is not null)
         _        => "Sin conflicto"
     };
 
+    public ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        return ValueTask.CompletedTask;
     }
+}

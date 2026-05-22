@@ -1,6 +1,8 @@
 @page "/reporting/regulatory-compliance/scrap-overview"
 @attribute [Authorize(Policy = PolicyConstants.CanViewScrapComplianceOverview)]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
+
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
 @using GreenTransit.Application.Features.Entities.Queries
@@ -10,9 +12,11 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
 
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
 @inject ILogger<ScrapComplianceOverview> Logger
 
 <PageTitle>Cumplimiento Normativo — Panel SCRAP — GreenTransit</PageTitle>
@@ -165,19 +169,9 @@ else
     <div class="card mb-4">
         <div class="card-header"><i class="bi bi-graph-up me-2"></i>Evolución trimestral de tasas de cumplimiento</div>
         <div class="card-body">
-            @if (_quarterItems.Any())
+            @if (_data.QuarterlyTrend.Any())
             {
-                <AppChart Height="280" ShowLegend="true" CategoryAxisTitle="Trimestre" ValueAxisTitle="%">
-                    <RadzenLineSeries Data="@_quarterItems" CategoryProperty="Label" ValueProperty="RecyclingPct"
-                                      Title="Reciclaje %" Stroke="@ChartPalette.GetColor(0)" StrokeWidth="2" />
-                    <RadzenLineSeries Data="@_quarterItems" CategoryProperty="Label" ValueProperty="ValorizationPct"
-                                      Title="Valorización %" Stroke="@ChartPalette.GetColor(1)" StrokeWidth="2" />
-                    <RadzenLineSeries Data="@_quarterItems" CategoryProperty="Label" ValueProperty="ReusePct"
-                                      Title="Reutilización %" Stroke="@ChartPalette.GetColor(2)" StrokeWidth="2" />
-                    <RadzenLineSeries Data="@_quarterItems" CategoryProperty="Label" ValueProperty="TargetPct"
-                                      Title="Objetivo Reciclaje" Stroke="@ChartPalette.GetColor(4)" StrokeWidth="1"
-                                      LineType="LineType.Dashed" />
-                </AppChart>
+                <div id="chart-cn-a-quarterly" style="min-height:280px"></div>
             }
             else
             {
@@ -268,16 +262,9 @@ else
             <div class="card h-100">
                 <div class="card-header"><i class="bi bi-receipt me-2"></i>Liquidaciones mensuales</div>
                 <div class="card-body">
-                    @if (_settlementItems.Any())
+                    @if (_data.SettlementMonthly.Any())
                     {
-                        <AppChart Height="280" ShowLegend="true" CategoryAxisTitle="Mes" ValueAxisTitle="€">
-                            <RadzenColumnSeries Data="@_settlementItems" CategoryProperty="Label" ValueProperty="Pending"
-                                               Title="Pendiente" Fill="@ChartPalette.GetColor(2)" />
-                            <RadzenColumnSeries Data="@_settlementItems" CategoryProperty="Label" ValueProperty="Approved"
-                                               Title="Aprobada" Fill="@ChartPalette.GetColor(0)" />
-                            <RadzenColumnSeries Data="@_settlementItems" CategoryProperty="Label" ValueProperty="Rejected"
-                                               Title="Rechazada" Fill="@ChartPalette.GetColor(4)" />
-                        </AppChart>
+                        <div id="chart-cn-a-settlements" style="min-height:280px"></div>
                     }
                     else
                     {
@@ -322,17 +309,13 @@ else
 }
 
 @code {
-    private record QuarterItem(string Label, double RecyclingPct, double ValorizationPct, double ReusePct, double TargetPct);
-    private record SettlementItem(string Label, double Pending, double Approved, double Rejected);
-
     private const int PageSize = 15;
     private ScrapComplianceOverviewDto? _data;
-    private List<QuarterItem>    _quarterItems    = [];
-    private List<SettlementItem> _settlementItems = [];
     private ComplianceFilterOptionsDto  _filterOptions = new([], [], [], []);
     private IReadOnlyList<EntitySelectorDto> _scraps = [];
     private bool    _loading = true;
     private bool    _initialized;
+    private bool    _chartsRendered;
     private int     _year    = DateTime.Now.Year;
     private string? _quarter;
     private string? _autonomousCommunity;
@@ -356,6 +339,15 @@ else
         await LoadAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_loading && _data is not null && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
     private CancellationTokenSource? _cts;
 
     private async Task LoadAsync()
@@ -367,6 +359,7 @@ else
         var token = _cts.Token;
 
         _loading         = true;
+        _chartsRendered  = false;
         _pgMarketShare   = 1;
         _pgAgreements    = 1;
         _pgSettlements   = 1;
@@ -381,12 +374,6 @@ else
                 string.IsNullOrEmpty(_flowType) ? null : _flowType,
                 Guid.TryParse(_filterIdScrap, out var sid) ? sid : null),
                 token);
-            _quarterItems    = _data?.QuarterlyTrend.Select(q => new QuarterItem(
-                                   $"T{q.Quarter} {q.Year}", (double)q.RecyclingPct, (double)q.ValorizationPct,
-                                   (double)q.ReusePct, (double)q.TargetRecyclingPct)).ToList() ?? [];
-            _settlementItems = _data?.SettlementMonthly.Select(s => new SettlementItem(
-                                   $"{s.Month:00}/{s.Year}", (double)s.PendingAmount,
-                                   (double)s.ApprovedAmount, (double)s.RejectedAmount)).ToList() ?? [];
         }
         catch (OperationCanceledException)
         {
@@ -402,6 +389,39 @@ else
         {
             if (!token.IsCancellationRequested)
                 _loading = false;
+        }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            if (_data.QuarterlyTrend.Any())
+            {
+                var series = _data.QuarterlyTrend.Select(q => new {
+                    year = q.Year, quarter = q.Quarter,
+                    recyclingPct    = (double)q.RecyclingPct,
+                    valorizationPct = (double)q.ValorizationPct,
+                    reusePct        = (double)q.ReusePct,
+                    targetPct       = (double)q.TargetRecyclingPct
+                }).ToList();
+                await JS.InvokeVoidAsync("complianceCharts.renderQuarterlyTrend", "chart-cn-a-quarterly", series);
+            }
+            if (_data.SettlementMonthly.Any())
+            {
+                var series = _data.SettlementMonthly.Select(s => new {
+                    year    = s.Year, month = s.Month,
+                    pending  = (double)s.PendingAmount,
+                    approved = (double)s.ApprovedAmount,
+                    rejected = (double)s.RejectedAmount
+                }).ToList();
+                await JS.InvokeVoidAsync("complianceCharts.renderSettlementBar", "chart-cn-a-settlements", series);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error renderizando gráficos CN-A");
         }
     }
 
@@ -430,6 +450,7 @@ else
     {
         _cts?.Cancel();
         _cts?.Dispose();
-        await ValueTask.CompletedTask;
+        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-a-quarterly");
+        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-a-settlements");
     }
 }

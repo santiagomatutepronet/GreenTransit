@@ -6,6 +6,7 @@
 @using GreenTransit.Application.Features.Reporting.Queries
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using ApexCharts
 
 @inject IMediator    Mediator
 @inject IJSRuntime   JS
@@ -153,23 +154,29 @@ else if (_dto is not null)
             <i class="bi bi-bar-chart-line me-1 text-success"></i>Evolución trimestral @_dto.Year
         </div>
         <div class="card-body">
-            <AppChart Height="280" CategoryAxisTitle="Trimestre">
-                <RadzenLineSeries Data="@_quarterItems"
-                                  CategoryProperty="Label"
-                                  ValueProperty="RecyclingRate"
-                                  Title="Tasa Reciclaje (%)"
-                                  Stroke="@ChartPalette.GetColor(0)" />
-                <RadzenLineSeries Data="@_quarterItems"
-                                  CategoryProperty="Label"
-                                  ValueProperty="ReuseRate"
-                                  Title="Tasa Reutilización (%)"
-                                  Stroke="@ChartPalette.GetColor(1)" />
-                <RadzenColumnSeries Data="@_quarterItems"
-                                    CategoryProperty="Label"
-                                    ValueProperty="TotalKt"
-                                    Title="Total (miles kg)"
-                                    Fill="@ChartPalette.GetColor(2)" />
-            </AppChart>
+            <ApexChart TItem="QuarterlyKpiDto"
+                       Title=""
+                       Options="_chartOptions"
+                       @ref="_chart">
+                <ApexPointSeries TItem="QuarterlyKpiDto"
+                                 Items="_dto.ByQuarter"
+                                 Name="Tasa Reciclaje (%)"
+                                 SeriesType="SeriesType.Line"
+                                 XValue="@(q => $"Q{q.Quarter}")"
+                                 YValue="@(q => (decimal)q.RecyclingRatePercent)" />
+                <ApexPointSeries TItem="QuarterlyKpiDto"
+                                 Items="_dto.ByQuarter"
+                                 Name="Tasa Reutilización (%)"
+                                 SeriesType="SeriesType.Line"
+                                 XValue="@(q => $"Q{q.Quarter}")"
+                                 YValue="@(q => (decimal)q.ReusePreparationPercent)" />
+                <ApexPointSeries TItem="QuarterlyKpiDto"
+                                 Items="_dto.ByQuarter"
+                                 Name="Total (miles kg)"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(q => $"Q{q.Quarter}")"
+                                 YValue="@(q => q.TotalWeightKg / 1000m)" />
+            </ApexChart>
         </div>
     </div>
 
@@ -276,8 +283,16 @@ else if (_searched)
     private bool                _searched;
     private bool                _exporting;
 
-    private sealed record QuarterItem(string Label, double RecyclingRate, double ReuseRate, decimal TotalKt);
-    private List<QuarterItem> _quarterItems = [];
+    private ApexChart<QuarterlyKpiDto>? _chart;
+
+    private ApexChartOptions<QuarterlyKpiDto> _chartOptions = new()
+    {
+        Chart  = new Chart  { Height = 280, Toolbar = new Toolbar { Show = false } },
+        Stroke = new Stroke { Curve   = Curve.Smooth, Width = [3, 3, 0] },
+        Colors = ["#2E7D32", "#1565C0", "#FFA726"],
+        Yaxis  = [new YAxis { Labels = new YAxisLabels { Formatter = "function(v){return v.toFixed(1)}" } }],
+        Theme  = new ApexCharts.Theme { Mode = ApexCharts.Mode.Light }
+    };
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -293,9 +308,6 @@ else if (_searched)
                 _year, _quarter, null, _autonomousCommunity, _category));
 
             _dto = result;
-            _quarterItems = _dto.ByQuarter
-                .Select(q => new QuarterItem($"Q{q.Quarter}", q.RecyclingRatePercent, q.ReusePreparationPercent, q.TotalWeightKg / 1000m))
-                .ToList();
         }
         finally
         {

@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @implements IAsyncDisposable
 
+@using ApexCharts
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Dashboard.DTOs
 @using GreenTransit.Application.Features.Dashboard.Queries
@@ -138,13 +139,16 @@ else if (_summary is not null)
                 <div class="card-body p-2">
                     @if (_statusItems.Count > 0)
                     {
-                        <AppChart Height="240" ShowLegend="false" ValueAxisTitle="Traslados">
-                            <RadzenBarSeries Data="@_statusItems"
-                                             ValueProperty="Count"
-                                             CategoryProperty="Label"
-                                             Title="Traslados"
-                                             Fill="@ChartPalette.GetColor(0)" />
-                        </AppChart>
+                        <ApexChart TItem="StatusItem"
+                                   Options="_statusChartOptions"
+                                   Height="240">
+                            <ApexPointSeries TItem="StatusItem"
+                                             Items="_statusItems"
+                                             Name="Traslados"
+                                             XValue="@(e => e.Label)"
+                                             YValue="@(e => (decimal)e.Count)"
+                                             SeriesType="SeriesType.Bar" />
+                        </ApexChart>
                     }
                     else
                     {
@@ -165,12 +169,16 @@ else if (_summary is not null)
                 <div class="card-body p-2">
                     @if (_rateItems.Any(r => r.Value > 0))
                     {
-                        <AppChart Height="240">
-                            <RadzenDonutSeries Data="@_rateItems"
-                                              CategoryProperty="Label"
-                                              ValueProperty="Value"
-                                              Title="Fracción (%)" />
-                        </AppChart>
+                        <ApexChart TItem="RateItem"
+                                   Options="_donutChartOptions"
+                                   Height="240">
+                            <ApexPointSeries TItem="RateItem"
+                                             Items="_rateItems"
+                                             Name="Fracción (%)"
+                                             XValue="@(e => e.Label)"
+                                             YValue="@(e => (decimal)e.Value)"
+                                             SeriesType="SeriesType.Donut" />
+                        </ApexChart>
                     }
                     else
                     {
@@ -194,18 +202,22 @@ else if (_summary is not null)
                     <i class="bi bi-bar-chart-line me-2"></i>Kg recogidos vs tratados (6 meses)
                 </div>
                 <div class="card-body p-2">
-                    <AppChart Height="240" ValueFormatString="{0:N0}" ValueAxisTitle="Kg">
-                        <RadzenColumnSeries Data="@_monthlyItems"
-                                            CategoryProperty="Label"
-                                            ValueProperty="KgCollected"
-                                            Title="Recogidos"
-                                            Fill="@ChartPalette.GetColor(0)" />
-                        <RadzenColumnSeries Data="@_monthlyItems"
-                                            CategoryProperty="Label"
-                                            ValueProperty="KgTreated"
-                                            Title="Tratados"
-                                            Fill="@ChartPalette.GetColor(1)" />
-                    </AppChart>
+                    <ApexChart TItem="MonthlyKgDto"
+                               Options="_monthlyChartOptions"
+                               Height="240">
+                        <ApexPointSeries TItem="MonthlyKgDto"
+                                         Items="s.MonthlyKgLast6Months"
+                                         Name="Recogidos"
+                                         XValue="@(e => $"{e.Month:D2}/{e.Year}")"
+                                         YValue="@(e => e.KgCollected)"
+                                         SeriesType="SeriesType.Bar" />
+                        <ApexPointSeries TItem="MonthlyKgDto"
+                                         Items="s.MonthlyKgLast6Months"
+                                         Name="Tratados"
+                                         XValue="@(e => $"{e.Month:D2}/{e.Year}")"
+                                         YValue="@(e => e.KgTreated)"
+                                         SeriesType="SeriesType.Bar" />
+                    </ApexChart>
                 </div>
             </div>
         </div>
@@ -461,7 +473,6 @@ else
 
     private sealed record StatusItem(string Label, int Count, string Color);
     private sealed record RateItem(string Label, double Value);
-    private sealed record MonthlyItem(string Label, decimal KgCollected, decimal KgTreated);
 
     // ── Estado del componente ─────────────────────────────────────────────────
 
@@ -472,9 +483,8 @@ else
     private const string          _mapContainerId = "dashboard-map";
 
     // Datos para gráficos
-    private List<StatusItem>   _statusItems  = [];
-    private List<RateItem>     _rateItems    = [];
-    private List<MonthlyItem>  _monthlyItems = [];
+    private List<StatusItem>   _statusItems = [];
+    private List<RateItem>     _rateItems   = [];
 
     // Trend CO₂ vs mes anterior (% cambio)
     private double Co2Trend => _summary is { TotalCO2ThisMonth: > 0, CO2PreviousMonth: > 0 }
@@ -501,6 +511,41 @@ else
         ("High",     "#D36F15", "bi bi-exclamation-triangle-fill"),
         ("Critical", "#DC2B2B", "bi bi-shield-exclamation"),
     ];
+
+    // ── Opciones de gráficos ApexCharts ──────────────────────────────────────
+
+    private ApexChartOptions<StatusItem> _statusChartOptions = new()
+    {
+        PlotOptions = new PlotOptions
+        {
+            Bar = new PlotOptionsBar { Horizontal = true, BorderRadius = 4 }
+        },
+        DataLabels = new DataLabels { Enabled = true },
+        Xaxis      = new XAxis { Labels = new XAxisLabels { Show = true } },
+        Grid       = new Grid { BorderColor = "#f0f0f0" },
+        Colors     = ["#0A404B"],
+        Tooltip    = new ApexCharts.Tooltip { Y = new TooltipY { Formatter = "function(val){ return val + ' traslados'; }" } }
+    };
+
+    private ApexChartOptions<RateItem> _donutChartOptions = new()
+    {
+        Legend     = new Legend { Position = ApexCharts.LegendPosition.Bottom },
+        DataLabels = new DataLabels { Enabled = true },
+        Colors     = ["#8ACCC3", "#B4B736", "#4F5E5A", "#C13E43"],
+        Tooltip    = new ApexCharts.Tooltip { Y = new TooltipY { Formatter = "function(val){ return val.toFixed(1) + '%'; }" } }
+    };
+
+    private ApexChartOptions<MonthlyKgDto> _monthlyChartOptions = new()
+    {
+        PlotOptions = new PlotOptions
+        {
+            Bar = new PlotOptionsBar { BorderRadius = 4, ColumnWidth = "60%" }
+        },
+        DataLabels = new DataLabels { Enabled = false },
+        Yaxis      = [new YAxis { Labels = new YAxisLabels { Formatter = "function(val){ return (val/1000).toFixed(1)+'t'; }" } }],
+        Grid       = new Grid { BorderColor = "#f0f0f0" },
+        Colors     = ["#0A404B", "#8ACCC3"]
+    };
 
     // ── Ciclo de vida ─────────────────────────────────────────────────────────
 
@@ -553,11 +598,6 @@ else
     private void BuildChartData()
     {
         if (_summary is null) return;
-
-        // Datos para el histórico de Kg (últimos 6 meses)
-        _monthlyItems = _summary.MonthlyKgLast6Months
-            .Select(m => new MonthlyItem($"{m.Month:D2}/{m.Year}", m.KgCollected, m.KgTreated))
-            .ToList();
 
         // Datos para el embudo de traslados (barra horizontal)
         _statusItems = _summary.WasteMovesByStatus

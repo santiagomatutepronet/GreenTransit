@@ -208,17 +208,7 @@ else
                     <i class="bi bi-pie-chart me-1"></i>Tipología de residuos por código LER
                 </div>
                 <div class="card-body">
-                    @if (!_data.WasteTypology.Any())
-                    {
-                        <p class="text-muted text-center py-4">Sin datos de tipología.</p>
-                    }
-                    else
-                    {
-                        <AppChart Height="280" ShowLegend="true">
-                            <RadzenDonutSeries Data="@_typologyItems" CategoryProperty="LerCode" ValueProperty="TotalKg"
-                                              Fills="@ChartPalette.CorporateColors" />
-                        </AppChart>
-                    }
+                    <div id="chart-waste-typology-hma" style="min-height:280px;"></div>
                 </div>
             </div>
         </div>
@@ -286,12 +276,7 @@ else
                         <i class="bi bi-arrow-left-right me-1"></i>Comparativa de densidad entre periodos
                     </div>
                     <div class="card-body">
-                        <AppChart Height="280" ShowLegend="true" CategoryAxisTitle="Zona" ValueAxisTitle="kg">
-                            <RadzenBarSeries Data="@_periodItems" CategoryProperty="ZoneName" ValueProperty="PeriodAKg"
-                                            Title="Periodo A" Fill="@ChartPalette.GetColor(0)" />
-                            <RadzenBarSeries Data="@_periodItems" CategoryProperty="ZoneName" ValueProperty="PeriodBKg"
-                                            Title="Periodo B" Fill="@ChartPalette.GetColor(1)" />
-                        </AppChart>
+                        <div id="chart-period-comparison-hma" style="min-height:280px;"></div>
                     </div>
                 </div>
             </div>
@@ -300,12 +285,7 @@ else
 }
 
 @code {
-    private record TypologyItem(string LerCode, double TotalKg);
-    private record PeriodItem(string ZoneName, double PeriodAKg, double PeriodBKg);
-
     private WasteDensityHeatMapDto?         _data;
-    private List<TypologyItem> _typologyItems = [];
-    private List<PeriodItem>   _periodItems   = [];
     private IReadOnlyList<ProvinceDto>      _provinces = [];
     private IReadOnlyList<EntitySelectorDto> _scraps   = [];
     private bool    _loading        = true;
@@ -351,8 +331,6 @@ else
                 ProvinceCode     : _filterProvince,
                 LerCodeFilter    : _filterLerCode,
                 IdScrap          : idScrap));
-            _typologyItems = _data?.WasteTypology.Take(8).Select(t => new TypologyItem(t.LerCode, (double)t.TotalKg)).ToList() ?? [];
-            _periodItems   = _data?.PeriodComparison.Select(p => new PeriodItem(p.ZoneName, (double)p.PeriodAKg, (double)p.PeriodBKg)).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -375,6 +353,20 @@ else
                 .Select(p => new { lat = p.Latitude, lng = p.Longitude, value = (double)p.TotalKg, name = p.EntityName })
                 .ToArray();
             await JS.InvokeVoidAsync("heatMapCharts.renderLeafletHeatMap", "heatmap-density", mapPoints);
+
+            // Donut tipología
+            var typologyLabels  = _data.WasteTypology.Take(8).Select(t => t.LerCode).ToArray();
+            var typologyValues  = _data.WasteTypology.Take(8).Select(t => (double)t.TotalKg).ToArray();
+            await JS.InvokeVoidAsync("heatMapCharts.renderDonut", "chart-waste-typology-hma", typologyLabels, typologyValues, "Tipología LER (kg)");
+
+            // Comparativa periodos
+            if (_data.PeriodComparison.Any())
+            {
+                var zoneLabels  = _data.PeriodComparison.Select(p => p.ZoneName).ToArray();
+                var periodAKg   = _data.PeriodComparison.Select(p => (double)p.PeriodAKg).ToArray();
+                var periodBKg   = _data.PeriodComparison.Select(p => (double)p.PeriodBKg).ToArray();
+                await JS.InvokeVoidAsync("heatMapCharts.renderComparisonBar", "chart-period-comparison-hma", zoneLabels, periodAKg, periodBKg);
+            }
         }
         catch (Exception ex)
         {

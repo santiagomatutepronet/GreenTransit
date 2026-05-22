@@ -1,6 +1,7 @@
 @page "/reporting/heat-maps/pattern-analysis"
 @attribute [Authorize(Policy = PolicyConstants.CanViewHeatMapPatternAnalysis)]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Geography.DTOs
@@ -17,6 +18,7 @@
 
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
 @inject ILogger<WastePatternAnalysis> Logger
 
 <PageTitle>Mapa de Calor — Patrones y Estacionalidad — GreenTransit</PageTitle>
@@ -163,38 +165,7 @@ else
                     }
                     else
                     {
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered mb-0" style="font-size:0.78rem">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Capítulo LER</th>
-                                        @foreach (var mn in Enumerable.Range(1, 12))
-                                        {
-                                            <th class="text-center">@(new DateTime(2000,mn,1).ToString("MMM",new System.Globalization.CultureInfo("es-ES")))</th>
-                                        }
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var ch in _data.TemporalHeatMap.Select(c => c.LerChapter).Distinct().OrderBy(x => x))
-                                    {
-                                        var maxKg2 = _data.TemporalHeatMap.Max(c => c.TotalKg);
-                                        <tr>
-                                            <td><small>@ch</small></td>
-                                            @foreach (var mn in Enumerable.Range(1, 12))
-                                            {
-                                                var cell = _data.TemporalHeatMap.FirstOrDefault(c => c.LerChapter == ch && c.Month == mn);
-                                                var intensity = cell is not null && maxKg2 > 0 ? (int)(cell.TotalKg / maxKg2 * 100) : 0;
-                                                var bgAlpha = (intensity / 100.0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-                                                var fgColor = intensity > 50 ? "white" : "inherit";
-                                                <td class="text-center" style="background-color:rgba(25,135,84,@bgAlpha);color:@fgColor">
-                                                    @(cell is not null ? $"{cell.TotalKg / 1000m:F0}t" : "")
-                                                </td>
-                                            }
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
+                        <div id="chart-temporal-heatmap-hmb" style="min-height:320px;"></div>
                     }
                 </div>
             </div>
@@ -216,14 +187,7 @@ else
                     }
                     else
                     {
-                        <AppChart Height="280" ShowLegend="true" CategoryAxisTitle="Mes" ValueAxisTitle="kg">
-                            @{ int ti = 0; }
-                            @foreach (var trend in _trendSeries)
-                            {
-                                <RadzenLineSeries Data="@trend.Items" CategoryProperty="Month" ValueProperty="Kg"
-                                                  Title="@trend.Name" Stroke="@ChartPalette.GetColor(ti++)" StrokeWidth="2" />
-                            }
-                        </AppChart>
+                        <div id="chart-monthly-trend-hmb" style="min-height:280px;"></div>
                     }
                 </div>
             </div>
@@ -245,35 +209,7 @@ else
                     }
                     else
                     {
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered mb-0" style="font-size:0.78rem">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Hora</th>
-                                        @foreach (var d in new[] { "Lun","Mar","Mié","Jue","Vie","Sáb","Dom" }) { <th class="text-center">@d</th> }
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var h in _data.WeeklyFrequency.Select(c => c.Hour).Distinct().OrderBy(hh => hh))
-                                    {
-                                        var maxCount2 = _data.WeeklyFrequency.Max(c => c.PickupCount);
-                                        <tr>
-                                            <td>@h:00</td>
-                                            @for (int d = 0; d < 7; d++)
-                                            {
-                                                var cell = _data.WeeklyFrequency.FirstOrDefault(c => c.DayOfWeek == d && c.Hour == h);
-                                                var pct  = cell is not null && maxCount2 > 0 ? (int)((double)cell.PickupCount / maxCount2 * 100) : 0;
-                                                var bgAlpha2 = (pct / 100.0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-                                                var fgColor2 = pct > 50 ? "white" : "inherit";
-                                                <td class="text-center" style="background-color:rgba(13,110,253,@bgAlpha2);color:@fgColor2">
-                                                    @(cell?.PickupCount > 0 ? cell.PickupCount.ToString() : "")
-                                                </td>
-                                            }
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
+                        <div id="chart-weekly-heatmap-hmb" style="min-height:320px;"></div>
                     }
                 </div>
             </div>
@@ -282,12 +218,9 @@ else
 }
 
 @code {
-    private record TrendPoint(string Month, double Kg);
-    private record TrendSerie(string Name, List<TrendPoint> Items);
-
     private WastePatternAnalysisDto?      _data;
-    private List<TrendSerie> _trendSeries = [];
     private bool    _loading        = true;
+    private bool    _chartsRendered = false;
     private int     _filterYear     = DateTime.Now.Year;
     private string? _filterProvinceCode;
     private string? _filterLerCode;
@@ -295,17 +228,30 @@ else
     private IReadOnlyList<ProvinceDto>       _provinces = [];
     private IReadOnlyList<EntitySelectorDto> _scraps    = [];
 
+    private DotNetObjectReference<WastePatternAnalysis>? _dotNetRef;
+
     protected override async Task OnInitializedAsync()
     {
+        _dotNetRef = DotNetObjectReference.Create(this);
         _provinces = (await Mediator.Send(new GetAllProvincesQuery())).ToList();
         if (CurrentUser.IsInAnyProfile("ADMIN", "DISPATCH_OFFICE"))
             _scraps = await Mediator.Send(new GetEntitiesForSelectorQuery(new[] { EntityRoles.SCRAP }));
         await RefreshAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_data is not null && !_loading && !_chartsRendered)
+        {
+            _chartsRendered = true;
+            await RenderChartsAsync();
+        }
+    }
+
     private async Task RefreshAsync()
     {
         _loading        = true;
+        _chartsRendered = false;
         StateHasChanged();
         try
         {
@@ -315,10 +261,6 @@ else
                 ProvinceCode : _filterProvinceCode,
                 LerCodeFilter: _filterLerCode,
                 IdScrap      : idScrap));
-            _trendSeries = _data?.MonthlyTrends.Select(t => new TrendSerie(
-                t.LerCode,
-                t.MonthlyKg.Select((kg, i) => new TrendPoint($"{i+1:00}", (double)kg)).ToList()
-            )).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -328,6 +270,51 @@ else
         {
             _loading = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        if (_data is null) return;
+        try
+        {
+            // Heatmap temporal: matriz mes × capítulo LER
+            if (_data.TemporalHeatMap.Any())
+            {
+                var tempData = _data.TemporalHeatMap
+                    .Select(c => new { month = c.Month, chapter = c.LerChapter, kg = (double)c.TotalKg })
+                    .ToArray();
+                await JS.InvokeVoidAsync("heatMapCharts.renderTemporalHeatMap",
+                    "chart-temporal-heatmap-hmb", tempData);
+            }
+
+            // Tendencia mensual multi-serie con media móvil
+            if (_data.MonthlyTrends.Any())
+            {
+                var seriesData = _data.MonthlyTrends.Select(t => new
+                {
+                    name    = t.LerCode,
+                    data    = t.MonthlyKg.Select(v => (double)v).ToArray(),
+                    movAvg  = t.MovingAvg3M.Select(v => (double)v).ToArray()
+                }).ToArray();
+                await JS.InvokeVoidAsync("heatMapCharts.renderMultiLineChart",
+                    "chart-monthly-trend-hmb", seriesData);
+            }
+
+            // Heatmap semanal día × hora
+            if (_data.WeeklyFrequency.Any())
+            {
+                var weeklyData = _data.WeeklyFrequency
+                    .Select(c => new { day = c.DayOfWeek, hour = c.Hour, count = c.PickupCount })
+                    .ToArray();
+                await JS.InvokeVoidAsync("heatMapCharts.renderWeeklyHeatMap",
+                    "chart-weekly-heatmap-hmb", weeklyData);
+            }
+        }
+        catch (Exception ex)
+        {
+            _chartsRendered = false;   // permitir reintento en el circuito interactivo
+            Logger.LogWarning(ex, "Error al renderizar gráficos de patrones de residuos");
         }
     }
 
@@ -345,4 +332,9 @@ else
         _        => "Baja"
     };
 
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        await Task.CompletedTask;
     }
+}
