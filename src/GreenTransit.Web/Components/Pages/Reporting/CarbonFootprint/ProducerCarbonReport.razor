@@ -1,7 +1,6 @@
 ﻿@page "/reporting/carbon-footprint/producer-report"
 @attribute [Authorize(Policy = PolicyConstants.CanViewCarbonProducerReport)]
 @rendermode InteractiveServer
-@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Reporting.CarbonFootprint.DTOs
@@ -9,12 +8,10 @@
 @using GreenTransit.Domain.Authorization
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
-@using Microsoft.JSInterop
 @using System.Globalization
 
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
-@inject IJSRuntime          JS
 @inject ILogger<ProducerCarbonReport> Logger
 
 <PageTitle>Reporte de Huella de Carbono — Productor — GreenTransit</PageTitle>
@@ -118,9 +115,12 @@ else
             <div class="card h-100">
                 <div class="card-header"><i class="bi bi-pie-chart-fill me-2"></i>Emision por tipo de residuo (LER)</div>
                 <div class="card-body">
-                    @if (_data.ByLerCode.Any())
+                    @if (_lerItems.Any())
                     {
-                        <div id="chart-hcd-ler" style="min-height:280px"></div>
+                        <AppChart Height="280" ShowLegend="true">
+                            <RadzenDonutSeries Data="@_lerItems" CategoryProperty="Label" ValueProperty="CO2eKg"
+                                              Fills="@ChartPalette.CorporateColors" />
+                        </AppChart>
                     }
                     else
                     {
@@ -164,9 +164,12 @@ else
     <div class="card mb-4">
         <div class="card-header"><i class="bi bi-graph-up me-2"></i>Evolucion mensual de mi huella</div>
         <div class="card-body">
-            @if (_data.MonthlyEvolution.Any())
+            @if (_monthlyItems.Any())
             {
-                <div id="chart-hcd-monthly" style="min-height:280px"></div>
+                <AppChart Height="280" ShowLegend="false" CategoryAxisTitle="Mes" ValueAxisTitle="CO₂e (kg)">
+                    <RadzenLineSeries Data="@_monthlyItems" CategoryProperty="Label" ValueProperty="CO2eKg"
+                                      Title="CO₂e kg" Stroke="@ChartPalette.GetColor(0)" StrokeWidth="2" />
+                </AppChart>
             }
             else
             {
@@ -211,33 +214,29 @@ else
 }
 
 @code {
+    private record LerItem(string Label, double CO2eKg);
+    private record MonthlyItem(string Label, double CO2eKg);
+
     private CarbonProducerReportDto? _data;
+    private List<LerItem>     _lerItems     = [];
+    private List<MonthlyItem> _monthlyItems = [];
     private bool    _loading;
-    private bool    _chartsRendered;
     private DateTime _dateFrom = new(DateTime.Now.Year, 1, 1);
     private DateTime _dateTo   = DateTime.Now;
     private string?  _filterLerCode;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!_loading && _data is not null && !_chartsRendered)
-        {
-            _chartsRendered = true;
-            await RenderChartsAsync();
-        }
-    }
-
     private async Task LoadAsync()
     {
         _loading        = true;
-        _chartsRendered = false;
         try
         {
             _data = await Mediator.Send(new GetProducerCarbonReportQuery(
                 _dateFrom, _dateTo,
                 LerCode: string.IsNullOrEmpty(_filterLerCode) ? null : _filterLerCode));
+            _lerItems     = _data?.ByLerCode.Select(l => new LerItem($"{l.LerCode} {l.LerDescription}", (double)l.CO2eKg)).ToList() ?? [];
+            _monthlyItems = _data?.MonthlyEvolution.Select(m => new MonthlyItem($"{m.Month:00}/{m.Year}", (double)m.CO2eKg)).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -245,42 +244,6 @@ else
             _data = null;
         }
         finally { _loading = false; }
-    }
-
-    private async Task RenderChartsAsync()
-    {
-        if (_data is null) return;
-        try
-        {
-            if (_data.MonthlyEvolution.Any())
-            {
-                var months = _data.MonthlyEvolution
-                    .Select(m => new { year = m.Year, month = m.Month,
-                                       co2eKg = (double)m.CO2eKg,
-                                       intensityKgPerTonne = (double)m.IntensityCO2ePerTonne })
-                    .ToList();
-                await JS.InvokeVoidAsync("carbonCharts.renderProducerMonthly", "chart-hcd-monthly", months);
-            }
-            if (_data.ByLerCode.Any())
-            {
-                var lers = _data.ByLerCode
-                    .Select(l => new { lerCode = l.LerCode, lerDescription = l.LerDescription,
-                                       co2eKg = (double)l.CO2eKg })
-                    .ToList();
-                await JS.InvokeVoidAsync("carbonCharts.renderLerDonut", "chart-hcd-ler", lers);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Error renderizando gráficos HC-D");
-        }
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        _ = JS.InvokeVoidAsync("carbonCharts.clear", "chart-hcd-monthly");
-        _ = JS.InvokeVoidAsync("carbonCharts.clear", "chart-hcd-ler");
-        return ValueTask.CompletedTask;
     }
 
     private static string MonthName(int m) =>
