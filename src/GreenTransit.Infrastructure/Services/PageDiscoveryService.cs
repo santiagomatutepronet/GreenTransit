@@ -253,6 +253,16 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["PlantEnergyFootprint"]       = "Huella de Carbono — Huella Energética de Plantas",
             ["ProducerCarbonReport"]       = "Huella de Carbono — Reporte Productor",
             ["PublicEntityCarbonView"]     = "Huella de Carbono — Vista Entidad Pública",
+            // RegulatoryCompliance
+            ["ScrapComplianceOverview"]         = "Cumplimiento Normativo — Panel SCRAP",
+            ["DispatchOfficeComplianceData"]     = "Cumplimiento Normativo — Datos Oficina Asignación",
+            ["AgreementComplianceMonitoring"]    = "Cumplimiento Normativo — Monitorización Convenios",
+            ["MarketShareAudit"]                = "Cumplimiento Normativo — Auditoría Cuotas de Mercado",
+            ["PublicEntityComplianceView"]       = "Cumplimiento Normativo — Vista Entidad Pública",
+            // Mobility
+            ["MunicipalMonitoring"]             = "Movilidad — Monitorización Municipal",
+            ["CoordinatorAnalysis"]             = "Movilidad — Análisis Coordinador",
+            ["DispatchData"]                    = "Movilidad — Datos Oficina de Asignación",
             ["PublishData"]                = "Publicar Datos — EcoDataNet",
             // EcoDataNet Dataspace — Configuración
             ["EdcConfigDispatchOffice"]    = "EDN — Configuración Oficina Asignación",

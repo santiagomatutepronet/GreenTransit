@@ -1,4 +1,4 @@
-# 🗺️ Mapa de Funcionalidades — Sistema de Trazabilidad **GreenTransit**
+﻿# 🗺️ Mapa de Funcionalidades — Sistema de Trazabilidad **GreenTransit**
 
 > Plataforma web **multi-rol**, **multi-tenant** (`OwnerId`) y preparada para **data spaces (EDC)** que cubre el ciclo completo del residuo: planificación → ejecución → pesaje → tratamiento → justificación económica → reporting regulatorio.
 >
@@ -3880,20 +3880,20 @@ Se añaden los siguientes ítems:
 
 Se añaden los siguientes ítems:
 
-- [ ] Policies registradas en `PolicyConstants.cs`: `CanViewHeatMapWasteDensity`, `CanViewHeatMapPatternAnalysis`, `CanViewHeatMapPublicView`.
-- [ ] Policies registradas en `Program.cs` con los perfiles indicados.
-- [ ] Páginas Blazor creadas en `Web/Components/Pages/Reporting/HeatMaps/` con `@attribute [Authorize(Policy = ...)]`.
-- [ ] Queries CQRS creadas en `Application/Features/Reporting/HeatMaps/Queries/`.
-- [ ] DTOs creados en `Application/Features/Reporting/HeatMaps/DTOs/`.
-- [ ] `HeatMapAggregationService.cs` implementado con motor de alertas de acumulación.
-- [ ] Componentes reutilizables creados en `Web/Components/Shared/HeatMaps/`.
-- [ ] Entradas en `NavMenu.razor` en sección Reporting con consulta a `IPagePermissionService`.
-- [ ] `InferModuleName()` actualizado para reconocer `/reporting/heat-maps/` → Reporting (si no se infiere automáticamente).
-- [ ] `HumanizeName()` actualizado con nombres legibles en español para los 3 componentes.
-- [ ] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
-- [ ] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PUBLIC_ENT (MunicipalityCode/IdIssuedBy).
-- [ ] Umbrales de alertas configurables en `appsettings.json`.
-- [ ] Exportación XLSX implementada en HM-A y HM-C (patrón ClosedXML).
+- [x] Policies registradas en `PolicyConstants.cs`: `CanViewHeatMapWasteDensity`, `CanViewHeatMapPatternAnalysis`, `CanViewHeatMapPublicView`.
+- [x] Policies registradas en `Program.cs` con los perfiles indicados.
+- [x] Páginas Blazor creadas en `Web/Components/Pages/Reporting/HeatMaps/` con `@attribute [Authorize(Policy = ...)]`.
+- [x] Queries CQRS creadas en `Application/Features/Reporting/HeatMaps/Queries/`.
+- [x] DTOs creados en `Application/Features/Reporting/HeatMaps/DTOs/`.
+- [ ] `HeatMapAggregationService.cs` implementado con motor de alertas de acumulación. *(pendiente: servicio de dominio no creado)*
+- [ ] Componentes reutilizables creados en `Web/Components/Shared/HeatMaps/`. *(pendiente)*
+- [x] Entradas en `NavMenu.razor` en sección Reporting con consulta a `IPagePermissionService`.
+- [x] `InferModuleName()` actualizado para reconocer `/reporting/heat-maps/` → Reporting.
+- [x] `HumanizeName()` actualizado con nombres legibles en español para los 3 componentes.
+- [x] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
+- [x] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PUBLIC_ENT (MunicipalityCode/IdIssuedBy).
+- [x] Umbrales de alertas configurables en `appsettings.json` (sección `HeatMaps.Alerts`).
+- [ ] Exportación XLSX implementada en HM-A y HM-C (patrón ClosedXML). *(pendiente)*
 - [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
 
 
@@ -3901,22 +3901,22 @@ Se añaden los siguientes ítems:
 
 Se añaden los siguientes ítems:
 
-- [ ] Policies registradas en `PolicyConstants.cs`: `CanViewCarbonFootprintOverview`, `CanViewTransportEmissionsAnalysis`, `CanViewPlantEnergyFootprint`, `CanViewProducerCarbonReport`, `CanViewPublicEntityCarbonView`.
-- [ ] Policies registradas en `Program.cs` con los perfiles indicados en §5.7.
-- [ ] Páginas Blazor creadas en `Web/Components/Pages/Reporting/CarbonFootprint/` con `@attribute [Authorize(Policy = ...)]`.
-- [ ] Queries CQRS creadas en `Application/Features/Reporting/CarbonFootprint/Queries/`.
-- [ ] DTOs creados en `Application/Features/Reporting/CarbonFootprint/DTOs/`.
+- [x] Policies registradas en `PolicyConstants.cs`: `CanViewCarbonFootprintOverview`, `CanViewTransportEmissionsAnalysis`, `CanViewPlantEnergyFootprint`, `CanViewProducerCarbonReport`, `CanViewPublicEntityCarbonView`.
+- [x] Policies registradas en `Program.cs` con los perfiles indicados en §5.7.
+- [x] Páginas Blazor creadas en `Web/Components/Pages/Reporting/CarbonFootprint/` con `@attribute [Authorize(Policy = ...)]`.
+- [x] Queries CQRS creadas en `Application/Features/Reporting/CarbonFootprint/Queries/`.
+- [x] DTOs creados en `Application/Features/Reporting/CarbonFootprint/DTOs/`.
 - [ ] `CarbonFootprintCalculationService.cs` implementado con cálculo Scope 2, motor de recomendaciones y umbrales.
 - [ ] Componentes reutilizables creados en `Web/Components/Shared/CarbonFootprint/`.
 - [ ] Entradas en `NavMenu.razor` en sección Reporting como subcarpeta colapsable "Huella de Carbono" con consulta a `IPagePermissionService`.
 - [ ] `InferModuleName()` actualizado para reconocer `/reporting/carbon-footprint/` → Reporting (si no se infiere automáticamente).
 - [ ] `HumanizeName()` actualizado con nombres legibles en español para los 5 componentes.
-- [ ] Configuración `CarbonFootprint` añadida en `appsettings.json` (Scope2 factor, umbrales, referencia Objetivo 55).
+- [x] Configuración `CarbonFootprint` añadida en `appsettings.json` (Scope2 factor, umbrales, referencia Objetivo 55).
 - [ ] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
 - [ ] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PRODUCER (IdIssuedBy), CARRIER (IdCarrier), PLANT_OP (PlantCenterCode), PUBLIC_ENT (MunicipalityCode/IdIssuedBy), COORDINATOR (Agreements.IdCoordinator).
 - [ ] Todos los JOINs geográficos resuelven `ProvinceCode` → `Province.Name` y `MunicipalityCode` → `Municipality.Name`.
 - [ ] Exportación XLSX implementada en HC-A y HC-C (patrón ClosedXML).
-- [ ] Gráficos con ApexCharts, responsive, modo oscuro/claro.
+- [x] Gráficos con **Radzen Blazor Charts** (`AppChart`/`ChartPalette`), responsive, modo oscuro/claro. *(Migrado desde ApexCharts — ver `docs/chart-migration-inventory.md`)*
 - [ ] Filtros persistidos en query string.
 - [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
 
@@ -3925,24 +3925,24 @@ Se añaden los siguientes ítems:
 
 Se añaden los siguientes ítems:
 
-- [ ] Policies registradas en `PolicyConstants.cs`: `CanViewScrapComplianceOverview`, `CanViewMarketShareAudit`, `CanViewAgreementComplianceMonitoring`, `CanViewPublicEntityComplianceView`, `CanViewDispatchOfficeComplianceData`.
-- [ ] Policies registradas en `Program.cs` con los perfiles indicados en §5.8.
-- [ ] Páginas Blazor creadas en `Web/Components/Pages/Reporting/RegulatoryCompliance/` con `@attribute [Authorize(Policy = ...)]`.
-- [ ] Queries CQRS creadas en `Application/Features/Reporting/RegulatoryCompliance/Queries/`.
-- [ ] DTOs creados en `Application/Features/Reporting/RegulatoryCompliance/DTOs/`.
+- [x] Policies registradas en `PolicyConstants.cs`: `CanViewScrapComplianceOverview`, `CanViewMarketShareAudit`, `CanViewAgreementComplianceMonitoring`, `CanViewPublicEntityComplianceView`, `CanViewDispatchOfficeComplianceData`.
+- [x] Policies registradas en `Program.cs` con los perfiles indicados en §5.8.
+- [x] Páginas Blazor creadas en `Web/Components/Pages/Reporting/RegulatoryCompliance/` con `@attribute [Authorize(Policy = ...)]`.
+- [x] Queries CQRS creadas en `Application/Features/Reporting/RegulatoryCompliance/Queries/`.
+- [x] DTOs creados en `Application/Features/Reporting/RegulatoryCompliance/DTOs/`.
 - [ ] `ComplianceMonitoringService.cs` implementado con motor de alertas, cálculos de desviación y umbrales configurables.
 - [ ] Componentes reutilizables creados en `Web/Components/Shared/RegulatoryCompliance/`.
 - [ ] Entradas en `NavMenu.razor` en sección Reporting como subcarpeta colapsable "Análisis y Cumplimiento Normativo" con consulta a `IPagePermissionService`.
 - [ ] `InferModuleName()` actualizado para reconocer `/reporting/regulatory-compliance/` → Reporting (si no se infiere automáticamente).
 - [ ] `HumanizeName()` actualizado con nombres legibles en español para los 5 componentes.
-- [ ] Configuración `RegulatoryCompliance` añadida en `appsettings.json` (umbrales de alertas, objetivos por defecto).
+- [x] Configuración `RegulatoryCompliance` añadida en `appsettings.json` (umbrales de alertas, objetivos por defecto — ver sección `RegulatoryTargets`).
 - [ ] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
 - [ ] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PUBLIC_ENT (MunicipalityCode/IdIssuedBy/IdPublicEntity), COORDINATOR (Agreements.IdCoordinator).
 - [ ] Todos los JOINs geográficos resuelven `ProvinceCode` → `Province.Name`, `MunicipalityCode` → `Municipality.Name` y `AutonomousCommunity` como nombre (no código).
 - [ ] Exportación XLSX implementada en CN-B y CN-E (patrón ClosedXML).
-- [ ] Gráficos con ApexCharts en TODOS los dashboards (mínimo uno por dashboard), responsive, modo oscuro/claro.
-- [ ] Filtros persistidos en query string.
-- [ ] Todos los dashboards incluyen al menos un gráfico (no solo tablas y cards).
+- [x] Gráficos con **Radzen Blazor Charts** en TODOS los dashboards (mínimo uno por dashboard), responsive, modo oscuro/claro. *(Migrado desde ApexCharts — ver `docs/chart-migration-inventory.md`)*
+- [x] Filtros persistidos en query string.
+- [x] Todos los dashboards incluyen al menos un gráfico (no solo tablas y cards).
 - [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
 
 
