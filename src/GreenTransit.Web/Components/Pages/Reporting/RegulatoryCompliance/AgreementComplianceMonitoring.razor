@@ -1,7 +1,6 @@
 @page "/reporting/regulatory-compliance/agreement-monitoring"
 @attribute [Authorize(Policy = PolicyConstants.CanViewAgreementComplianceMonitoring)]
 @rendermode InteractiveServer
-@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
@@ -12,11 +11,9 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
-@using Microsoft.JSInterop
 
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
-@inject IJSRuntime          JS
 @inject ILogger<AgreementComplianceMonitoring> Logger
 
 <PageTitle>Monitorización de Convenios — GreenTransit</PageTitle>
@@ -154,9 +151,19 @@ else
     <div class="card mb-4">
         <div class="card-header"><i class="bi bi-bar-chart-fill me-2"></i>Cobertura de convenios por comunidad autónoma</div>
         <div class="card-body">
-            @if (_data.CoverageByRegion.Any())
+            @if (_coverageItems.Any())
             {
-                <div id="chart-cn-c-coverage" style="min-height:280px"></div>
+                <AppChart Height="280" ShowLegend="true" CategoryAxisTitle="Comunidad Autónoma" ValueAxisTitle="Convenios">
+                    @{ int cvIdx = 0; }
+                    @foreach (var scrap in _coverageScrapNames)
+                    {
+                        var s = scrap;
+                        var idx = cvIdx++;
+                        <RadzenBarSeries Data="@_coverageItems.Where(x => x.ScrapName == s).ToList()"
+                                         CategoryProperty="Region" ValueProperty="Agreements"
+                                         Title="@s" Fill="@ChartPalette.GetColor(idx)" />
+                    }
+                </AppChart>
             }
             else
             {
@@ -209,9 +216,19 @@ else
     <div class="card mb-4">
         <div class="card-header"><i class="bi bi-graph-up me-2"></i>Evolución mensual de liquidaciones por SCRAP</div>
         <div class="card-body">
-            @if (_data.SettlementMonthlyByScrap.Any())
+            @if (_settlScrapItems.Any())
             {
-                <div id="chart-cn-c-settlements" style="min-height:280px"></div>
+                <AppChart Height="280" ShowLegend="true" CategoryAxisTitle="Mes" ValueAxisTitle="€">
+                    @{ int slIdx = 0; }
+                    @foreach (var scrap in _settlScrapNames)
+                    {
+                        var s = scrap;
+                        var idx = slIdx++;
+                        <RadzenLineSeries Data="@_settlScrapItems.Where(x => x.ScrapName == s).ToList()"
+                                          CategoryProperty="Label" ValueProperty="Amount"
+                                          Title="@s" Stroke="@ChartPalette.GetColor(idx)" StrokeWidth="2" />
+                    }
+                </AppChart>
             }
             else
             {
@@ -255,13 +272,19 @@ else
 }
 
 @code {
+    private record CoverageItem(string Region, string ScrapName, int Agreements);
+    private record SettlScrapItem(string Label, string ScrapName, double Amount);
+
     private const int PageSize = 15;
     private AgreementComplianceMonitoringDto? _data;
+    private List<CoverageItem>   _coverageItems     = [];
+    private List<string>         _coverageScrapNames = [];
+    private List<SettlScrapItem> _settlScrapItems   = [];
+    private List<string>         _settlScrapNames   = [];
     private ComplianceFilterOptionsDto  _filterOptions = new([], [], [], []);
     private IReadOnlyList<EntitySelectorDto> _scraps = [];
     private bool    _loading = true;
     private bool    _initialized;
-    private bool    _chartsRendered;
     private int     _year = DateTime.Now.Year;
     private string? _autonomousCommunity;
     private string? _wasteStream;
@@ -284,19 +307,9 @@ else
         await LoadAsync();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!_loading && _data is not null && !_chartsRendered)
-        {
-            _chartsRendered = true;
-            await RenderChartsAsync();
-        }
-    }
-
     private async Task LoadAsync()
     {
         _loading        = true;
-        _chartsRendered = false;
         _pgAgreements   = 1;
         _pgServices     = 1;
         try
@@ -309,6 +322,10 @@ else
                 string.IsNullOrEmpty(_wasteStream)         ? null : _wasteStream,
                 null,
                 string.IsNullOrEmpty(_agreementStatus)     ? null : _agreementStatus));
+            _coverageItems      = _data?.CoverageByRegion.Select(c => new CoverageItem(c.AutonomousCommunity, c.ScrapName, c.ActiveAgreements)).ToList() ?? [];
+            _coverageScrapNames = _data?.CoverageByRegion.Select(c => c.ScrapName).Distinct().ToList() ?? [];
+            _settlScrapItems    = _data?.SettlementMonthlyByScrap.Select(x => new SettlScrapItem($"{x.Month:00}/{x.Year}", x.ScrapName, (double)x.TotalAmount)).ToList() ?? [];
+            _settlScrapNames    = _data?.SettlementMonthlyByScrap.Select(x => x.ScrapName).Distinct().ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -316,33 +333,6 @@ else
             _data = null;
         }
         finally { _loading = false; }
-    }
-
-    private async Task RenderChartsAsync()
-    {
-        if (_data is null) return;
-        try
-        {
-            if (_data.CoverageByRegion.Any())
-            {
-                await JS.InvokeVoidAsync("complianceCharts.renderCoverageGroupedBar", "chart-cn-c-coverage",
-                    _data.CoverageByRegion.Select(c => new {
-                        region = c.AutonomousCommunity, scrap = c.ScrapName,
-                        agreements = c.ActiveAgreements, tonnes = (double)c.TotalTonnesManaged
-                    }).ToList());
-            }
-            if (_data.SettlementMonthlyByScrap.Any())
-            {
-                var scraps = _data.SettlementMonthlyByScrap.Select(x => x.ScrapName).Distinct().ToList();
-                await JS.InvokeVoidAsync("complianceCharts.renderSettlementLineByScrap", "chart-cn-c-settlements",
-                    _data.SettlementMonthlyByScrap.Select(x => new { year = x.Year, month = x.Month, scrap = x.ScrapName, amount = (double)x.TotalAmount }).ToList(),
-                    scraps);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Error renderizando gráficos CN-C");
-        }
     }
 
     private static string AgreementStatusBadge(string status) => status switch
@@ -354,10 +344,4 @@ else
         _           => "secondary"
     };
 
-    public ValueTask DisposeAsync()
-    {
-        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-c-coverage");
-        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-c-settlements");
-        return ValueTask.CompletedTask;
     }
-}

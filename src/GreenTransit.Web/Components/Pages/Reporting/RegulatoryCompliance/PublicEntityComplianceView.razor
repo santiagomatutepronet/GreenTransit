@@ -1,7 +1,6 @@
 @page "/reporting/regulatory-compliance/public-view"
 @attribute [Authorize(Policy = PolicyConstants.CanViewPublicEntityComplianceView)]
 @rendermode InteractiveServer
-@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Entities.DTOs
@@ -12,11 +11,9 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
-@using Microsoft.JSInterop
 
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
-@inject IJSRuntime          JS
 @inject ILogger<PublicEntityComplianceView> Logger
 
 <PageTitle>Cumplimiento Normativo — Entidad Pública — GreenTransit</PageTitle>
@@ -129,9 +126,19 @@ else
             <div class="card h-100">
                 <div class="card-header"><i class="bi bi-bar-chart-fill me-2"></i>Evolución mensual de recogidas por SCRAP</div>
                 <div class="card-body">
-                    @if (_data.MonthlyByScrap.Any())
+                    @if (_monthlyItems.Any())
                     {
-                        <div id="chart-cn-d-monthly" style="min-height:280px"></div>
+                        <AppChart Height="280" ShowLegend="true" CategoryAxisTitle="Mes" ValueAxisTitle="kg">
+                            @{ int mIdx = 0; }
+                            @foreach (var scrap in _monthlyScrapNames)
+                            {
+                                var s = scrap;
+                                var idx = mIdx++;
+                                <RadzenColumnSeries Data="@_monthlyItems.Where(x => x.ScrapName == s).ToList()"
+                                                   CategoryProperty="Label" ValueProperty="WeightKg"
+                                                   Title="@s" Fill="@ChartPalette.GetColor(idx)" />
+                            }
+                        </AppChart>
                     }
                     else
                     {
@@ -144,9 +151,12 @@ else
             <div class="card h-100">
                 <div class="card-header"><i class="bi bi-pie-chart-fill me-2"></i>Toneladas por método de recolección</div>
                 <div class="card-body">
-                    @if (_data.CollectionMethods.Any())
+                    @if (_methodItems.Any())
                     {
-                        <div id="chart-cn-d-methods" style="min-height:280px"></div>
+                        <AppChart Height="280" ShowLegend="true">
+                            <RadzenDonutSeries Data="@_methodItems" CategoryProperty="Method" ValueProperty="Pct"
+                                              Fills="@ChartPalette.CorporateColors" />
+                        </AppChart>
                     }
                     else
                     {
@@ -275,13 +285,18 @@ else
 }
 
 @code {
+    private record MonthScrapItem(string Label, string ScrapName, double WeightKg);
+    private record MethodItem(string Method, double Pct);
+
     private const int PageSize = 15;
     private PublicEntityComplianceViewDto? _data;
+    private List<MonthScrapItem> _monthlyItems      = [];
+    private List<string>         _monthlyScrapNames = [];
+    private List<MethodItem>     _methodItems       = [];
     private ComplianceFilterOptionsDto  _filterOptions = new([], [], [], []);
     private IReadOnlyList<EntitySelectorDto> _scraps = [];
     private bool    _loading = true;
     private bool    _initialized;
-    private bool    _chartsRendered;
     private int     _year  = DateTime.Now.Year;
     private string? _month;
     private string? _wasteStream;
@@ -304,19 +319,9 @@ else
         await LoadAsync();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!_loading && _data is not null && !_chartsRendered)
-        {
-            _chartsRendered = true;
-            await RenderChartsAsync();
-        }
-    }
-
     private async Task LoadAsync()
     {
         _loading               = true;
-        _chartsRendered        = false;
         _pgScrapCompliance     = 1;
         _pgCompSettlements     = 1;
         _pgIncidents           = 1;
@@ -327,6 +332,9 @@ else
                 string.IsNullOrEmpty(_month) ? null : int.Parse(_month),
                 Guid.TryParse(_filterIdScrap, out var sid) ? sid : null,
                 string.IsNullOrEmpty(_wasteStream) ? null : _wasteStream));
+            _monthlyItems      = _data?.MonthlyByScrap.Select(x => new MonthScrapItem($"{x.Month:00}/{x.Year}", x.ScrapName, (double)x.WeightKg)).ToList() ?? [];
+            _monthlyScrapNames = _data?.MonthlyByScrap.Select(x => x.ScrapName).Distinct().ToList() ?? [];
+            _methodItems       = _data?.CollectionMethods.Select(m => new MethodItem(m.Method, m.Pct)).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -334,30 +342,6 @@ else
             _data = null;
         }
         finally { _loading = false; }
-    }
-
-    private async Task RenderChartsAsync()
-    {
-        if (_data is null) return;
-        try
-        {
-            if (_data.MonthlyByScrap.Any())
-            {
-                var scraps = _data.MonthlyByScrap.Select(x => x.ScrapName).Distinct().ToList();
-                await JS.InvokeVoidAsync("complianceCharts.renderMonthlyStackedBar", "chart-cn-d-monthly",
-                    _data.MonthlyByScrap.Select(x => new { year = x.Year, month = x.Month, scrap = x.ScrapName, kg = (double)x.WeightKg, targetKg = (double)x.TargetWeightKg }).ToList(),
-                    scraps);
-            }
-            if (_data.CollectionMethods.Any())
-            {
-                var slices = _data.CollectionMethods.Select(m => new { name = m.Method, value = m.Pct }).ToList();
-                await JS.InvokeVoidAsync("complianceCharts.renderScrapDonut", "chart-cn-d-methods", slices);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Error renderizando gráficos CN-D");
-        }
     }
 
     private static string StatusColor(string status) => status switch
@@ -381,10 +365,4 @@ else
         _        => "secondary"
     };
 
-    public ValueTask DisposeAsync()
-    {
-        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-d-monthly");
-        _ = JS.InvokeVoidAsync("complianceCharts.clear", "chart-cn-d-methods");
-        return ValueTask.CompletedTask;
     }
-}
