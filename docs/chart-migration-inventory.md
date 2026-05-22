@@ -82,7 +82,7 @@ Se documenta con `<!-- MIGRACIÓN: heatmap → tabla coloreada CSS -->` en cada 
 | HeatMaps (3 páginas: HM-A…HM-C) | ✅ Completado — heatmaps 2D → tabla coloreada CSS |
 | Ecomodulación (residuals IAsyncDisposable) | ✅ Completado |
 | TratamientoReciclaje (residuals IAsyncDisposable) | ✅ Completado |
-| Mobility (3 páginas) | ⏳ Pendiente — ver `mobilityCharts.js` |
+| Mobility (3 páginas) | ✅ Completado — heatmap semanal → tabla CSS; comparativa y tendencia → Radzen |
 | Limpieza dependencias JS/NuGet | ✅ Completado (`carbonFootprintCharts.js`, `complianceCharts.js`, `mobilityCharts.js` eliminados; `Blazor-ApexCharts` eliminado del csproj) |
 | `heatMapCharts.js` | ✅ Conservado — aún se usa para mapas Leaflet en HM-A y HM-C |
 | Documentación actualizada | ⏳ Pendiente — README.md, COPILOT_CONTEXT.md |
