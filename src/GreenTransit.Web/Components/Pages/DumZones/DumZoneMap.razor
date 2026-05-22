@@ -118,12 +118,20 @@ else
 
                     @if (_drawingMode)
                     {
-                        <div class="position-absolute top-0 start-0 m-2 z-3">
-                            <div class="alert alert-info alert-sm py-1 px-2 mb-0 shadow-sm small">
-                                <i class="bi bi-pencil-square me-1"></i>
-                                <strong>Modo dibujo activo.</strong> Dibuja el polígono en el mapa.
-                                <button class="btn btn-sm btn-outline-secondary ms-2 py-0"
-                                        @onclick="CancelDrawingAsync">Cancelar</button>
+                        <div class="position-absolute top-0 start-0 m-2 z-3" style="max-width: 420px;">
+                            <div class="alert alert-info py-2 px-3 mb-0 shadow-sm small">
+                                <div class="fw-semibold mb-1">
+                                    <i class="bi bi-pencil-square me-1"></i>Modo dibujo activo
+                                </div>
+                                <ul class="mb-1 ps-3">
+                                    <li><strong>Clic</strong> en el mapa para añadir vértices.</li>
+                                    <li><strong>Doble clic</strong> para cerrar y finalizar el polígono.</li>
+                                    <li>O haz <strong>clic sobre el primer punto</strong> (azul) para cerrar.</li>
+                                </ul>
+                                <button class="btn btn-sm btn-outline-secondary py-0 mt-1"
+                                        @onclick="CancelDrawingAsync">
+                                    <i class="bi bi-x me-1"></i>Cancelar
+                                </button>
                             </div>
                         </div>
                     }
@@ -157,7 +165,8 @@ else
                 </div>
             </div>
             <div class="modal-body" style="overflow-y:auto; flex:1;">
-                <DumZoneForm ZoneId="_editingZoneId"
+                <DumZoneForm @key="@(_drawnGeometryJson ?? _editingZoneId?.ToString() ?? "new")"
+                             ZoneId="_editingZoneId"
                              InitialGeometryJson="_drawnGeometryJson"
                              OnSaved="OnFormSavedAsync"
                              OnCancelled="CloseForm" />
@@ -215,6 +224,9 @@ else
         if (_pendingStartDrawing)
         {
             _pendingStartDrawing = false;
+            // Pequeña pausa para que el navegador repinte el contenedor del mapa
+            // antes de que Leaflet recalcule su tamaño con invalidateSize()
+            await Task.Delay(50);
             await JS.InvokeVoidAsync("dumZoneMap.startDrawing");
         }
     }
@@ -316,6 +328,7 @@ else
         _editingZoneId       = null;
         _pendingStartDrawing = true;
         // La llamada JS se hace en OnAfterRenderAsync, cuando el modal ya no está en el DOM
+        StateHasChanged();
     }
 
     private async Task CancelDrawingAsync()

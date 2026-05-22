@@ -38,6 +38,10 @@
     <script src="js/dashboardMap.js"></script>
     <script src="js/wasteMoveMap.js"></script>
     <script src="js/dumZoneMap.js"></script>
+    @* ── ApexCharts (debe cargarse ANTES que blazor.web.js para que ApexCharts  *@
+    @*    esté definido cuando Blazor establezca el circuito SignalR e invoque   *@
+    @*    JS Interop por primera vez desde OnAfterRenderAsync)                 ── *@
+    <script src="_content/Blazor-ApexCharts/js/blazor-apexcharts.js"></script>
     <script src="js/mobilityCharts.js"></script>
     <script src="js/heatMapCharts.js"></script>
     <script src="js/carbonFootprintCharts.js"></script>
@@ -51,8 +55,6 @@
             document.getElementById('radzen-theme').setAttribute('href', '_content/Radzen.Blazor/css/' + themeName + '.css');
         };
     </script>
-    @* ── ApexCharts ────────────────────────────────────────────────────────── *@
-    <script src="_content/Blazor-ApexCharts/js/blazor-apexcharts.js"></script>
     @* ── Descarga de ficheros generados en servidor ────────────────────────── *@
     <script>
         window.downloadBase64File = function (base64, fileName, mimeType) {

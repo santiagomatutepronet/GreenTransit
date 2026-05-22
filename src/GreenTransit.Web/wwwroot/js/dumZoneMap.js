@@ -104,6 +104,13 @@ window.dumZoneMap = {
 
         this._cancelDrawing();   // limpia estado anterior si hubiera
 
+        // Asegurar que el mapa ocupa correctamente el contenedor (puede haber cambiado
+        // al cerrar el modal que estaba superpuesto)
+        this._map.invalidateSize();
+
+        // Desactivar el zoom por doble clic para que el dblclick cierre el polígono
+        this._map.doubleClickZoom.disable();
+
         const vertices  = [];
         const markers   = [];
         let   previewLine    = null;
@@ -115,6 +122,7 @@ window.dumZoneMap = {
             this._map.off('click',     onMapClick);
             this._map.off('dblclick',  onMapDblClick);
             this._map.off('mousemove', onMouseMove);
+            this._map.doubleClickZoom.enable();
             this._map.getContainer().style.cursor = '';
             if (previewLine)    { this._map.removeLayer(previewLine);    previewLine    = null; }
             if (previewPolygon) { this._map.removeLayer(previewPolygon); previewPolygon = null; }

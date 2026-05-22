@@ -246,7 +246,7 @@
         }
         else if (!string.IsNullOrWhiteSpace(InitialGeometryJson))
         {
-            _model.GeometryJson = InitialGeometryJson;
+            _model = new ZoneFormModel { GeometryJson = InitialGeometryJson };
         }
     }
 

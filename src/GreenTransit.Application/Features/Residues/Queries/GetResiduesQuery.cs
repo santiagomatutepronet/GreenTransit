@@ -13,15 +13,16 @@ namespace GreenTransit.Application.Features.Residues.Queries;
 /// hasta que se añada OwnerId a la entidad y su migración correspondiente.
 /// </summary>
 public sealed record GetResiduesQuery(
-    string? ResidueType = null,
-    Guid?   IdLERCode   = null,
-    bool?   IsDangerous = null,
-    bool?   IsRAEE      = null,
-    Guid?   IdProducer  = null,
-    string? SearchTerm  = null,
-    int     PageNumber  = 1,
-    int     PageSize    = 15,
-    string? SortBy      = null,
+    string? ResidueType    = null,
+    Guid?   IdLERCode      = null,
+    bool?   IsDangerous    = null,
+    bool?   IsRAEE         = null,
+    Guid?   IdProducer     = null,
+    string? SearchTerm     = null,
+    string? LerCodeFilter  = null,
+    int     PageNumber     = 1,
+    int     PageSize       = 15,
+    string? SortBy         = null,
     bool    SortDescending = false
 ) : IRequest<PaginatedResult<ResidueDto>>;
 
@@ -70,6 +71,12 @@ public sealed class GetResiduesQueryHandler
 
         if (request.IdProducer.HasValue)
             query = query.Where(r => r.IdProducer == request.IdProducer.Value);
+
+        if (!string.IsNullOrWhiteSpace(request.LerCodeFilter))
+        {
+            var lerTerm = request.LerCodeFilter.ToLower();
+            query = query.Where(r => r.LerCode != null && r.LerCode.Code.ToLower().Contains(lerTerm));
+        }
 
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))
         {

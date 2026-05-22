@@ -1444,6 +1444,11 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             ("Cartón ondulado",              "150101", "Valorización", "RAEE",        false, false),
             ("Equipo informático obsoleto",  "160214", "Recogida",     "RAEE",        false, true),
             ("Cable eléctrico",             "170411", "Valorización",  "Voluminosos", false, false),
+            // 4 residuos adicionales para cubrir LER sin residuo asociado
+            ("RAEE con CFC/HCFC",           "160211", "Recogida",     "RAEE",        true,  true),
+            ("Componentes eléctricos extraídos", "160216", "Reciclaje", "RAEE",      false, true),
+            ("Hormigón obra",               "170101", "Valorización", "Construcción", false, false),
+            ("Madera de construcción",      "170201", "Reciclaje",    "Voluminosos", false, false),
         };
         for (int i = 0; i < wasteDef.Length; i++)
         {
@@ -1470,27 +1475,29 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         }
 
         // Product (15)
+        // Tupla: (nombre, category, use, lerCode)
         var productDef = new[]
         {
-            ("Botella PET 1.5L",          "Envases",    "Beverage"),
-            ("Lata aluminio 330ml",       "Envases",    "Beverage"),
-            ("Caja cartón 30x20x15cm",    "Envases",    "Packaging"),
-            ("Botella vidrio 75cl",       "Envases",    "Beverage"),
-            ("Envase plástico 5kg",       "Envases",    "Food"),
-            ("Ordenador portátil",        "RAEE",       "Electronics"),
-            ("Televisor LED 42\"",        "RAEE",       "Electronics"),
-            ("Frigorífico A++",           "RAEE",       "WhiteGoods"),
-            ("Lavadora 8kg",              "RAEE",       "WhiteGoods"),
-            ("Móvil smartphone",          "RAEE",       "Mobile"),
-            ("Palé madera",               "Envases",    "Logistics"),
-            ("Film estirable",            "Envases",    "Packaging"),
-            ("Tóner impresora",           "RAEE",       "Consumable"),
-            ("Batería Li-ion",            "RAEE",       "Battery"),
-            ("Luminaria LED",             "RAEE",       "Lighting"),
+            ("Botella PET 1.5L",          "Envases",    "Beverage",    "150102"),
+            ("Lata aluminio 330ml",       "Envases",    "Beverage",    "150104"),
+            ("Caja cartón 30x20x15cm",    "Envases",    "Packaging",   "150101"),
+            ("Botella vidrio 75cl",       "Envases",    "Beverage",    "150107"),
+            ("Envase plástico 5kg",       "Envases",    "Food",        "150102"),
+            ("Ordenador portátil",        "RAEE",       "Electronics", "160213"),
+            ("Televisor LED 42\"",        "RAEE",       "Electronics", "160213"),
+            ("Frigorífico A++",           "RAEE",       "WhiteGoods",  "160213"),
+            ("Lavadora 8kg",              "RAEE",       "WhiteGoods",  "160213"),
+            ("Móvil smartphone",          "RAEE",       "Mobile",      "160214"),
+            ("Palé madera",               "Envases",    "Logistics",   "150103"),
+            ("Film estirable",            "Envases",    "Packaging",   "150102"),
+            ("Tóner impresora",           "RAEE",       "Consumable",  "160214"),
+            ("Batería Li-ion",            "RAEE",       "Battery",     "160214"),
+            ("Luminaria LED",             "RAEE",       "Lighting",    "160214"),
         };
         for (int i = 0; i < productDef.Length; i++)
         {
-            var (name, category, use) = productDef[i];
+            var (name, category, use, lerCode) = productDef[i];
+            lerByCode.TryGetValue(lerCode, out var lerProdId);
             list.Add(new Residue
             {
                 Id              = SeedGuid("rp", i + 1),
@@ -1498,6 +1505,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 Name            = name,
                 ProductCategory = category,
                 ProductUse      = use,
+                IdLERCode       = lerProdId == Guid.Empty ? null : lerProdId,
                 WeightPerUnitKg = 0.5m + i * 0.3m,
                 RecycledContentPercent = 10 + i * 3,
                 IdProducer      = null, // catálogo global — visible para todos los perfiles
@@ -1568,6 +1576,16 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         var wasteStreams = new[] { "Envases", "RAEE", "Voluminosos", "Plásticos", "Metales" };
         var ccaas       = new[] { "Aragón", "Madrid", "Cataluña", "Andalucía", "Comunidad Valenciana" };
 
+        // Códigos LER representativos por WasteStream para las reglas tarifarias
+        var lerByStream = new Dictionary<string, string>
+        {
+            ["Envases"]    = "150101",
+            ["RAEE"]       = "160213",
+            ["Voluminosos"]= "150103",
+            ["Plásticos"]  = "150102",
+            ["Metales"]    = "170405",
+        };
+
         int idx = 0;
         for (int s = 0; s < Math.Min(scraps.Count, 5); s++)
         {
@@ -1575,6 +1593,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             {
                 idx++;
                 var status = idx <= 20 ? "Active" : idx <= 23 ? "Expired" : "Draft";
+                var stream = wasteStreams[s];
+                var lerCode = lerByStream.TryGetValue(stream, out var lc) ? lc : "150101";
                 var agr = new Agreement
                 {
                     Id              = SeedGuid("agr", idx),
@@ -1586,12 +1606,12 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                     IdScrap         = scraps[s],
                     IdPublicEntity  = publicEntities[p],
                     IdCoordinator   = coordinator,
-                    WasteStream     = wasteStreams[s],
+                    WasteStream     = stream,
                     SubStream       = s % 2 == 0 ? "Plástico" : "Metal",
                     AutonomousCommunity = ccaas[p],
                     Currency        = "EUR",
                     TariffModelType = idx % 3 == 0 ? "PorUnidad" : "PorPeso",
-                    TariffRulesJson = "{\"pricePerKg\":0.15,\"minWeight\":1000}",
+                    TariffRulesJson = $"{{\"lerCode\":\"{lerCode}\",\"pricePerKg\":0.15,\"minWeight\":1000}}",
                     MinimumsJson    = "{\"minMonthlyKg\":500}",
                     ObligationsJson = "{\"reportingFrequency\":\"Monthly\"}",
                     SourceSystem    = Seed,
@@ -2256,6 +2276,19 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         var states       = new[] { "Borrador", "Emitido", "Validado", "Rechazado" };
         var types        = new[] { "DeclaraciónAnual", "DeclaraciónTrimestral" };
 
+        // Datos para completar las líneas de producto: categoría, origen y uso
+        var productCategories = new[] { "Envases", "RAEE", "Voluminosos", "Metales", "Papel" };
+        var productSources    = new[]
+        {
+            "Producción propia", "Importación", "Producción propia",
+            "Fabricación nacional", "Distribución"
+        };
+        var productUses = new[]
+        {
+            "Beverage", "Electronics", "Packaging", "WhiteGoods",
+            "Food", "Logistics", "Mobile", "Consumable", "Battery", "Lighting"
+        };
+
         int declIdx = 0;
         foreach (var (producerId, centerCode) in producers)
         {
@@ -2294,7 +2327,9 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                             ? productResidueIds[(declIdx + p) % productResidueIds.Count] : null,
                         ProductName           = $"Producto Demo {p+1}",
                         Reference             = $"REF-PROD-{p+1:D3}",
-                        Source                = "Producción propia",
+                        Source                = productSources[(declIdx + p) % productSources.Length],
+                        ProductCategory       = productCategories[(declIdx + p) % productCategories.Length],
+                        ProductUse            = productUses[(declIdx + p) % productUses.Length],
                         Quantity              = 100m + (declIdx + p * 500) % 9900,
                         MeasureUnit           = "Kg",
                         Units                 = 10 + p * 20,

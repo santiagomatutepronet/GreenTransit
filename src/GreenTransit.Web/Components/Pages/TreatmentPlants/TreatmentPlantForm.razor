@@ -7,6 +7,8 @@
 @using GreenTransit.Application.Features.WasteMoves.Queries
 @using GreenTransit.Application.Features.Residues.DTOs
 @using GreenTransit.Application.Features.Residues.Queries
+@using GreenTransit.Application.Features.ServiceOrders.DTOs
+@using GreenTransit.Application.Features.ServiceOrders.Queries
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
@@ -143,11 +145,22 @@ else
                     {
                         @foreach (var (metric, idx) in _metrics.Select((m, i) => (m, i)))
                         {
-                            <div class="row g-2 mb-2">
+                            <div class="row g-2 mb-2 align-items-center">
                                 <div class="col-5">
-                                    <input class="form-control form-control-sm"
-                                           placeholder="Clave (ej. % contaminantes)"
-                                           @bind="metric.Key" />
+                                    <select class="form-select form-select-sm"
+                                            value="@metric.SelectedKey"
+                                            @onchange="e => metric.SelectedKey = e.Value?.ToString() ?? metric.SelectedKey">
+                                        @foreach (var key in PredefinedMetricKeys)
+                                        {
+                                            <option value="@key">@key</option>
+                                        }
+                                    </select>
+                                    @if (metric.SelectedKey == "Personalizada…")
+                                    {
+                                        <input class="form-control form-control-sm mt-1"
+                                               placeholder="Nombre de la métrica"
+                                               @bind="metric.CustomKey" />
+                                    }
                                 </div>
                                 <div class="col-5">
                                     <input class="form-control form-control-sm"
@@ -238,9 +251,14 @@ else
                                     </div>
                                     <div class="col-6 col-md-2">
                                         <label class="form-label form-label-sm">Categoría</label>
-                                        <input class="form-control form-control-sm"
-                                               @bind="line.Category"
-                                               placeholder="RAEE, envases…" />
+                                        <select class="form-select form-select-sm"
+                                                @bind="line.Category">
+                                            <option value="">— Seleccionar —</option>
+                                            @foreach (var cat in _categoryOptions)
+                                            {
+                                                <option value="@cat">@cat</option>
+                                            }
+                                        </select>
                                     </div>
                                 </div>
 
@@ -396,6 +414,7 @@ else
 
     private WasteMoveDetailDto?     _wasteMove;
     private List<ResidueDto>         _residues = [];
+    private IReadOnlyList<string>    _categoryOptions = [];
 
     // ── Modelo del formulario ─────────────────────────────────────────────────
     private TreatmentFormModel _model = new();
@@ -413,10 +432,25 @@ else
     // ── Métricas de calidad (pares clave/valor) ───────────────────────────────
     private List<MetricEntry> _metrics = [];
 
+    private static readonly string[] PredefinedMetricKeys =
+    [
+        "% contaminantes",
+        "% humedad",
+        "% impropios",
+        "% valorización",
+        "% rechazo",
+        "densidad (kg/m³)",
+        "conductividad",
+        "observaciones calidad",
+        "Personalizada…"
+    ];
+
     private sealed class MetricEntry
     {
-        public string Key   { get; set; } = string.Empty;
-        public string Value { get; set; } = string.Empty;
+        public string  SelectedKey  { get; set; } = "% contaminantes";
+        public string  CustomKey    { get; set; } = string.Empty;
+        public string  Value        { get; set; } = string.Empty;
+        public string  Key => SelectedKey == "Personalizada…" ? CustomKey : SelectedKey;
     }
 
     // ── Líneas de clasificación ───────────────────────────────────────────────
@@ -454,6 +488,20 @@ else
         _wasteMove = await Mediator.Send(new GetWasteMoveByIdQuery(WasteMoveId));
         var resResult = await Mediator.Send(new GetResiduesQuery(PageSize: 500));
         _residues  = resResult.Items.ToList();
+
+        // Cargar categorías a partir del flujo de residuos de la SO vinculada
+        string? wasteStream = null;
+        if (_wasteMove?.ServiceOrderId.HasValue == true)
+        {
+            var so = await Mediator.Send(new GetServiceOrderByIdQuery(_wasteMove.ServiceOrderId!.Value));
+            wasteStream = so?.WasteStream;
+        }
+
+        var flow = WasteFlowCatalog.FindByCode(wasteStream);
+        _categoryOptions = flow is not null
+            ? flow.Subflows
+            : WasteFlowCatalog.All.SelectMany(f => f.Subflows).Distinct().OrderBy(s => s).ToList();
+
         _loading   = false;
     }
 

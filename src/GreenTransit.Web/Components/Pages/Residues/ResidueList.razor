@@ -54,6 +54,13 @@
                @onkeyup="@(async e => { if (e.Key == "Enter") await LoadAsync(); })" />
     </div>
     <div class="filter-group">
+        <label>Código LER</label>
+        <input class="form-control"
+               placeholder="Ej: 20 01 01…"
+               @bind="_filterLerCode" @bind:event="oninput"
+               @onkeyup="@(async e => { if (e.Key == "Enter") await LoadAsync(); })" />
+    </div>
+    <div class="filter-group">
         <label>Peligroso</label>
         <select class="form-control" @bind="_filterDangerous">
             <option value="">— Todos —</option>
@@ -140,6 +147,7 @@
     private bool    _loading         = true;
     private string  _activeTab       = "";
     private string? _searchTerm;
+    private string? _filterLerCode;
     private string  _filterDangerous = "";
     private string  _filterRaee      = "";
     private int     _page            = 1;
@@ -152,12 +160,13 @@
     {
         _loading = true;
         _result  = await Mediator.Send(new GetResiduesQuery(
-            ResidueType: string.IsNullOrEmpty(_activeTab) ? null : _activeTab,
-            IsDangerous: ParseBool(_filterDangerous),
-            IsRAEE:      ParseBool(_filterRaee),
-            SearchTerm:  _searchTerm,
-            PageNumber:  _page,
-            SortBy:      string.IsNullOrEmpty(_sortBy) ? null : _sortBy,
+            ResidueType:   string.IsNullOrEmpty(_activeTab) ? null : _activeTab,
+            IsDangerous:   ParseBool(_filterDangerous),
+            IsRAEE:        ParseBool(_filterRaee),
+            SearchTerm:    _searchTerm,
+            LerCodeFilter: _filterLerCode,
+            PageNumber:    _page,
+            SortBy:        string.IsNullOrEmpty(_sortBy) ? null : _sortBy,
             SortDescending: _sortDescending));
         _loading = false;
     }
@@ -192,6 +201,7 @@
     private async Task ResetFilters()
     {
         _searchTerm      = null;
+        _filterLerCode   = null;
         _filterDangerous = "";
         _filterRaee      = "";
         _page            = 1;

@@ -103,20 +103,13 @@ else
                                                 Data="@_allEntities" TextProperty="Name" ValueProperty="Id"
                                                 AllowClear="true" AllowFiltering="true"
                                                 FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                Change="@(_ => OnIssuedByChanged())"
                                                 Placeholder="— Sin asignar —" Style="width:100%" />
                             </ChildContent>
                         </RadzenFormField>
                     }
                 </RadzenColumn>
-                <RadzenColumn SizeMD="3">
-                    <RadzenFormField Text="Nombre emisor (texto libre)" Variant="Variant.Outlined" Style="width:100%">
-                        <ChildContent>
-                            <RadzenTextBox Name="IssuedByName" @bind-Value="_model.IssuedByName"
-                                           Placeholder="Si no está en el listado" Style="width:100%" />
-                        </ChildContent>
-                    </RadzenFormField>
-                </RadzenColumn>
-                <RadzenColumn SizeMD="3">
+                <RadzenColumn SizeMD="6">
                     <RadzenFormField Text="NIF / NIMA emisor" Variant="Variant.Outlined" Style="width:100%">
                         <ChildContent>
                             <RadzenTextBox Name="IssuedByNationalId" @bind-Value="_model.IssuedByNationalId" Style="width:100%" />
@@ -513,6 +506,13 @@ else
     }
 
     // ── Eventos ───────────────────────────────────────────────────────────────
+
+    private void OnIssuedByChanged()
+    {
+        var entity = _allEntities.FirstOrDefault(e => e.Id == _model.IdIssuedBy);
+        _model.IssuedByName      = entity?.Name;
+        _model.IssuedByNationalId = entity?.NationalId;
+    }
 
     private void OnPickupPointChanged() { }   // reservado para lógica futura
 

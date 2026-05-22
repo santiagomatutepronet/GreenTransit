@@ -184,8 +184,13 @@ else
                                         }
                                     </td>
                                     <td>
-                                        <input class="form-control form-control-sm" readonly
-                                               value="@line.ProductCategory" style="min-width:100px" />
+                                        <select class="form-select form-select-sm" @bind="line.ProductCategory" style="min-width:120px">
+                                            <option value="">—</option>
+                                            @foreach (var cat in _dicCategories)
+                                            {
+                                                <option value="@cat.Description">@cat.Description</option>
+                                            }
+                                        </select>
                                     </td>
                                     <td>
                                         <select class="form-select form-select-sm" @bind="line.Source" style="min-width:110px">
@@ -299,11 +304,12 @@ else
     private string? _producerName;
 
     // Catálogos
-    private List<EntityDto>                          _producers  = [];
-    private List<DicProductDeclarationTypeDto>        _dicTypes   = [];
+    private List<EntityDto>                          _producers   = [];
+    private List<DicProductDeclarationTypeDto>        _dicTypes    = [];
     private List<DicProductDeclarationProductDto>     _dicProducts = [];
-    private List<DicProductDeclarationSourceDto>      _dicSources = [];
-    private List<DicProductDeclarationUseDto>         _dicUses    = [];
+    private List<DicProductDeclarationSourceDto>      _dicSources  = [];
+    private List<DicProductDeclarationUseDto>         _dicUses     = [];
+    private List<DicProductDeclarationCategoryDto>    _dicCategories = [];
 
     // Líneas
     private List<LineModel> _lines = [];
@@ -321,17 +327,19 @@ else
 
             var typesTask    = Mediator.Send(new GetDicProductDeclarationTypesQuery());
 
-            Task<List<DicProductDeclarationProductDto>>? productsTask = null;
-            Task<List<DicProductDeclarationSourceDto>>?  sourcesTask  = null;
-            Task<List<DicProductDeclarationUseDto>>?     usesTask     = null;
-            Task<ProductDeclarationDetailDto>?           detailTask   = null;
+            Task<List<DicProductDeclarationProductDto>>?  productsTask   = null;
+            Task<List<DicProductDeclarationSourceDto>>?   sourcesTask    = null;
+            Task<List<DicProductDeclarationUseDto>>?      usesTask       = null;
+            Task<List<DicProductDeclarationCategoryDto>>? categoriesTask = null;
+            Task<ProductDeclarationDetailDto>?            detailTask     = null;
 
             if (_isEdit)
             {
-                productsTask = Mediator.Send(new GetDicProductDeclarationProductsQuery());
-                sourcesTask  = Mediator.Send(new GetDicProductDeclarationSourcesQuery());
-                usesTask     = Mediator.Send(new GetDicProductDeclarationUsesQuery());
-                detailTask   = Mediator.Send(new GetProductDeclarationDetailQuery(DeclarationId!.Value));
+                productsTask   = Mediator.Send(new GetDicProductDeclarationProductsQuery());
+                sourcesTask    = Mediator.Send(new GetDicProductDeclarationSourcesQuery());
+                usesTask       = Mediator.Send(new GetDicProductDeclarationUsesQuery());
+                categoriesTask = Mediator.Send(new GetDicProductDeclarationCategoriesQuery());
+                detailTask     = Mediator.Send(new GetProductDeclarationDetailQuery(DeclarationId!.Value));
             }
 
             // Esperar en paralelo todas las cargas iniciales.
@@ -339,10 +347,11 @@ else
             {
                 producersTask,
                 typesTask,
-                productsTask ?? Task.CompletedTask,
-                sourcesTask  ?? Task.CompletedTask,
-                usesTask     ?? Task.CompletedTask,
-                detailTask   ?? Task.CompletedTask
+                productsTask   ?? Task.CompletedTask,
+                sourcesTask    ?? Task.CompletedTask,
+                usesTask       ?? Task.CompletedTask,
+                categoriesTask ?? Task.CompletedTask,
+                detailTask     ?? Task.CompletedTask
             });
 
             _producers = producersTask.Result;
@@ -350,9 +359,10 @@ else
 
             if (_isEdit)
             {
-                _dicProducts = productsTask!.Result;
-                _dicSources  = sourcesTask!.Result;
-                _dicUses     = usesTask!.Result;
+                _dicProducts   = productsTask!.Result;
+                _dicSources    = sourcesTask!.Result;
+                _dicUses       = usesTask!.Result;
+                _dicCategories = categoriesTask!.Result;
 
                 var detail = detailTask!.Result;
                 if (detail is not null)
