@@ -1,7 +1,6 @@
 @page "/reporting/ecomodulation/dpp-readiness"
 @attribute [Authorize(Policy = PolicyConstants.CanViewEcomodulationDppReadiness)]
 @rendermode InteractiveServer
-@implements IAsyncDisposable
 
 @using GreenTransit.Application.Common.Interfaces
 @using GreenTransit.Application.Features.Ecomodulation.DTOs
@@ -335,7 +334,4 @@ else
             ? "<i class=\"bi bi-check-circle-fill text-success\"></i>"
             : "<i class=\"bi bi-x-circle-fill text-danger\"></i>");
         builder.CloseElement();
-    };
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-}
+    };}

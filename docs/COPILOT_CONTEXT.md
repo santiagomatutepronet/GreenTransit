@@ -12,6 +12,7 @@ Aplicación web para la gestión operativa, trazabilidad y control de residuos e
 Componente	Tecnología
 Runtime	.NET 10
 UI	Blazor Web App
+Componentes UI	Radzen Blazor Components (DataGrid, Charts, Dialogs, …)
 ORM	EF Core
 DB	SQL Server (Azure)
 Auth	OpenID Connect
@@ -30,6 +31,15 @@ GreenTransit/
 ├── GreenTransit.Infrastructure
 ├── GreenTransit.Web
 └── GreenTransit.Tests
+
+
+
+📈 Gráficos y visualizaciones
+
+Todos los dashboards usan Radzen Blazor Charts. No se usa ApexCharts ni Chart.js.
+Wrapper reutilizable: Components/Shared/AppChart.razor
+Paleta centralizada: Components/Shared/ChartPalette.cs
+Heatmaps 2D: tabla HTML + color CSS proporcional al valor (sin librería JS de terceros).
 
 
 
