@@ -10,10 +10,12 @@
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
+@using Microsoft.JSInterop
 
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
 @inject NavigationManager   Nav
+@inject IJSRuntime          JS
 @inject ILogger<CarbonFootprintOverview> Logger
 
 <PageTitle>Huella de Carbono — Visión Consolidada — GreenTransit</PageTitle>
@@ -31,6 +33,11 @@
     <div class="page-header-actions">
         <button class="btn btn-outline-neutral btn-sm" @onclick="LoadAsync" disabled="@_loading">
             <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+        <button class="btn btn-outline-success btn-sm" @onclick="ExportAsync" disabled="@(_loading || _exporting || _data is null)">
+            @if (_exporting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            else { <i class="bi bi-file-earmark-excel me-1"></i> }
+            Exportar XLSX
         </button>
     </div>
 </div>
@@ -198,6 +205,7 @@ else
     private List<MonthlyItem> _monthlyItems = [];
     private List<FuelItem>    _fuelItems    = [];
     private bool _loading;
+    private bool _exporting;
 
     private DateTime _dateFrom = new(DateTime.Now.Year, 1, 1);
     private DateTime _dateTo   = DateTime.Now;
@@ -222,6 +230,29 @@ else
             _data = null;
         }
         finally { _loading = false; }
+    }
+
+    private async Task ExportAsync()
+    {
+        _exporting = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Mediator.Send(new ExportCarbonFootprintToExcelQuery(
+                DashboardType : "CarbonOverview",
+                DateFrom      : _dateFrom,
+                DateTo        : _dateTo));
+            await JS.InvokeVoidAsync("downloadFile", result.FileName, result.ContentType, result.FileContent);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al exportar HC-A");
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
     }
 
     private static string MonthName(int m) =>

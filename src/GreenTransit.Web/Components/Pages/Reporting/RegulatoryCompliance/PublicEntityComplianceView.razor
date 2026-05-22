@@ -11,9 +11,11 @@
 @using GreenTransit.Domain.Constants
 @using MediatR
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
 
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
 @inject ILogger<PublicEntityComplianceView> Logger
 
 <PageTitle>Cumplimiento Normativo — Entidad Pública — GreenTransit</PageTitle>
@@ -31,6 +33,11 @@
     <div class="page-header-actions">
         <button class="btn btn-outline-neutral btn-sm" @onclick="LoadAsync" disabled="@_loading">
             <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+        <button class="btn btn-outline-success btn-sm" @onclick="ExportAsync" disabled="@(_loading || _exporting || _data is null)">
+            @if (_exporting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            else { <i class="bi bi-file-earmark-excel me-1"></i> }
+            Exportar XLSX
         </button>
     </div>
 </div>
@@ -296,6 +303,7 @@ else
     private ComplianceFilterOptionsDto  _filterOptions = new([], [], [], []);
     private IReadOnlyList<EntitySelectorDto> _scraps = [];
     private bool    _loading = true;
+    private bool    _exporting;
     private bool    _initialized;
     private int     _year  = DateTime.Now.Year;
     private string? _month;
@@ -365,4 +373,26 @@ else
         _        => "secondary"
     };
 
+    private async Task ExportAsync()
+    {
+        _exporting = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Mediator.Send(new ExportComplianceDataToExcelQuery(
+                Year          : _year,
+                DashboardType : "PublicEntityCompliance",
+                IdScrap       : Guid.TryParse(_filterIdScrap, out var sid) ? sid : null));
+            await JS.InvokeVoidAsync("downloadFile", result.FileName, result.ContentType, result.FileContent);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al exportar CN-D");
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
     }
+}

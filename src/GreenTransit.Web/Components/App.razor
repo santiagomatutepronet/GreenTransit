@@ -38,14 +38,7 @@
     <script src="js/dashboardMap.js"></script>
     <script src="js/wasteMoveMap.js"></script>
     <script src="js/dumZoneMap.js"></script>
-    @* ── ApexCharts (debe cargarse ANTES que blazor.web.js para que ApexCharts  *@
-    @*    esté definido cuando Blazor establezca el circuito SignalR e invoque   *@
-    @*    JS Interop por primera vez desde OnAfterRenderAsync)                 ── *@
-    <script src="_content/Blazor-ApexCharts/js/blazor-apexcharts.js"></script>
-    <script src="js/mobilityCharts.js"></script>
     <script src="js/heatMapCharts.js"></script>
-    <script src="js/carbonFootprintCharts.js"></script>
-    <script src="js/complianceCharts.js"></script>
     @* ── Blazor (después de que todas las dependencias JS estén listas) ───── *@
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     @* ── Radzen JS ────────────────────────────────────────────────────────── *@

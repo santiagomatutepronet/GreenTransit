@@ -6,12 +6,12 @@ namespace GreenTransit.Application.Features.Reporting.RegulatoryCompliance.Queri
 
 /// <summary>
 /// Exportación a XLSX de los datos del módulo CN — Cumplimiento Normativo.
-/// Soporta CN-B (MarketShareAudit) y CN-E (DispatchOfficeCompliance).
+/// Soporta CN-B (MarketShareAudit), CN-D (PublicEntityCompliance) y CN-E (DispatchOfficeCompliance).
 /// El fichero se genera íntegramente en memoria.
 /// </summary>
 public sealed record ExportComplianceDataToExcelQuery(
     int     Year,
-    string  DashboardType,           // "MarketShareAudit" | "DispatchOffice"
+    string  DashboardType,           // "MarketShareAudit" | "PublicEntityCompliance" | "DispatchOffice"
     Guid?   IdScrap             = null,
     string? AutonomousCommunity = null,
     string? FlowType            = null,
@@ -44,6 +44,14 @@ public sealed class ExportComplianceDataToExcelQueryHandler
 
             dashLabel = $"Auditoria_Cuotas_{request.Year}";
             BuildMarketShareSheet(wb, dto);
+        }
+        else if (request.DashboardType == "PublicEntityCompliance")
+        {
+            var dto = await _mediator.Send(new GetPublicEntityComplianceViewQuery(
+                request.Year, IdScrap: request.IdScrap, Category: request.Category), ct);
+
+            dashLabel = $"Cumplimiento_EntidadPublica_{request.Year}";
+            BuildPublicEntitySheet(wb, dto);
         }
         else
         {
@@ -152,5 +160,48 @@ public sealed class ExportComplianceDataToExcelQueryHandler
         header.Style.Fill.BackgroundColor = XLColor.FromHtml("#2d6a4f");
         header.Style.Font.FontColor       = XLColor.White;
         ws.Columns().AdjustToContents();
+    }
+
+    private static void BuildPublicEntitySheet(XLWorkbook wb, PublicEntityComplianceViewDto dto)
+    {
+        // Hoja 1: Cumplimiento por SCRAP
+        var ws = wb.Worksheets.Add("Cumplimiento por SCRAP");
+        WriteHeaders(ws, ["SCRAP", "Categoría", "Flujo", "Objetivo (kg)", "Real (kg)", "% Cumplimiento", "Estado"]);
+        var row = 2;
+        foreach (var s in dto.ScrapCompliance)
+        {
+            ws.Cell(row, 1).Value = s.ScrapName;
+            ws.Cell(row, 2).Value = s.Category;
+            ws.Cell(row, 3).Value = s.FlowType;
+            ws.Cell(row, 4).Value = (double)s.TargetWeightKg;
+            ws.Cell(row, 5).Value = (double)s.RealWeightKg;
+            ws.Cell(row, 6).Value = (double)s.CompliancePct;
+            ws.Cell(row, 7).Value = s.Status;
+            var color = s.CompliancePct >= 100m ? XLColor.FromHtml("#d8f3dc")
+                      : s.CompliancePct >= 80m  ? XLColor.FromHtml("#fff3cd")
+                                                : XLColor.FromHtml("#f8d7da");
+            ws.Row(row).Style.Fill.BackgroundColor = color;
+            row++;
+        }
+        ws.Columns().AdjustToContents();
+
+        // Hoja 2: Liquidaciones de compensación
+        var ws2 = wb.Worksheets.Add("Liquidaciones");
+        WriteHeaders(ws2, ["SCRAP", "Nº Liquidación", "Año", "Mes", "Importe Base", "Ajustes", "Total", "Estado", "Validado"]);
+        row = 2;
+        foreach (var c in dto.CompensationSettlements)
+        {
+            ws2.Cell(row, 1).Value = c.ScrapName;
+            ws2.Cell(row, 2).Value = c.SettlementNumber;
+            ws2.Cell(row, 3).Value = c.Year;
+            ws2.Cell(row, 4).Value = c.Month;
+            ws2.Cell(row, 5).Value = (double)c.BaseAmount;
+            ws2.Cell(row, 6).Value = (double)c.AdjustmentsAmount;
+            ws2.Cell(row, 7).Value = (double)c.TotalAmount;
+            ws2.Cell(row, 8).Value = c.Status;
+            ws2.Cell(row, 9).Value = c.ValidatedAt.HasValue ? c.ValidatedAt.Value.ToString("yyyy-MM-dd") : "";
+            row++;
+        }
+        ws2.Columns().AdjustToContents();
     }
 }
