@@ -44,6 +44,7 @@ No es un sistema BI ni de optimización avanzada en esta fase.
 |---|---|
 | Runtime | .NET 10 |
 | UI | Blazor Web App |
+| Componentes UI | Radzen Blazor Components (DataGrid, Charts, Dialogs, …) |
 | ORM | EF Core |
 | DB | SQL Server |
 | Auth | OpenID Connect |
@@ -51,6 +52,17 @@ No es un sistema BI ni de optimización avanzada en esta fase.
 | Validación | FluentValidation |
 | Logging | Serilog |
 | Testing | xUnit |
+
+---
+
+## 📈 Gráficos y visualizaciones
+
+Todos los dashboards y páginas de reporting usan **Radzen Blazor Charts** (`RadzenChart`, `RadzenLineSeries`, `RadzenBarSeries`, `RadzenColumnSeries`, `RadzenDonutSeries`, etc.).
+
+- Componente envoltorio reutilizable: `Components/Shared/AppChart.razor`
+- Paleta de colores centralizada: `Components/Shared/ChartPalette.cs`
+- Los **heatmaps 2D** (sin equivalente nativo en Radzen) se renderizan como tablas HTML con color de fondo CSS proporcional al valor.
+- No se usa ApexCharts, Chart.js ni ninguna otra librería de gráficos JS.
 
 ---
 

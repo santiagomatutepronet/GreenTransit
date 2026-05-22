@@ -85,4 +85,4 @@ Se documenta con `<!-- MIGRACIÓN: heatmap → tabla coloreada CSS -->` en cada 
 | Mobility (3 páginas) | ✅ Completado — heatmap semanal → tabla CSS; comparativa y tendencia → Radzen |
 | Limpieza dependencias JS/NuGet | ✅ Completado (`carbonFootprintCharts.js`, `complianceCharts.js`, `mobilityCharts.js` eliminados; `Blazor-ApexCharts` eliminado del csproj) |
 | `heatMapCharts.js` | ✅ Conservado — aún se usa para mapas Leaflet en HM-A y HM-C |
-| Documentación actualizada | ⏳ Pendiente — README.md, COPILOT_CONTEXT.md |
+| Documentación actualizada | ✅ Completado — README.md y COPILOT_CONTEXT.md actualizados con stack Radzen y decisión de charts |
