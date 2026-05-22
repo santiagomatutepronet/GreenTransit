@@ -3893,7 +3893,7 @@ Se añaden los siguientes ítems:
 - [x] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
 - [x] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PUBLIC_ENT (MunicipalityCode/IdIssuedBy).
 - [x] Umbrales de alertas configurables en `appsettings.json` (sección `HeatMaps.Alerts`).
-- [ ] Exportación XLSX implementada en HM-A y HM-C (patrón ClosedXML). *(pendiente)*
+- [x] Exportación XLSX implementada en HM-A y HM-C (patrón ClosedXML). *(`ExportHeatMapDataToExcelQuery` — ClosedXML)*
 - [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
 
 
@@ -3906,16 +3906,16 @@ Se añaden los siguientes ítems:
 - [x] Páginas Blazor creadas en `Web/Components/Pages/Reporting/CarbonFootprint/` con `@attribute [Authorize(Policy = ...)]`.
 - [x] Queries CQRS creadas en `Application/Features/Reporting/CarbonFootprint/Queries/`.
 - [x] DTOs creados en `Application/Features/Reporting/CarbonFootprint/DTOs/`.
-- [ ] `CarbonFootprintCalculationService.cs` implementado con cálculo Scope 2, motor de recomendaciones y umbrales.
-- [ ] Componentes reutilizables creados en `Web/Components/Shared/CarbonFootprint/`.
-- [ ] Entradas en `NavMenu.razor` en sección Reporting como subcarpeta colapsable "Huella de Carbono" con consulta a `IPagePermissionService`.
-- [ ] `InferModuleName()` actualizado para reconocer `/reporting/carbon-footprint/` → Reporting (si no se infiere automáticamente).
-- [ ] `HumanizeName()` actualizado con nombres legibles en español para los 5 componentes.
+- [ ] `CarbonFootprintCalculationService.cs` implementado con cálculo Scope 2, motor de recomendaciones y umbrales. *(pendiente: servicio de dominio)*
+- [ ] Componentes reutilizables creados en `Web/Components/Shared/CarbonFootprint/`. *(pendiente: mejora opcional)*
+- [x] Entradas en `NavMenu.razor` en sección Reporting como subcarpeta colapsable "Huella de Carbono" con consulta a `IPagePermissionService`.
+- [x] `InferModuleName()` actualizado para reconocer `/reporting/carbon-footprint/` → "Huella de Carbono".
+- [x] `HumanizeName()` actualizado con nombres legibles en español para los 5 componentes.
 - [x] Configuración `CarbonFootprint` añadida en `appsettings.json` (Scope2 factor, umbrales, referencia Objetivo 55).
-- [ ] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
-- [ ] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PRODUCER (IdIssuedBy), CARRIER (IdCarrier), PLANT_OP (PlantCenterCode), PUBLIC_ENT (MunicipalityCode/IdIssuedBy), COORDINATOR (Agreements.IdCoordinator).
-- [ ] Todos los JOINs geográficos resuelven `ProvinceCode` → `Province.Name` y `MunicipalityCode` → `Municipality.Name`.
-- [ ] Exportación XLSX implementada en HC-A y HC-C (patrón ClosedXML).
+- [x] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
+- [x] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PRODUCER (IdIssuedBy), CARRIER (IdCarrier), PLANT_OP (PlantCenterCode), PUBLIC_ENT (MunicipalityCode/IdIssuedBy), COORDINATOR (Agreements.IdCoordinator).
+- [ ] Todos los JOINs geográficos resuelven `ProvinceCode` → `Province.Name` y `MunicipalityCode` → `Municipality.Name`. *(pendiente: mejora de calidad de datos)*
+- [x] Exportación XLSX implementada en HC-A y HC-C (patrón ClosedXML). *(`ExportCarbonFootprintToExcelQuery`)*
 - [x] Gráficos con **Radzen Blazor Charts** (`AppChart`/`ChartPalette`), responsive, modo oscuro/claro. *(Migrado desde ApexCharts — ver `docs/chart-migration-inventory.md`)*
 - [ ] Filtros persistidos en query string.
 - [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
@@ -3930,16 +3930,16 @@ Se añaden los siguientes ítems:
 - [x] Páginas Blazor creadas en `Web/Components/Pages/Reporting/RegulatoryCompliance/` con `@attribute [Authorize(Policy = ...)]`.
 - [x] Queries CQRS creadas en `Application/Features/Reporting/RegulatoryCompliance/Queries/`.
 - [x] DTOs creados en `Application/Features/Reporting/RegulatoryCompliance/DTOs/`.
-- [ ] `ComplianceMonitoringService.cs` implementado con motor de alertas, cálculos de desviación y umbrales configurables.
-- [ ] Componentes reutilizables creados en `Web/Components/Shared/RegulatoryCompliance/`.
-- [ ] Entradas en `NavMenu.razor` en sección Reporting como subcarpeta colapsable "Análisis y Cumplimiento Normativo" con consulta a `IPagePermissionService`.
-- [ ] `InferModuleName()` actualizado para reconocer `/reporting/regulatory-compliance/` → Reporting (si no se infiere automáticamente).
-- [ ] `HumanizeName()` actualizado con nombres legibles en español para los 5 componentes.
+- [ ] `ComplianceMonitoringService.cs` implementado con motor de alertas, cálculos de desviación y umbrales configurables. *(pendiente: servicio de dominio)*
+- [ ] Componentes reutilizables creados en `Web/Components/Shared/RegulatoryCompliance/`. *(pendiente: mejora opcional)*
+- [x] Entradas en `NavMenu.razor` en sección Reporting como subcarpeta colapsable "Análisis y Cumplimiento Normativo" con consulta a `IPagePermissionService`.
+- [x] `InferModuleName()` actualizado para reconocer `/reporting/regulatory-compliance/` → "Análisis Cumplimiento".
+- [x] `HumanizeName()` actualizado con nombres legibles en español para los 5 componentes.
 - [x] Configuración `RegulatoryCompliance` añadida en `appsettings.json` (umbrales de alertas, objetivos por defecto — ver sección `RegulatoryTargets`).
-- [ ] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
-- [ ] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PUBLIC_ENT (MunicipalityCode/IdIssuedBy/IdPublicEntity), COORDINATOR (Agreements.IdCoordinator).
-- [ ] Todos los JOINs geográficos resuelven `ProvinceCode` → `Province.Name`, `MunicipalityCode` → `Municipality.Name` y `AutonomousCommunity` como nombre (no código).
-- [ ] Exportación XLSX implementada en CN-B y CN-E (patrón ClosedXML).
+- [x] Filtrado multi-tenant (`OwnerId`) aplicado en todos los Query handlers.
+- [x] Filtrado por perfil (`LinkedEntityId`) aplicado: SCRAP (IdScrap/IdScrap2), PUBLIC_ENT (MunicipalityCode/IdIssuedBy/IdPublicEntity), COORDINATOR (Agreements.IdCoordinator).
+- [ ] Todos los JOINs geográficos resuelven `ProvinceCode` → `Province.Name`, `MunicipalityCode` → `Municipality.Name` y `AutonomousCommunity` como nombre (no código). *(pendiente: mejora de calidad de datos)*
+- [x] Exportación XLSX implementada en CN-B, CN-D y CN-E (patrón ClosedXML). *(`ExportComplianceDataToExcelQuery` con DashboardType `MarketShareAudit`, `PublicEntityCompliance`, `DispatchOffice`)*
 - [x] Gráficos con **Radzen Blazor Charts** en TODOS los dashboards (mínimo uno por dashboard), responsive, modo oscuro/claro. *(Migrado desde ApexCharts — ver `docs/chart-migration-inventory.md`)*
 - [x] Filtros persistidos en query string.
 - [x] Todos los dashboards incluyen al menos un gráfico (no solo tablas y cards).
