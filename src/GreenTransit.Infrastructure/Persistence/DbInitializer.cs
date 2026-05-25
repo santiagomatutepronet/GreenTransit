@@ -1,6 +1,7 @@
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Infrastructure.Persistence;
@@ -13,32 +14,41 @@ namespace GreenTransit.Infrastructure.Persistence;
 /// </summary>
 public sealed class DbInitializer : IDbInitializer
 {
-    private readonly AppDbContext         _context;
+    private readonly AppDbContext          _context;
     private readonly ILogger<DbInitializer> _logger;
+    private readonly bool                   _autoMigrate;
 
-    public DbInitializer(AppDbContext context, ILogger<DbInitializer> logger)
+    public DbInitializer(AppDbContext context, ILogger<DbInitializer> logger, IConfiguration configuration)
     {
-        _context = context;
-        _logger  = logger;
+        _context     = context;
+        _logger      = logger;
+        _autoMigrate = configuration.GetValue<bool>("Database:AutoMigrate", defaultValue: true);
     }
 
     /// <inheritdoc/>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        try
+        if (!_autoMigrate)
         {
-            // Aplica migraciones pendientes (si las hay)
-            if ((await _context.Database.GetPendingMigrationsAsync(cancellationToken)).Any())
-            {
-                _logger.LogInformation("DbInitializer: aplicando migraciones pendientes…");
-                await _context.Database.MigrateAsync(cancellationToken);
-                _logger.LogInformation("DbInitializer: migraciones completadas.");
-            }
+            _logger.LogInformation("DbInitializer: migraciones automáticas deshabilitadas (Database:AutoMigrate=false).");
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogWarning(ex,
-                "DbInitializer: no se pudieron aplicar migraciones (BD puede ser code-first sin migraciones). Continuando con seed.");
+            try
+            {
+                // Aplica migraciones pendientes (si las hay)
+                if ((await _context.Database.GetPendingMigrationsAsync(cancellationToken)).Any())
+                {
+                    _logger.LogInformation("DbInitializer: aplicando migraciones pendientes…");
+                    await _context.Database.MigrateAsync(cancellationToken);
+                    _logger.LogInformation("DbInitializer: migraciones completadas.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "DbInitializer: no se pudieron aplicar migraciones (BD puede ser code-first sin migraciones). Continuando con seed.");
+            }
         }
 
         await SeedProfilesAsync(cancellationToken);
