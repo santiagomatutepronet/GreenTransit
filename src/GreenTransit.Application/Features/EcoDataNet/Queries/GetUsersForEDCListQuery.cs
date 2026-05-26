@@ -15,9 +15,10 @@ namespace GreenTransit.Application.Features.EcoDataNet.Queries;
 /// Solo ADMIN puede ejecutar esta query.
 /// </summary>
 public sealed record GetUsersForEDCListQuery(
-    string? SearchTerm = null,
-    int     PageNumber = 1,
-    int     PageSize   = 15
+    string? SearchTerm       = null,
+    int     PageNumber       = 1,
+    int     PageSize         = 15,
+    bool    OnlyWithConnector = false
 ) : IRequest<PaginatedResult<UserForEDCListDto>>;
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -55,6 +56,10 @@ public sealed class GetUsersForEDCListQueryHandler
                 (u.CompleteName != null && u.CompleteName.ToLower().Contains(term)) ||
                 u.Login.ToLower().Contains(term));
         }
+
+        // Filtrar en BD antes de paginar para evitar pérdida de resultados al filtrar en memoria
+        if (request.OnlyWithConnector)
+            query = query.Where(u => _context.UserEDCConnectors.Any(c => c.UserId == u.Id));
 
         var total = await query.CountAsync(ct);
 

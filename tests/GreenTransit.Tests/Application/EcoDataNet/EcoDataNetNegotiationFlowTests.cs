@@ -25,7 +25,7 @@ public sealed class EcoDataNetNegotiationFlowTests
     private const string ProviderParticipantId = "eco_uc_ofiasignacion";
     private const string ProviderProtocol      = "https://proto.ecoucofiasignacion.ecodatanetconn3.dataspace.wastenode.com/protocol";
     private const string AssetId               = "ServiceOrders";
-    private const string OfferId               = "Q29udHJhY3RfVUMxX09GSUFTSUdOQUNJT05=:U2VydmljZU9yZGVycw==:abc123";
+    private const string OfferId               = "Q29udHJhY3RfVUMxX09GSUFTSUdOQUNJT05fQ29tcGxpYW5jZWQ=:U2VydmljZU9yZGVycw==:abc123";
     private const string NegotiationId         = "neg-1234-abcd";
     private const string ContractAgreementId   = "agr-5678-efgh";
     private const string TransferId            = "xfer-9012-ijkl";
@@ -34,11 +34,34 @@ public sealed class EcoDataNetNegotiationFlowTests
     private const string DownloadedData        = """{"records":[{"id":1,"asset":"ServiceOrders"}]}""";
 
     // ── Oferta del catálogo con permisos reales (ServiceOrders) ────────────
+    // RawOfferJson simula el nodo odrl:hasPolicy[0] tal como lo devuelve el
+    // catálogo del provider EDC (formato preservado por GetRawText()).
+
+    private const string SampleRawOfferJson = """
+    {
+        "@id": "Q29udHJhY3RfVUMxX09GSUFTSUdOQUNJT05fQ29tcGxpYW5jZWQ=:U2VydmljZU9yZGVycw==:abc123",
+        "@type": "odrl:Offer",
+        "odrl:permission": [
+            {
+                "odrl:action": { "@id": "odrl:use" },
+                "odrl:constraint": [
+                    {
+                        "odrl:leftOperand": { "@id": "edc:participant" },
+                        "odrl:operator": { "@id": "odrl:isAnyOf" },
+                        "odrl:rightOperand": ["eco_uc_scrapa", "eco_uc_scrapb"]
+                    }
+                ]
+            }
+        ],
+        "odrl:prohibition": [],
+        "odrl:obligation": []
+    }
+    """;
 
     private static readonly EdcOfferDto SampleOffer = new()
     {
         OfferId      = OfferId,
-        RawOfferJson = """{"@id":"test-offer","@type":"odrl:Offer"}""",
+        RawOfferJson = SampleRawOfferJson,
         Permissions =
         [
             new EdcPermissionDto
@@ -50,6 +73,7 @@ public sealed class EcoDataNetNegotiationFlowTests
                     {
                         LeftOperand  = "edc:participant",
                         Operator     = "odrl:isAnyOf",
+                        // Formato Java toString real devuelto por el catálogo EDC
                         RightOperand = "[{@value={valueType=STRING, chars=eco_uc_scrapa, string=eco_uc_scrapa}}, {@value={valueType=STRING, chars=eco_uc_scrapb, string=eco_uc_scrapb}}]"
                     }
                 ]
@@ -165,24 +189,32 @@ public sealed class EcoDataNetNegotiationFlowTests
         capturedPayload.Should().Contain(@"""@type"":""ContractRequest""");
         capturedPayload.Should().Contain(@"""counterPartyAddress"":""" + ProviderProtocol + @"""");
         capturedPayload.Should().Contain(@"""protocol"":""dataspace-protocol-http""");
+
+        // La policy se construye reenviando las reglas ODRL parseadas del catálogo
+        // (permission/prohibition/obligation), normalizando el rightOperand Java
+        // toString a un array JSON limpio. Esto evita el TERMINATED que produce
+        // el provider cuando recibe arrays vacíos en lugar de las reglas reales.
         capturedPayload.Should().Contain(@"""@context"":""http://www.w3.org/ns/odrl.jsonld""");
+        capturedPayload.Should().Contain(@"""@id"":""" + OfferId + @"""");
         capturedPayload.Should().Contain(@"""@type"":""Offer""");
         capturedPayload.Should().Contain(@"""assigner"":""" + ProviderParticipantId + @"""");
         capturedPayload.Should().Contain(@"""target"":""" + AssetId + @"""");
 
-        // Los permisos reales deben estar presentes
+        // Permission con constraint poblada
         capturedPayload.Should().Contain("odrl:permission");
-        capturedPayload.Should().Contain("odrl:use");
-        capturedPayload.Should().Contain("edc:participant");
-        capturedPayload.Should().Contain("odrl:isAnyOf");
-
-        // El rightOperand Java toString debe sanitizarse: chars= → string real
+        capturedPayload.Should().Contain("odrl:constraint");
+        capturedPayload.Should().Contain(@"""@id"":""edc:participant""");
+        capturedPayload.Should().Contain(@"""@id"":""odrl:isAnyOf""");
         capturedPayload.Should().Contain("eco_uc_scrapa");
-        capturedPayload.Should().NotContain("valueType=STRING");
+        capturedPayload.Should().Contain("eco_uc_scrapb");
 
-        // Las prohibiciones deben estar presentes
-        capturedPayload.Should().Contain("odrl:prohibition");
-        capturedPayload.Should().Contain("odrl:distribute");
+        // Prohibition poblada (caso real del log)
+        capturedPayload.Should().Contain(@"""@id"":""odrl:distribute""");
+
+        // El rightOperand Java toString debe estar saneado: no debe filtrarse
+        // el formato sin parsear al payload final.
+        capturedPayload.Should().NotContain("valueType=STRING");
+        capturedPayload.Should().NotContain("@value=");
     }
 
     // ══════════════════════════════════════════════════════════════════════════

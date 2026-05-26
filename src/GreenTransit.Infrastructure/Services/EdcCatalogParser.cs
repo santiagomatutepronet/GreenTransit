@@ -115,6 +115,7 @@ public class EdcCatalogParser : IEdcCatalogParser
 
             // Oferta(s) ODRL — usar la primera si hay varias
             var policyElement = GetProperty(element, "odrl:hasPolicy",
+                "hasPolicy",
                 "http://www.w3.org/ns/odrl/2/hasPolicy");
             if (policyElement.HasValue)
             {
@@ -153,6 +154,7 @@ public class EdcCatalogParser : IEdcCatalogParser
         };
 
         var permElement = GetProperty(element, "odrl:permission",
+            "permission",
             "http://www.w3.org/ns/odrl/2/permission");
         if (permElement.HasValue)
             offer.Permissions = NormalizeToArray(permElement.Value)
@@ -160,6 +162,7 @@ public class EdcCatalogParser : IEdcCatalogParser
                 .ToList();
 
         var prohibElement = GetProperty(element, "odrl:prohibition",
+            "prohibition",
             "http://www.w3.org/ns/odrl/2/prohibition");
         if (prohibElement.HasValue)
             offer.Prohibitions = NormalizeToArray(prohibElement.Value)
@@ -167,6 +170,7 @@ public class EdcCatalogParser : IEdcCatalogParser
                 .ToList();
 
         var obligElement = GetProperty(element, "odrl:obligation",
+            "obligation",
             "http://www.w3.org/ns/odrl/2/obligation");
         if (obligElement.HasValue)
             offer.Obligations = NormalizeToArray(obligElement.Value)
@@ -181,6 +185,7 @@ public class EdcCatalogParser : IEdcCatalogParser
         var perm = new EdcPermissionDto();
 
         var actionElement = GetProperty(element, "odrl:action",
+            "action",
             "http://www.w3.org/ns/odrl/2/action");
         if (actionElement.HasValue)
         {
@@ -190,6 +195,7 @@ public class EdcCatalogParser : IEdcCatalogParser
         }
 
         var constraintElement = GetProperty(element, "odrl:constraint",
+            "constraint",
             "http://www.w3.org/ns/odrl/2/constraint");
         if (constraintElement.HasValue)
             perm.Constraints = NormalizeToArray(constraintElement.Value)
@@ -203,6 +209,7 @@ public class EdcCatalogParser : IEdcCatalogParser
     {
         var action = string.Empty;
         var actionElement = GetProperty(element, "odrl:action",
+            "action",
             "http://www.w3.org/ns/odrl/2/action");
         if (actionElement.HasValue)
         {
@@ -213,6 +220,7 @@ public class EdcCatalogParser : IEdcCatalogParser
 
         var constraints = new List<EdcConstraintDto>();
         var constraintElement = GetProperty(element, "odrl:constraint",
+            "constraint",
             "http://www.w3.org/ns/odrl/2/constraint");
         if (constraintElement.HasValue)
             constraints = NormalizeToArray(constraintElement.Value)
@@ -227,11 +235,11 @@ public class EdcCatalogParser : IEdcCatalogParser
         return new EdcConstraintDto
         {
             LeftOperand  = ExtractIdOrValue(GetProperty(element,
-                "odrl:leftOperand",  "http://www.w3.org/ns/odrl/2/leftOperand")),
+                "odrl:leftOperand", "leftOperand", "http://www.w3.org/ns/odrl/2/leftOperand")),
             Operator     = ExtractIdOrValue(GetProperty(element,
-                "odrl:operator",     "http://www.w3.org/ns/odrl/2/operator")),
+                "odrl:operator", "operator", "http://www.w3.org/ns/odrl/2/operator")),
             RightOperand = ExtractIdOrValue(GetProperty(element,
-                "odrl:rightOperand", "http://www.w3.org/ns/odrl/2/rightOperand"))
+                "odrl:rightOperand", "rightOperand", "http://www.w3.org/ns/odrl/2/rightOperand"))
         };
     }
 

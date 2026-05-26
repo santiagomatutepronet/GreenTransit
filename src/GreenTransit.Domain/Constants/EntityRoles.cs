@@ -3,7 +3,7 @@ namespace GreenTransit.Domain.Constants;
 /// <summary>
 /// Valores válidos del campo EntityRole (tabla Entities).
 /// Valores: Producer | OperatorTransfer | SCRAP | PublicEntity |
-///          Carrier | CAC | Plant | Coordinator | Other
+///          Carrier | CAC | Plant | Coordinator | Regulator | Certifier | Other
 /// </summary>
 public static class EntityRoles
 {
@@ -16,12 +16,15 @@ public static class EntityRoles
     public const string Plant            = "Plant";
     public const string Coordinator      = "Coordinator";
     public const string DispatchOffice   = "DISPATCH_OFFICE";
+    public const string Regulator        = "Regulator";
+    public const string Certifier        = "Certifier";
     public const string Other            = "Other";
 
     public static readonly IReadOnlyList<string> All =
     [
         Producer, OperatorTransfer, SCRAP, PublicEntity,
-        Carrier, CAC, Plant, Coordinator, DispatchOffice, Other
+        Carrier, CAC, Plant, Coordinator, DispatchOffice,
+        Regulator, Certifier, Other
     ];
 
     /// <summary>Etiqueta en español para mostrar en UI.</summary>
@@ -36,6 +39,8 @@ public static class EntityRoles
         Plant            => "Planta de tratamiento",
         Coordinator      => "Coordinador",
         DispatchOffice   => "Oficina de Asignación",
+        Regulator        => "Regulador",
+        Certifier        => "Certificador",
         Other            => "Otro",
         _                => role
     };
@@ -55,6 +60,8 @@ public static class EntityRoles
         PublicEntity     => "PUBLIC_ENT",
         Coordinator      => "COORDINATOR",
         DispatchOffice   => "DISPATCH_OFFICE",
+        Regulator        => "REGULATOR",
+        Certifier        => "CERTIFIER",
         _                => null
     };
 

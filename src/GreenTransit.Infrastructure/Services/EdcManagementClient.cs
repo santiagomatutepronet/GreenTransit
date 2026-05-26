@@ -182,8 +182,19 @@ public sealed class EdcManagementClient : IEdcManagementClient
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Negociación fallida: {StatusCode} — {Body}", (int)response.StatusCode, body.Length > 2000 ? body[..2000] : body);
-                return new EdcNegotiationResponse { Success = false, HttpStatusCode = (int)response.StatusCode, ErrorMessage = $"HTTP {(int)response.StatusCode}: {body}" };
+                var truncatedBody    = body.Length > 2000 ? body[..2000] : body;
+                var truncatedPayload = contractRequestPayload.Length > 4000 ? contractRequestPayload[..4000] : contractRequestPayload;
+
+                _logger.LogWarning(
+                    "Negociación fallida: {StatusCode} — {Body} — Payload enviado: {Payload}",
+                    (int)response.StatusCode, truncatedBody, truncatedPayload);
+
+                return new EdcNegotiationResponse
+                {
+                    Success        = false,
+                    HttpStatusCode = (int)response.StatusCode,
+                    ErrorMessage   = $"HTTP {(int)response.StatusCode}: {body} | Payload enviado: {truncatedPayload}"
+                };
             }
 
             using var doc  = JsonDocument.Parse(body);

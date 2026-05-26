@@ -236,4 +236,12 @@ public static class PolicyConstants
 
     /// <summary>Operaciones exclusivas del administrador del sistema (ej. seed de datos).</summary>
     public const string AdminOnly = "AdminOnly";
+
+    // ─── Reporting regulador y certificador ──────────────────────────────────
+
+    /// <summary>Dashboard de cumplimiento normativo para REGULATOR: REGULATOR, ADMIN.</summary>
+    public const string CanViewRegulatoryDashboard = "CanViewRegulatoryDashboard";
+
+    /// <summary>Dashboard de certificación/auditoría para CERTIFIER: CERTIFIER, ADMIN.</summary>
+    public const string CanViewCertificationDashboard = "CanViewCertificationDashboard";
 }

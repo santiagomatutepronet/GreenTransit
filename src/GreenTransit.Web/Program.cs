@@ -409,7 +409,7 @@ try
 
         // ── REPORTING ─────────────────────────────────────────────────────────
 
-        // Lectura de KPIs regulatorios: perfiles con responsabilidad de supervisión.
+        // Lectura de KPIs regulatorios: perfiles con responsabilidad de supervisión, regulador y certificador.
         options.AddPolicy(PolicyConstants.CanViewKPIs, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Scrap,
@@ -417,6 +417,8 @@ try
                 ProfileConstants.PlantOp,
                 ProfileConstants.Coordinator,
                 ProfileConstants.DispatchOffice,
+                ProfileConstants.Regulator,
+                ProfileConstants.Certifier,
                 ProfileConstants.Admin)));
 
         // Acceso al módulo de reporting y trazabilidad: todos los autenticados.
@@ -578,23 +580,24 @@ try
 
         // ── HUELLA DE CARBONO (HC) ────────────────────────────────────────────
 
-        // Dashboard HC-A — Visión Consolidada: SCRAP, COORDINATOR, DISPATCH_OFFICE, ADMIN.
+        // Dashboard HC-A — Visión Consolidada: SCRAP, COORDINATOR, DISPATCH_OFFICE, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewCarbonFootprintOverview, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Scrap, ProfileConstants.Coordinator,
-                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.DispatchOffice, ProfileConstants.Certifier, ProfileConstants.Admin)));
 
-        // Dashboard HC-B — Análisis de Emisiones del Transporte: SCRAP, COORDINATOR, DISPATCH_OFFICE, CARRIER, ADMIN.
+        // Dashboard HC-B — Análisis de Emisiones del Transporte: SCRAP, COORDINATOR, DISPATCH_OFFICE, CARRIER, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewCarbonTransportAnalysis, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Scrap, ProfileConstants.Coordinator,
-                ProfileConstants.DispatchOffice, ProfileConstants.Carrier, ProfileConstants.Admin)));
+                ProfileConstants.DispatchOffice, ProfileConstants.Carrier,
+                ProfileConstants.Certifier, ProfileConstants.Admin)));
 
-        // Dashboard HC-C — Huella Energética de Plantas: PLANT_OP, SCRAP, DISPATCH_OFFICE, ADMIN.
+        // Dashboard HC-C — Huella Energética de Plantas: PLANT_OP, SCRAP, DISPATCH_OFFICE, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewCarbonPlantEnergy, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.PlantOp, ProfileConstants.Scrap,
-                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.DispatchOffice, ProfileConstants.Certifier, ProfileConstants.Admin)));
 
         // Dashboard HC-D — Reporte Huella Productores: PRODUCER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewCarbonProducerReport, policy =>
@@ -610,30 +613,34 @@ try
 
         // ── CUMPLIMIENTO NORMATIVO (CN) ─────────────────────────────────────────
 
-        // Dashboard CN-A — Panel de Cumplimiento Normativo — Visión SCRAP: SCRAP, ADMIN.
+        // Dashboard CN-A — Panel de Cumplimiento Normativo — Visión SCRAP: SCRAP, REGULATOR, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewScrapComplianceOverview, policy =>
             policy.AddRequirements(new ProfileRequirement(
-                ProfileConstants.Scrap, ProfileConstants.Admin)));
+                ProfileConstants.Scrap, ProfileConstants.Regulator,
+                ProfileConstants.Certifier, ProfileConstants.Admin)));
 
-        // Dashboard CN-B — Auditoría de Cuotas de Mercado: COORDINATOR, DISPATCH_OFFICE, ADMIN.
+        // Dashboard CN-B — Auditoría de Cuotas de Mercado: COORDINATOR, DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewMarketShareAudit, policy =>
             policy.AddRequirements(new ProfileRequirement(
-                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice,
+                ProfileConstants.Regulator, ProfileConstants.Certifier, ProfileConstants.Admin)));
 
-        // Dashboard CN-C — Monitorización de Convenios — Coordinador: COORDINATOR, DISPATCH_OFFICE, ADMIN.
+        // Dashboard CN-C — Monitorización de Convenios — Coordinador: COORDINATOR, DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewAgreementComplianceMonitoring, policy =>
             policy.AddRequirements(new ProfileRequirement(
-                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice,
+                ProfileConstants.Regulator, ProfileConstants.Certifier, ProfileConstants.Admin)));
 
         // Dashboard CN-D — Cumplimiento Normativo — Entidad Pública: PUBLIC_ENT, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewPublicEntityComplianceView, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.PublicEnt, ProfileConstants.Admin)));
 
-        // Dashboard CN-E — Datos de Cumplimiento — Oficina de Asignación: DISPATCH_OFFICE, ADMIN.
+        // Dashboard CN-E — Datos de Cumplimiento — Oficina de Asignación: DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewDispatchOfficeComplianceData, policy =>
             policy.AddRequirements(new ProfileRequirement(
-                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.DispatchOffice, ProfileConstants.Regulator,
+                ProfileConstants.Certifier, ProfileConstants.Admin)));
 
         // Dashboard HM-A — Mapa de Calor de Densidad de Residuos: SCRAP, DISPATCH_OFFICE y ADMIN.
         options.AddPolicy(PolicyConstants.CanViewHeatMapWasteDensity, policy =>
@@ -667,6 +674,16 @@ try
         options.AddPolicy(PolicyConstants.AdminOnly, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Admin)));
+
+        // Dashboard de cumplimiento normativo para REGULATOR: REGULATOR, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewRegulatoryDashboard, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Regulator, ProfileConstants.Admin)));
+
+        // Dashboard de certificación/auditoría para CERTIFIER: CERTIFIER, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewCertificationDashboard, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Certifier, ProfileConstants.Admin)));
     });
 
     // ClaimsTransformation: enriquece el principal con IdUser, OwnerId y Profile desde la BD

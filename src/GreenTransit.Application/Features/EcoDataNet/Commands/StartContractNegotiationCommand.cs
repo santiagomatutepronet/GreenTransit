@@ -6,7 +6,6 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace GreenTransit.Application.Features.EcoDataNet.Commands;
 
@@ -88,24 +87,55 @@ public sealed class StartContractNegotiationCommandHandler
         // 3. CONSTRUIR PAYLOAD
         var payload = BuildContractRequestPayload(request);
 
-        _logger.LogInformation(
-            "Iniciando negociación: Consumer={Server}, Provider={Endpoint}, Asset={Asset}, Offer={Offer}",
-            consumerConnector.EDCServerName, request.ProviderProtocolEndpoint,
-            request.DatasetId, request.OfferId);
+        // Diagnóstico: comparar OfferId con el @id real de la RawOfferJson capturada
+        // del catálogo. Una desviación aquí provoca TERMINATED en el provider.
+        var rawOfferAtId = TryExtractRawOfferAtId(request.RawOfferJson ?? request.Offer?.RawOfferJson);
+        if (!string.IsNullOrEmpty(rawOfferAtId) && rawOfferAtId != request.OfferId)
+        {
+            _logger.LogWarning(
+                "El OfferId del command ({CommandOfferId}) NO coincide con el @id del RawOfferJson ({RawAtId}). " +
+                "El provider terminará la negociación. Usa el @id exacto del nodo odrl:hasPolicy del catálogo.",
+                request.OfferId, rawOfferAtId);
+        }
 
-        _logger.LogDebug("Payload de negociación: {Payload}", payload);
+        _logger.LogInformation(
+            "Iniciando negociación: Consumer={Server}, Provider={Endpoint}, Asset={Asset}, Offer={Offer}, RawOfferAtId={RawAtId}",
+            consumerConnector.EDCServerName, request.ProviderProtocolEndpoint,
+            request.DatasetId, request.OfferId, rawOfferAtId ?? "(sin RawOfferJson)");
+
+        _logger.LogInformation("Payload de negociación enviado:\n{Payload}", payload);
 
         // 4. ENVIAR
         return await _edcClient.StartNegotiationAsync(consumerMgmtUrl, payload, consumerConnector.ApiKey, ct);
     }
 
+    /// <summary>
+    /// Extrae el "@id" del RawOfferJson capturado del catálogo, sin lanzar excepciones.
+    /// </summary>
+    private static string? TryExtractRawOfferAtId(string? rawOfferJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawOfferJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(rawOfferJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+            if (doc.RootElement.TryGetProperty("@id", out var atId)
+                && atId.ValueKind == JsonValueKind.String)
+                return atId.GetString();
+        }
+        catch (JsonException) { }
+        return null;
+    }
+
     private static string BuildContractRequestPayload(StartContractNegotiationCommand request)
     {
         using var ms     = new System.IO.MemoryStream();
-        using var writer = new Utf8JsonWriter(ms);
+        using var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = false });
 
         writer.WriteStartObject();
 
+        // @context mínimo: solo @vocab EDC — no incluimos odrl.jsonld para evitar
+        // que EDC intente resolver IRIs ODRL en el contexto y falle la validación.
         writer.WritePropertyName("@context");
         writer.WriteStartObject();
         writer.WriteString("@vocab", "https://w3id.org/edc/v0.0.1/ns/");
@@ -115,121 +145,215 @@ public sealed class StartContractNegotiationCommandHandler
         writer.WriteString("counterPartyAddress", request.ProviderProtocolEndpoint);
         writer.WriteString("protocol", "dataspace-protocol-http");
 
+        // offerId, connectorId y assetId en raíz (formato EDC 0.13 con DSP)
+        writer.WriteString("offerId", request.OfferId);
+        writer.WriteString("connectorId", request.ProviderParticipantId);
+        writer.WriteString("assetId", request.DatasetId);
+
+        // policy: copia literal del RawOfferJson del catálogo.
+        // El provider valida que sea idéntica a la de su contractDefinition.
         writer.WritePropertyName("policy");
-        writer.WriteStartObject();
-        writer.WriteString("@context", "http://www.w3.org/ns/odrl.jsonld");
-        writer.WriteString("@id",   request.OfferId);
-        writer.WriteString("@type", "Offer");
+        WritePolicyFromRawOrDto(writer, request);
 
-        // odrl:permission
-        writer.WritePropertyName("odrl:permission");
+        writer.WritePropertyName("callbackAddresses");
         writer.WriteStartArray();
-        foreach (var perm in request.Offer?.Permissions ?? [])
-            WritePermission(writer, perm);
         writer.WriteEndArray();
 
-        // odrl:prohibition
-        writer.WritePropertyName("odrl:prohibition");
-        writer.WriteStartArray();
-        foreach (var prohib in request.Offer?.Prohibitions ?? [])
-            WriteProhibitionOrObligation(writer, prohib.Action, prohib.Constraints);
-        writer.WriteEndArray();
-
-        // odrl:obligation
-        writer.WritePropertyName("odrl:obligation");
-        writer.WriteStartArray();
-        foreach (var obl in request.Offer?.Obligations ?? [])
-            WriteProhibitionOrObligation(writer, obl.Action, obl.Constraints);
-        writer.WriteEndArray();
-
-        writer.WriteString("assigner", request.ProviderParticipantId);
-        writer.WriteString("target",   request.DatasetId);
-        writer.WriteEndObject(); // end policy
-
-        writer.WriteEndObject(); // end ContractRequest
+        writer.WriteEndObject();
         writer.Flush();
 
         return System.Text.Encoding.UTF8.GetString(ms.ToArray());
     }
 
     /// <summary>
-    /// Escribe un permiso ODRL con su acción y restricciones.
-    /// Los strings ya normalizados se reenvuelven en {"@id":"..."} según exige el conector.
+    /// El provider puede devolver odrl:rightOperand como un toString() de Java, p.ej.:
+    ///   "[{@value={valueType=STRING, chars=eco_uc_scrapa, string=eco_uc_scrapa}}, ...]"
+    /// Esto no es JSON válido. Este método extrae los valores "chars" y produce un array JSON real.
     /// </summary>
-    private static void WritePermission(Utf8JsonWriter writer, EdcPermissionDto perm)
+    private static string SanitizeJavaToStringArrayValues(string rawJson)
     {
-        writer.WriteStartObject();
-        writer.WritePropertyName("odrl:action");
-        WriteIdObject(writer, perm.Action);
-        WriteConstraints(writer, perm.Constraints);
-        writer.WriteEndObject();
+        // Detecta una cadena JSON que contiene un toString de ArrayList de Java con @value nodes
+        return System.Text.RegularExpressions.Regex.Replace(
+            rawJson,
+            @"""(\[\{@value=\{[^""]+\}\}[^""]*\])""",
+            m =>
+            {
+                var inner = m.Groups[1].Value;
+                var chars = System.Text.RegularExpressions.Regex.Matches(inner, @"chars=([^,}]+)");
+                if (chars.Count == 0) return m.Value; // no tocar si no hay matches
+
+                var jsonArray = "[" + string.Join(",",
+                    chars.Cast<System.Text.RegularExpressions.Match>()
+                         .Select(c => JsonSerializer.Serialize(c.Groups[1].Value.Trim()))) + "]";
+                return jsonArray; // sustituye la cadena entrecomillada por un array JSON real
+            });
     }
 
-    private static void WriteProhibitionOrObligation(
-        Utf8JsonWriter writer, string action, List<EdcConstraintDto> constraints)
+    private static void WritePolicyFromRawOrDto(Utf8JsonWriter writer, StartContractNegotiationCommand request)
     {
-        writer.WriteStartObject();
-        writer.WritePropertyName("odrl:action");
-        WriteIdObject(writer, action);
-        WriteConstraints(writer, constraints);
-        writer.WriteEndObject();
+        var rawOfferJson = request.RawOfferJson ?? request.Offer?.RawOfferJson;
+
+        if (!string.IsNullOrWhiteSpace(rawOfferJson))
+        {
+            // Sanear rightOperand con formato toString() de Java antes de parsear
+            rawOfferJson = SanitizeJavaToStringArrayValues(rawOfferJson);
+
+            try
+            {
+                using var doc = JsonDocument.Parse(rawOfferJson);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    // Copiar la policy literal del catálogo añadiendo/sobreescribiendo
+                    // @id, @type, assigner y target para asegurar coherencia.
+                    writer.WriteStartObject();
+
+                    var root         = doc.RootElement;
+                    var writtenAtId  = false;
+                    var writtenType  = false;
+                    var writtenAssigner = false;
+                    var writtenTarget   = false;
+
+                    foreach (var prop in root.EnumerateObject())
+                    {
+                        switch (prop.Name)
+                        {
+                            case "@id":
+                                writer.WriteString("@id", request.OfferId);
+                                writtenAtId = true;
+                                break;
+                            case "@type":
+                                // Siempre "Offer" en v3
+                                writer.WriteString("@type", "Offer");
+                                writtenType = true;
+                                break;
+                            case "assigner":
+                            case "odrl:assigner":
+                                writer.WriteString("assigner", request.ProviderParticipantId);
+                                writtenAssigner = true;
+                                break;
+                            case "target":
+                            case "odrl:target":
+                                writer.WriteString("target", request.DatasetId);
+                                writtenTarget = true;
+                                break;
+                            case "@context":
+                                // No replicar el @context interno de la offer
+                                break;
+                            default:
+                                // Copiar el resto literalmente (permission, prohibition, obligation, …)
+                                writer.WritePropertyName(prop.Name);
+                                prop.Value.WriteTo(writer);
+                                break;
+                        }
+                    }
+
+                    if (!writtenAtId)      writer.WriteString("@id",      request.OfferId);
+                    if (!writtenType)      writer.WriteString("@type",     "Offer");
+                    if (!writtenAssigner)  writer.WriteString("assigner",  request.ProviderParticipantId);
+                    if (!writtenTarget)    writer.WriteString("target",    request.DatasetId);
+
+                    writer.WriteEndObject();
+                    return;
+                }
+            }
+            catch (JsonException) { /* caer al fallback DTO */ }
+        }
+
+        // Fallback: reconstruir desde DTOs parseados
+        WritePolicyFromDto(writer, request);
     }
 
-    private static void WriteConstraints(Utf8JsonWriter writer, List<EdcConstraintDto> constraints)
+    private static void WritePolicyFromDto(Utf8JsonWriter writer, StartContractNegotiationCommand request)
     {
-        if (constraints.Count == 0) return;
+        writer.WriteStartObject();
+        writer.WriteString("@id",      request.OfferId);
+        writer.WriteString("@type",    "Offer");
+        writer.WriteString("assigner", request.ProviderParticipantId);
 
-        writer.WritePropertyName("odrl:constraint");
+        writer.WritePropertyName("permission");
         writer.WriteStartArray();
-        foreach (var c in constraints)
+        foreach (var perm in request.Offer?.Permissions ?? [])
         {
             writer.WriteStartObject();
-
-            writer.WritePropertyName("odrl:leftOperand");
-            WriteIdObject(writer, c.LeftOperand);
-
-            writer.WritePropertyName("odrl:operator");
-            WriteIdObject(writer, c.Operator);
-
-            // rightOperand: puede ser string simple o lista separada (de tipo isAnyOf)
-            writer.WritePropertyName("odrl:rightOperand");
-            WriteRightOperandSanitized(writer, c.RightOperand);
-
+            writer.WriteString("action", NormalizePrefix(perm.Action));
+            WriteConstraintsDto(writer, perm.Constraints);
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
-    }
 
-    /// <summary>Escribe {"@id": "value"} como espera el conector EDC.</summary>
-    private static void WriteIdObject(Utf8JsonWriter writer, string value)
-    {
-        writer.WriteStartObject();
-        writer.WriteString("@id", value);
+        writer.WritePropertyName("prohibition");
+        writer.WriteStartArray();
+        foreach (var prohib in request.Offer?.Prohibitions ?? [])
+        {
+            writer.WriteStartObject();
+            writer.WriteString("action", NormalizePrefix(prohib.Action));
+            WriteConstraintsDto(writer, prohib.Constraints);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+
+        writer.WritePropertyName("obligation");
+        writer.WriteStartArray();
+        foreach (var obl in request.Offer?.Obligations ?? [])
+        {
+            writer.WriteStartObject();
+            writer.WriteString("action", NormalizePrefix(obl.Action));
+            WriteConstraintsDto(writer, obl.Constraints);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+
+        writer.WriteString("target", request.DatasetId);
         writer.WriteEndObject();
     }
 
-    /// <summary>
-    /// Detecta el formato Java toString "[{@value={valueType=STRING, chars=VAL, ...}}, ...]"
-    /// y lo convierte al valor string real (o array si hay varios).
-    /// Si no coincide, escribe el string tal cual.
-    /// </summary>
-    private static void WriteRightOperandSanitized(Utf8JsonWriter writer, string value)
+    private static void WriteConstraintsDto(Utf8JsonWriter writer, List<EdcConstraintDto> constraints)
     {
-        var matches = Regex.Matches(value, @"chars=([^,}]+)");
-        if (matches.Count == 1)
+        if (constraints.Count == 0) return;
+
+        writer.WritePropertyName("constraint");
+        if (constraints.Count == 1)
         {
-            writer.WriteStringValue(matches[0].Groups[1].Value.Trim());
+            WriteConstraintDto(writer, constraints[0]);
+            return;
         }
-        else if (matches.Count > 1)
-        {
-            writer.WriteStartArray();
-            foreach (Match m in matches)
-                writer.WriteStringValue(m.Groups[1].Value.Trim());
-            writer.WriteEndArray();
-        }
+
+        writer.WriteStartArray();
+        foreach (var c in constraints)
+            WriteConstraintDto(writer, c);
+        writer.WriteEndArray();
+    }
+
+    private static void WriteConstraintDto(Utf8JsonWriter writer, EdcConstraintDto c)
+    {
+        var operatorNorm = NormalizePrefix(c.Operator);
+        writer.WriteStartObject();
+        writer.WriteString("leftOperand",  NormalizeLeftOperand(c.LeftOperand));
+        writer.WriteString("operator",     operatorNorm);
+        writer.WritePropertyName("rightOperand");
+        // isAnyOf: string CSV según EDC 0.13; demás operadores: string simple
+        if (operatorNorm.Equals("isAnyOf", StringComparison.OrdinalIgnoreCase))
+            writer.WriteStringValue(c.RightOperand.Replace(", ", ","));
         else
-        {
-            writer.WriteStringValue(value);
-        }
+            writer.WriteStringValue(c.RightOperand);
+        writer.WriteEndObject();
+    }
+
+    private static string NormalizePrefix(string value)
+    {
+        if (value.StartsWith("odrl:", StringComparison.Ordinal)) return value[5..];
+        if (value.StartsWith("edc:",  StringComparison.Ordinal)) return value[4..];
+        return value;
+    }
+
+    private static string NormalizeLeftOperand(string value)
+    {
+        if (value.StartsWith("edc:", StringComparison.Ordinal))
+            return $"https://w3id.org/edc/v0.0.1/ns/{value[4..]}";
+
+        if (value is "participant" or "purpose")
+            return $"https://w3id.org/edc/v0.0.1/ns/{value}";
+
+        return NormalizePrefix(value);
     }
 }

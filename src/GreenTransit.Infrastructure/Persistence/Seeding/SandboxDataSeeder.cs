@@ -64,6 +64,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             await Phase6_EconomicsAsync(ct);
             await Phase7_DeclarationsAsync(ct);
             await Phase8_UsersAsync(ct);
+            await Phase8b_SandboxUsersUcAsync(ct);
             await Phase9_DumAndEcoAsync(ct);
             await Phase10_RegulatoryTargetsAsync(ct);
             await Phase11_PlantEnergiesAsync(ct);
@@ -914,6 +915,100 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         if (sb.Length > 0 && sb[^1] == '.')
             sb.Remove(sb.Length - 1, 1);
         return sb.ToString();
+    }
+
+    // =========================================================================
+    // FASE 8b — Usuarios sandbox _uc con conectores EDC
+    // =========================================================================
+    /// <summary>
+    /// Crea los 11 usuarios sandbox con sufijo _uc para cada perfil del ecosistema,
+    /// junto con su registro en UserEDCConnector. Idempotente: salta si ya existen.
+    /// </summary>
+    private async Task Phase8b_SandboxUsersUcAsync(CancellationToken ct)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // Definición de usuarios sandbox _uc
+        var sandboxUsers = new[]
+        {
+            (Login: "ayuntamiento_uc",      Profile: "PUBLIC_ENT",      Name: "Ayuntamiento UC (Sandbox)",        EDCServer: "ecoucayuntamiento.ecodatanetconn3.dataspace.wastenode.com",        EDCId: "eco_uc_ayuntamiento"),
+            (Login: "ofiasignacion_uc",     Profile: "DISPATCH_OFFICE", Name: "Oficina de Asignación UC",         EDCServer: "ecoucofiasignacion.ecodatanetconn3.dataspace.wastenode.com",        EDCId: "eco_uc_ofiasignacion"),
+            (Login: "scrapa_uc",            Profile: "SCRAP",           Name: "SCRAP A UC",                       EDCServer: "ecoucscrapa.ecodatanetconn3.dataspace.wastenode.com",               EDCId: "eco_uc_scrapa"),
+            (Login: "scrapb_uc",            Profile: "SCRAP",           Name: "SCRAP B UC",                       EDCServer: "ecoucscrapb.ecodatanetconn3.dataspace.wastenode.com",               EDCId: "eco_uc_scrapb"),
+            (Login: "transportista_uc",     Profile: "CARRIER",         Name: "Transportista UC",                 EDCServer: "ecouctransportista.ecodatanetconn3.dataspace.wastenode.com",        EDCId: "eco_uc_transportista"),
+            (Login: "clusterlogistico_uc",  Profile: "COORDINATOR",     Name: "Clúster Logístico UC",             EDCServer: "ecoucclusterlogistico.ecodatanetconn3.dataspace.wastenode.com",     EDCId: "eco_uc_clusterlogistico"),
+            (Login: "puntorecogida_uc",     Profile: "CAC_OP",          Name: "Punto de Recogida UC",             EDCServer: "ecoucpuntorecogida.ecodatanetconn3.dataspace.wastenode.com",        EDCId: "eco_uc_puntorecogida"),
+            (Login: "certificador_uc",      Profile: "CERTIFIER",       Name: "Certificador UC (AENOR Sandbox)",  EDCServer: "ecouccertificador.ecodatanetconn3.dataspace.wastenode.com",         EDCId: "eco_uc_certificador"),
+            (Login: "productor_uc",         Profile: "PRODUCER",        Name: "Productor UC",                     EDCServer: "ecoucproductor.ecodatanetconn3.dataspace.wastenode.com",            EDCId: "eco_uc_productor"),
+            (Login: "regulador_uc",         Profile: "REGULATOR",       Name: "Regulador UC (Sandbox)",           EDCServer: "ecoucregulador.ecodatanetconn3.dataspace.wastenode.com",            EDCId: "eco_uc_regulador"),
+            (Login: "plantatratamiento_uc", Profile: "PLANT_OP",        Name: "Planta de Tratamiento UC",         EDCServer: "ecoucplantatratamiento.ecodatanetconn3.dataspace.wastenode.com",    EDCId: "eco_uc_plantatratamiento"),
+        };
+
+        // Cargar perfiles disponibles
+        var profiles = await _db.UserProfiles
+            .IgnoreQueryFilters()
+            .ToDictionaryAsync(p => p.Reference, p => p.Id, StringComparer.OrdinalIgnoreCase, ct);
+
+        // Cargar logins existentes para idempotencia
+        var existingLogins = await _db.AppUsers
+            .IgnoreQueryFilters()
+            .Where(u => u.OwnerId == _ownerId)
+            .Select(u => u.Login)
+            .ToHashSetAsync(ct);
+
+        var newUsers = new List<AppUser>();
+        foreach (var def in sandboxUsers)
+        {
+            if (existingLogins.Contains(def.Login)) continue;
+            if (!profiles.TryGetValue(def.Profile, out var profileId)) continue;
+
+            newUsers.Add(new AppUser
+            {
+                Login        = def.Login,
+                Email        = $"{def.Login}@sandbox.greentransit.es",
+                CompleteName = def.Name,
+                IdProfile    = profileId,
+                OwnerId      = _ownerId,
+                IsActive     = true,
+                CreateDate   = _now,
+            });
+        }
+
+        if (newUsers.Count > 0)
+        {
+            _db.AppUsers.AddRange(newUsers);
+            await _db.SaveChangesAsync(ct);
+        }
+
+        // Insertar conectores EDC para los usuarios _uc que no tengan uno
+        int edcAdded = 0;
+        foreach (var def in sandboxUsers)
+        {
+            var user = await _db.AppUsers
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.OwnerId == _ownerId && u.Login == def.Login, ct);
+            if (user is null) continue;
+
+            var alreadyHasConnector = await _db.UserEDCConnectors
+                .AnyAsync(c => c.UserId == user.Id, ct);
+            if (alreadyHasConnector) continue;
+
+            _db.UserEDCConnectors.Add(new UserEDCConnector
+            {
+                UserId         = user.Id,
+                EDCServerName  = def.EDCServer,
+                EDCConnectorId = def.EDCId,
+                ApiKey         = "ecodatanet",
+            });
+            edcAdded++;
+        }
+
+        if (edcAdded > 0)
+            await _db.SaveChangesAsync(ct);
+
+        _log.LogInformation(
+            "  Fase 8b completada — {U} usuarios _uc, {E} conectores EDC en {Ms}ms",
+            newUsers.Count, edcAdded, sw.ElapsedMilliseconds);
     }
 
     // =========================================================================

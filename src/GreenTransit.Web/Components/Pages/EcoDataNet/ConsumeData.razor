@@ -900,9 +900,9 @@ else
         StateHasChanged();
         try
         {
-            var result = await Mediator.Send(new GetUsersForEDCListQuery(term, page, 15));
-            _users      = result.Items.Where(u => u.HasEDCConnector).ToList();
-            _usersTotal = result.Items.Count(u => u.HasEDCConnector);
+            var result = await Mediator.Send(new GetUsersForEDCListQuery(term, page, 15, OnlyWithConnector: true));
+            _users      = result.Items.ToList();
+            _usersTotal = result.TotalCount;
         }
         finally
         {

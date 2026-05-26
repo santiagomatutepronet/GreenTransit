@@ -40,6 +40,14 @@ IF NOT EXISTS (SELECT 1 FROM Profiles WHERE Reference = 'DISPATCH_OFFICE')
     INSERT INTO Profiles (Reference, Description, CreateDate)
     VALUES ('DISPATCH_OFFICE', 'Oficina de Asignación — Gestor logístico', GETUTCDATE());
 
+IF NOT EXISTS (SELECT 1 FROM Profiles WHERE Reference = 'REGULATOR')
+    INSERT INTO Profiles (Reference, Description, CreateDate)
+    VALUES ('REGULATOR', 'Regulador — Autoridad de supervisión normativa', GETUTCDATE());
+
+IF NOT EXISTS (SELECT 1 FROM Profiles WHERE Reference = 'CERTIFIER')
+    INSERT INTO Profiles (Reference, Description, CreateDate)
+    VALUES ('CERTIFIER', 'Certificador / Auditor — Validación y coherencia', GETUTCDATE());
+
 -- ── 2. Usuario administrador inicial ─────────────────────
 -- Solo se inserta si no existe ningún usuario con perfil ADMIN.
 -- Cambiar Login/Email tras el primer acceso al sistema.

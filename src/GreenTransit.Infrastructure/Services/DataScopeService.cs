@@ -31,8 +31,12 @@ public sealed class DataScopeService : IDataScopeService
     /// <inheritdoc/>
     public Guid? GetEntityFilter(string functionalArea)
     {
-        // ADMIN y DISPATCH_OFFICE siempre tienen acceso completo.
-        if (_currentUser.IsInAnyProfile(ProfileConstants.Admin, ProfileConstants.DispatchOffice))
+        // ADMIN, DISPATCH_OFFICE, REGULATOR y CERTIFIER siempre tienen acceso completo al tenant.
+        if (_currentUser.IsInAnyProfile(
+                ProfileConstants.Admin,
+                ProfileConstants.DispatchOffice,
+                ProfileConstants.Regulator,
+                ProfileConstants.Certifier))
             return null;
 
         return functionalArea switch
