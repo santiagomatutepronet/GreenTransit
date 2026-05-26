@@ -159,4 +159,347 @@ public sealed class EdcManagementClient : IEdcManagementClient
             return 0;
         }
     }
+
+    // ── Métodos de negociación ────────────────────────────────────────────────
+
+    public async Task<EdcNegotiationResponse> StartNegotiationAsync(
+        string consumerManagementBaseUrl,
+        string contractRequestPayload,
+        string? apiKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"{consumerManagementBaseUrl.TrimEnd('/')}/v3/contractnegotiations";
+        _logger.LogInformation("POST {Url} — Iniciando negociación de contrato", url);
+
+        try
+        {
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+            httpRequest.Content = new StringContent(contractRequestPayload, Encoding.UTF8, "application/json");
+            AddApiKeyHeader(httpRequest, apiKey);
+
+            var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var body     = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Negociación fallida: {StatusCode} — {Body}", (int)response.StatusCode, body.Length > 2000 ? body[..2000] : body);
+                return new EdcNegotiationResponse { Success = false, HttpStatusCode = (int)response.StatusCode, ErrorMessage = $"HTTP {(int)response.StatusCode}: {body}" };
+            }
+
+            using var doc  = JsonDocument.Parse(body);
+            var       root = doc.RootElement;
+
+            return new EdcNegotiationResponse
+            {
+                Success        = true,
+                NegotiationId  = GetJsonLdString(root, "@id"),
+                State          = GetJsonLdString(root, "state", "https://w3id.org/edc/v0.0.1/ns/state"),
+                HttpStatusCode = (int)response.StatusCode
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            return new EdcNegotiationResponse { Success = false, ErrorMessage = "Timeout" };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error HTTP al iniciar negociación en {Url}", url);
+            return new EdcNegotiationResponse { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    public async Task<EdcNegotiationStateResponse> GetNegotiationStateAsync(
+        string consumerManagementBaseUrl,
+        string negotiationId,
+        string? apiKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"{consumerManagementBaseUrl.TrimEnd('/')}/v3/contractnegotiations/{negotiationId}";
+
+        try
+        {
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url);
+            AddApiKeyHeader(httpRequest, apiKey);
+
+            var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var body     = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new EdcNegotiationStateResponse { Success = false, HttpStatusCode = (int)response.StatusCode, ErrorMessage = $"HTTP {(int)response.StatusCode}: {(body.Length > 200 ? body[..200] : body)}" };
+            }
+
+            using var doc  = JsonDocument.Parse(body);
+            var       root = doc.RootElement;
+
+            var state = GetJsonLdString(root, "state", "https://w3id.org/edc/v0.0.1/ns/state");
+
+            _logger.LogInformation("Estado negociación {Id}: {State}", negotiationId, state);
+
+            return new EdcNegotiationStateResponse
+            {
+                Success             = true,
+                NegotiationId       = negotiationId,
+                State               = state,
+                ContractAgreementId = GetJsonLdString(root, "contractAgreementId",
+                                          "https://w3id.org/edc/v0.0.1/ns/contractAgreementId",
+                                          "edc:contractAgreementId"),
+                ErrorDetail         = GetJsonLdString(root, "errorDetail",
+                                          "https://w3id.org/edc/v0.0.1/ns/errorDetail"),
+                HttpStatusCode      = (int)response.StatusCode,
+                RawJson             = body
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            return new EdcNegotiationStateResponse { Success = false, ErrorMessage = "Timeout" };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error HTTP al consultar estado de negociación {Id}", negotiationId);
+            return new EdcNegotiationStateResponse { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    // ── Métodos de transferencia ──────────────────────────────────────────────
+
+    public async Task<EdcTransferResponse> StartTransferAsync(
+        string consumerManagementBaseUrl,
+        string transferRequestPayload,
+        string? apiKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"{consumerManagementBaseUrl.TrimEnd('/')}/v3/transferprocesses";
+        _logger.LogInformation("POST {Url} — Iniciando proceso de transferencia", url);
+
+        try
+        {
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+            httpRequest.Content = new StringContent(transferRequestPayload, Encoding.UTF8, "application/json");
+            AddApiKeyHeader(httpRequest, apiKey);
+
+            var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var body     = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Transferencia fallida: {StatusCode} — {Body}", (int)response.StatusCode, body.Length > 500 ? body[..500] : body);
+                return new EdcTransferResponse { Success = false, HttpStatusCode = (int)response.StatusCode, ErrorMessage = $"HTTP {(int)response.StatusCode}: {(body.Length > 200 ? body[..200] : body)}" };
+            }
+
+            using var doc  = JsonDocument.Parse(body);
+            var       root = doc.RootElement;
+
+            return new EdcTransferResponse
+            {
+                Success           = true,
+                TransferProcessId = GetJsonLdString(root, "@id"),
+                State             = GetJsonLdString(root, "state", "https://w3id.org/edc/v0.0.1/ns/state"),
+                HttpStatusCode    = (int)response.StatusCode
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            return new EdcTransferResponse { Success = false, ErrorMessage = "Timeout" };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error HTTP al iniciar transferencia en {Url}", url);
+            return new EdcTransferResponse { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    public async Task<EdcTransferStateResponse> GetTransferStateAsync(
+        string consumerManagementBaseUrl,
+        string transferId,
+        string? apiKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"{consumerManagementBaseUrl.TrimEnd('/')}/v3/transferprocesses/{transferId}";
+
+        try
+        {
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url);
+            AddApiKeyHeader(httpRequest, apiKey);
+
+            var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var body     = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new EdcTransferStateResponse { Success = false, HttpStatusCode = (int)response.StatusCode, ErrorMessage = $"HTTP {(int)response.StatusCode}: {(body.Length > 200 ? body[..200] : body)}" };
+            }
+
+            using var doc  = JsonDocument.Parse(body);
+            var       root = doc.RootElement;
+
+            var state = GetJsonLdString(root, "state", "https://w3id.org/edc/v0.0.1/ns/state");
+
+            _logger.LogInformation("Estado transferencia {Id}: {State}", transferId, state);
+
+            return new EdcTransferStateResponse
+            {
+                Success           = true,
+                TransferProcessId = transferId,
+                State             = state,
+                ErrorDetail       = GetJsonLdString(root, "errorDetail",
+                                        "https://w3id.org/edc/v0.0.1/ns/errorDetail"),
+                HttpStatusCode    = (int)response.StatusCode,
+                RawJson           = body
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            return new EdcTransferStateResponse { Success = false, ErrorMessage = "Timeout" };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error HTTP al consultar estado de transferencia {Id}", transferId);
+            return new EdcTransferStateResponse { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    // ── EDR y descarga ────────────────────────────────────────────────────────
+
+    public async Task<EdcEndpointDataReferenceResponse> GetEndpointDataReferenceAsync(
+        string consumerManagementBaseUrl,
+        string transferProcessId,
+        string? apiKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Endpoint primario EDC >= 0.7.x. Alternativa: /v3/transferprocesses/{id}/dataaddress
+        var url = $"{consumerManagementBaseUrl.TrimEnd('/')}/v3/edrs/{transferProcessId}/dataaddress";
+        _logger.LogInformation("GET {Url} — Obteniendo EDR", url);
+
+        try
+        {
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url);
+            AddApiKeyHeader(httpRequest, apiKey);
+
+            var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var body     = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new EdcEndpointDataReferenceResponse { Success = false, HttpStatusCode = (int)response.StatusCode, ErrorMessage = $"HTTP {(int)response.StatusCode}: {(body.Length > 200 ? body[..200] : body)}", RawJson = body };
+            }
+
+            using var doc  = JsonDocument.Parse(body);
+            var       root = doc.RootElement;
+
+            var endpoint      = GetJsonLdString(root, "endpoint", "https://w3id.org/edc/v0.0.1/ns/endpoint");
+            var authorization = GetJsonLdString(root, "authorization", "https://w3id.org/edc/v0.0.1/ns/authorization");
+            var authType      = GetJsonLdString(root, "authType",  "https://w3id.org/edc/v0.0.1/ns/authType");
+
+            // Separar "Bearer eyJ..." en tipo y código si vienen juntos en authorization
+            string resolvedType = "Bearer";
+            string resolvedCode = authorization;
+            if (!string.IsNullOrEmpty(authorization) && authorization.Contains(' '))
+            {
+                var parts = authorization.Split(' ', 2);
+                resolvedType = parts[0];
+                resolvedCode = parts[1];
+            }
+            else if (!string.IsNullOrEmpty(authType))
+            {
+                resolvedType = authType;
+            }
+
+            _logger.LogInformation("EDR obtenido para transferencia {Id}: endpoint={Endpoint}", transferProcessId, endpoint);
+
+            return new EdcEndpointDataReferenceResponse
+            {
+                Success        = true,
+                Endpoint       = endpoint,
+                AuthType       = resolvedType,
+                AuthCode       = resolvedCode,
+                HttpStatusCode = (int)response.StatusCode,
+                RawJson        = body
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            return new EdcEndpointDataReferenceResponse { Success = false, ErrorMessage = "Timeout" };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error HTTP al obtener EDR para transferencia {Id}", transferProcessId);
+            return new EdcEndpointDataReferenceResponse { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    public async Task<EdcDataDownloadResponse> DownloadDataAsync(
+        string dataPlaneEndpoint,
+        string authType,
+        string authCode,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GET {Endpoint} — Descargando datos del data plane", dataPlaneEndpoint);
+
+        try
+        {
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, dataPlaneEndpoint);
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue(authType, authCode);
+
+            var response    = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                return new EdcDataDownloadResponse { Success = false, HttpStatusCode = (int)response.StatusCode, ErrorMessage = $"HTTP {(int)response.StatusCode}: {(errBody.Length > 200 ? errBody[..200] : errBody)}" };
+            }
+
+            // Leer como texto si es JSON/CSV/texto; como bytes si es binario
+            if (contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+                || contentType.Contains("json", StringComparison.OrdinalIgnoreCase)
+                || contentType.Contains("xml",  StringComparison.OrdinalIgnoreCase))
+            {
+                var data = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogInformation("Descarga completada: {Bytes} bytes, ContentType={ContentType}", data.Length, contentType);
+                return new EdcDataDownloadResponse { Success = true, ContentType = contentType, Data = data, HttpStatusCode = (int)response.StatusCode };
+            }
+
+            var rawData = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            _logger.LogInformation("Descarga completada (binario): {Bytes} bytes, ContentType={ContentType}", rawData.Length, contentType);
+            return new EdcDataDownloadResponse { Success = true, ContentType = contentType, RawData = rawData, HttpStatusCode = (int)response.StatusCode };
+        }
+        catch (TaskCanceledException)
+        {
+            return new EdcDataDownloadResponse { Success = false, ErrorMessage = "Timeout" };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error HTTP al descargar datos desde {Endpoint}", dataPlaneEndpoint);
+            return new EdcDataDownloadResponse { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>Añade la API Key como header X-Api-Key. Prioriza la key del conector; si no, usa la global de EdcOptions.</summary>
+    private void AddApiKeyHeader(HttpRequestMessage request, string? apiKey = null)
+    {
+        var key = !string.IsNullOrWhiteSpace(apiKey) ? apiKey : _options.Value.ManagementApiKey;
+        if (!string.IsNullOrWhiteSpace(key))
+            request.Headers.Add("X-Api-Key", key);
+    }
+
+    /// <summary>
+    /// Busca una propiedad en un JsonElement por cualquiera de los nombres dados (con y sin prefijo namespace).
+    /// </summary>
+    private static string GetJsonLdString(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.String)
+                    return prop.GetString() ?? string.Empty;
+                if (prop.ValueKind == JsonValueKind.Object && prop.TryGetProperty("@value", out var val))
+                    return val.GetString() ?? string.Empty;
+            }
+        }
+        return string.Empty;
+    }
 }

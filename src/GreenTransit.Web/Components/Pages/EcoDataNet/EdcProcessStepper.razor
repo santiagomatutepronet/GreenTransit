@@ -1,0 +1,72 @@
+@* Stepper visual reutilizable para procesos EDC (negociación / transferencia). *@
+
+<div class="edc-stepper d-flex align-items-center gap-2 my-3 flex-wrap">
+    @for (int i = 0; i < Steps.Count; i++)
+    {
+        var step        = Steps[i];
+        var idx         = i;
+        var isCompleted = idx < CurrentStepIndex;
+        var isActive    = idx == CurrentStepIndex && !IsError;
+        var isError     = idx == CurrentStepIndex && IsError;
+
+        <div class="edc-step text-center">
+            <div class="edc-step-circle @(isCompleted ? "bg-success text-white" : isError ? "bg-danger text-white" : isActive ? "bg-primary text-white" : "bg-light text-muted border")">
+                @if (isCompleted)
+                {
+                    <i class="bi bi-check"></i>
+                }
+                else if (isError)
+                {
+                    <i class="bi bi-x"></i>
+                }
+                else if (isActive)
+                {
+                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                }
+                else
+                {
+                    <span>@(idx + 1)</span>
+                }
+            </div>
+            <div class="edc-step-label small mt-1 @(isActive || isError ? "fw-bold" : "text-muted")">
+                @step
+            </div>
+        </div>
+
+        @if (idx < Steps.Count - 1)
+        {
+            <div class="edc-step-connector flex-grow-1"
+                 style="height:2px;min-width:12px;background:@(idx < CurrentStepIndex ? "var(--bs-success,#198754)" : "var(--bs-gray-300,#dee2e6)")">
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public List<string> Steps { get; set; } = new();
+    [Parameter] public int CurrentStepIndex { get; set; }
+    [Parameter] public bool IsError { get; set; }
+}
+
+<style>
+    .edc-step-circle {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        margin: 0 auto;
+    }
+    .edc-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 60px;
+    }
+    .edc-step-label {
+        font-size: 0.72rem;
+        white-space: nowrap;
+    }
+</style>

@@ -135,14 +135,22 @@ IF NOT EXISTS (SELECT 1 FROM dbo.ProfileEDCConsumer WHERE ProfileId = @producer 
 IF NOT EXISTS (SELECT 1 FROM dbo.ProfileEDCConsumer WHERE ProfileId = @coordinator AND ConsumedProfileId = @dispatch_office)
     INSERT INTO dbo.ProfileEDCConsumer (ProfileId, ConsumedProfileId) VALUES (@coordinator, @dispatch_office);
 
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.Profiles WHERE Reference = 'REGULATOR')
+    INSERT INTO dbo.Profiles (Reference, Description, CreateDate)
+    VALUES ('REGULATOR', 'Regulador, Autoridad de supervisión normativa', GETDATE());
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Profiles WHERE Reference = 'CERTIFIER')
+    INSERT INTO dbo.Profiles (Reference, Description, CreateDate)
+    VALUES ('CERTIFIER', 'Certificador / Auditor, Validación y coherencia', GETDATE());
 -- =============================================================================
 -- Verificación
 -- =============================================================================
-SELECT
-    p.Reference  AS ProfileReference,
-    cp.Reference AS ConsumedProfileReference
-FROM dbo.ProfileEDCConsumer pec
-JOIN dbo.Profiles p  ON p.ID  = pec.ProfileId
-JOIN dbo.Profiles cp ON cp.ID = pec.ConsumedProfileId
-ORDER BY p.Reference, cp.Reference;
+--SELECT
+--    p.Reference  AS ProfileReference,
+--    cp.Reference AS ConsumedProfileReference
+--FROM dbo.ProfileEDCConsumer pec
+--JOIN dbo.Profiles p  ON p.ID  = pec.ProfileId
+--JOIN dbo.Profiles cp ON cp.ID = pec.ConsumedProfileId
+--ORDER BY p.Reference, cp.Reference;
 

@@ -15,6 +15,9 @@
 
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
+
+@implements IDisposable
 
 <PageTitle>Consumir datos — EcoDataNet</PageTitle>
 
@@ -137,18 +140,22 @@ else if (_isAdmin && _selectedConsumerUser is null)
                         AllowPaging="true" PageSize="15" Count="@_usersTotal"
                         LoadData="@LoadUsersAsync" IsLoading="@_isLoadingUsers">
             <Columns>
-                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="CompleteName" Title="Nombre" />
-                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="Login" Title="Login" Width="180px" />
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="CompleteName" Title="Nombre" Width="200px" />
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="Login" Title="Login" Width="280px" />
                 <RadzenDataGridColumn TItem="UserForEDCListDto" Property="ProfileReference" Title="Perfil" Width="140px" />
-                <RadzenDataGridColumn TItem="UserForEDCListDto" Title="Conector" Width="100px" Sortable="false">
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Title="Conector" Width="130px" Sortable="false">
                     <Template Context="row">
                         @if (row.HasEDCConnector)
                         {
-                            <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Configurado" />
+                            <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#198754;color:#fff;letter-spacing:.03em">
+                                Configurado
+                            </span>
                         }
                         else
                         {
-                            <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Sin conector" />
+                            <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#6c757d;color:#fff;letter-spacing:.03em">
+                                Sin conector
+                            </span>
                         }
                     </Template>
                 </RadzenDataGridColumn>
@@ -241,7 +248,9 @@ else
                                         <i class="bi bi-building fs-5" style="color:var(--primary,#0A404B)"></i>
                                         <span class="fw-semibold" style="color:var(--text-primary,#262626)">@provCatalog.ProviderUserName</span>
                                         <span style="font-size:.82rem;color:var(--text-muted,#6E7D78)">@provCatalog.ProviderUserLogin</span>
-                                        <RadzenBadge BadgeStyle="BadgeStyle.Primary" Text="@($"{provCatalog.Catalog!.Datasets.Count} assets")" />
+                                        <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:var(--primary,#0A404B);color:#fff;letter-spacing:.03em">
+                                            @provCatalog.Catalog!.Datasets.Count ASSETS
+                                        </span>
                                     </summary>
 
                                     <div class="row g-3">
@@ -264,9 +273,14 @@ else
                                                     <div class="edc-asset-card-footer">
                                                         @if (ds.Offer != null)
                                                         {
-                                                            <button class="edc-btn-offer" @onclick="() => ShowDatasetDetail(provCatalog, ds)">
-                                                                <i class="bi bi-eye me-1"></i>Ver oferta
-                                                            </button>
+                                                            <div class="d-flex gap-1 flex-wrap">
+                                                                <button class="edc-btn-offer" @onclick="() => ShowDatasetDetail(provCatalog, ds)">
+                                                                    <i class="bi bi-eye me-1"></i>Ver oferta
+                                                                </button>
+                                                                <button class="edc-btn-offer" style="background:var(--primary,#0A404B);color:#fff" @onclick="() => SelectOfferAndStartNegotiation(provCatalog, ds)">
+                                                                    <i class="bi bi-play-fill me-1"></i>Iniciar negociación
+                                                                </button>
+                                                            </div>
                                                         }
                                                         else
                                                         {
@@ -289,28 +303,7 @@ else
                         </div>
                     }
 
-                    @* ── OFERTA SELECCIONADA ── *@
-                    @if (_negotiationSelection != null)
-                    {
-                        <RadzenAlert AlertStyle="AlertStyle.Success" class="mt-3">
-                            <div class="d-flex align-items-start justify-content-between">
-                                <div>
-                                    <strong><i class="bi bi-check-circle-fill me-2"></i>Oferta seleccionada</strong>
-                                    <p class="mb-0 small mt-1">
-                                        <strong>Dataset:</strong> @_negotiationSelection.DatasetName<br />
-                                        <strong>Proveedor:</strong> @_negotiationSelection.ProviderUserName<br />
-                                        <strong>Offer ID:</strong> <code>@_negotiationSelection.SelectedOfferId</code>
-                                    </p>
-                                    <p class="text-muted small mt-1 mb-0">
-                                        <i class="bi bi-info-circle me-1"></i>La negociación de contrato estará disponible en una próxima versión.
-                                    </p>
-                                </div>
-                                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light"
-                                              Size="ButtonSize.ExtraSmall"
-                                              Click="@ClearNegotiationSelection" />
-                            </div>
-                        </RadzenAlert>
-                    }
+
 
                     @* ── PROVEEDORES CONSULTADOS (contraído al final) ── *@
                     <div class="mt-4">
@@ -318,15 +311,23 @@ else
                             <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem;padding:0.6rem 0.75rem;background:var(--surface-alt,#F0F2F1);border:1px solid var(--border,#D1D5D4);border-radius:6px;user-select:none">
                                 <i class="bi bi-chevron-right edc-chevron me-1"></i>
                                 <span class="fw-semibold text-muted small">Detalle de proveedores consultados</span>
-                                <RadzenBadge BadgeStyle="BadgeStyle.Info"    Text="@($"{_catalogResponse.TotalProviders} proveedores")" class="ms-2" />
-                                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="@($"{_catalogResponse.SuccessCount} OK")" />
+                                <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#0d6efd;color:#fff;letter-spacing:.03em;margin-left:.5rem">
+                                    @_catalogResponse.TotalProviders PROVEEDORES
+                                </span>
+                                <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#198754;color:#fff;letter-spacing:.03em">
+                                    @_catalogResponse.SuccessCount OK
+                                </span>
                                 @if (_catalogResponse.ErrorCount > 0)
                                 {
-                                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="@($"{_catalogResponse.ErrorCount} errores")" />
+                                    <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#dc3545;color:#fff;letter-spacing:.03em">
+                                        @_catalogResponse.ErrorCount ERRORES
+                                    </span>
                                 }
                                 @if (_catalogResponse.NoConnectorCount > 0)
                                 {
-                                    <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="@($"{_catalogResponse.NoConnectorCount} sin conector")" />
+                                    <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#6c757d;color:#fff;letter-spacing:.03em">
+                                        @_catalogResponse.NoConnectorCount SIN CONECTOR
+                                    </span>
                                 }
                             </summary>
                             <div style="border:1px solid var(--border,#D1D5D4);border-top:none;border-radius:0 0 6px 6px;padding:0.75rem">
@@ -565,15 +566,238 @@ else
                 <div class="d-flex justify-content-end gap-2 mt-1">
                     <RadzenButton Text="Cerrar" ButtonStyle="ButtonStyle.Light"
                                   Click="@CloseDatasetDetail" />
-                    @if (_selectedDataset.Offer != null && !string.IsNullOrEmpty(_selectedDataset.Offer.OfferId))
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── MODAL NEGOCIACIÓN Y TRANSFERENCIA ── *@
+@if (_negotiationSelection != null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1060;display:flex;align-items:center;justify-content:center;padding:1rem">
+        <div style="width:min(95vw,680px);max-height:92vh;overflow-y:auto;border-radius:14px;background:var(--surface,#fff);box-shadow:0 24px 64px rgba(10,64,75,.3)">
+
+            @* Cabecera *@
+            <div style="background:linear-gradient(135deg,var(--primary,#0A404B) 0%,var(--primary-hover,#083338) 100%);padding:1.25rem 1.5rem;border-radius:14px 14px 0 0;color:#fff">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div style="font-size:1.1rem;font-weight:700;line-height:1.3">
+                            <i class="bi bi-handshake me-2"></i>Negociación y Transferencia
+                        </div>
+                        <div style="opacity:.85;font-size:.85rem;margin-top:.3rem">
+                            <i class="bi bi-file-earmark-bar-graph me-1"></i>@_negotiationSelection.DatasetName
+                            <span style="opacity:.7;margin-left:.75rem">
+                                <i class="bi bi-building me-1"></i>@_negotiationSelection.ProviderUserName
+                            </span>
+                        </div>
+                    </div>
+                    @if (!_isNegotiating && !_isTransferring && _downloadResponse == null)
                     {
-                        <RadzenButton Text="Iniciar negociación"
-                                      Icon="handshake"
-                                      ButtonStyle="ButtonStyle.Primary"
-                                      Click="@OnSelectOfferForNegotiation" />
+                        <button style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:34px;height:34px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"
+                                @onclick="ClearNegotiationSelection" title="Cancelar">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
                     }
                 </div>
             </div>
+
+            @* Cuerpo *@
+            <div style="padding:1.5rem">
+
+                @* ── Fase 1: Negociación de contrato ── *@
+                <div class="mb-4">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;flex-shrink:0;
+                                    background:@(_contractAgreementId != null ? "#198754" : _negotiationError ? "#dc3545" : _isNegotiating ? "var(--primary,#0A404B)" : "#dee2e6");
+                                    color:@(_contractAgreementId != null || _negotiationError || _isNegotiating ? "#fff" : "#6c757d")">
+                            @if (_contractAgreementId != null)
+                            { <i class="bi bi-check-lg"></i> }
+                            else if (_negotiationError)
+                            { <i class="bi bi-x-lg"></i> }
+                            else
+                            { <span>1</span> }
+                        </div>
+                        <span style="font-weight:600;font-size:.95rem">Negociación de contrato</span>
+                        @if (_isNegotiating)
+                        {
+                            <span class="spinner-border spinner-border-sm text-primary ms-1" role="status"></span>
+                        }
+                        @if (_contractAgreementId != null)
+                        {
+                            <span class="badge bg-success ms-1">Finalizada</span>
+                        }
+                    </div>
+
+                    @if (_negotiationId != null || _isNegotiating || _negotiationError)
+                    {
+                        <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6)">
+                            <EdcProcessStepper Steps="_negotiationSteps"
+                                               CurrentStepIndex="_negotiationStepIndex"
+                                               IsError="_negotiationError" />
+                            @if (_negotiationId != null)
+                            {
+                                <div class="text-muted" style="font-size:.75rem;margin-top:.25rem">
+                                    ID: <code style="font-size:.72rem">@_negotiationId</code>
+                                </div>
+                            }
+                            @if (_negotiationError && !string.IsNullOrEmpty(_negotiationErrorMessage))
+                            {
+                                <div class="alert alert-danger py-2 mt-2" style="word-break:break-word;overflow-wrap:anywhere;">
+                                    <div class="mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>@_negotiationErrorMessage</div>
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="RetryNegotiation">
+                                        <i class="bi bi-arrow-clockwise me-1"></i>Reintentar
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6);color:var(--text-muted,#6E7D78);font-size:.85rem">
+                            Pendiente de iniciar…
+                        </div>
+                    }
+                </div>
+
+                @* Conector visual entre fases *@
+                <div style="width:2px;height:20px;background:@(_contractAgreementId != null ? "#198754" : "var(--border,#dee2e6)");margin:0 auto -12px 13px"></div>
+
+                @* ── Fase 2: Transferencia de datos ── *@
+                <div class="mb-4">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;flex-shrink:0;
+                                    background:@(_edrResponse?.Success == true ? "#198754" : _transferError ? "#dc3545" : _isTransferring ? "var(--primary,#0A404B)" : "#dee2e6");
+                                    color:@(_edrResponse?.Success == true || _transferError || _isTransferring ? "#fff" : "#6c757d")">
+                            @if (_edrResponse?.Success == true)
+                            { <i class="bi bi-check-lg"></i> }
+                            else if (_transferError)
+                            { <i class="bi bi-x-lg"></i> }
+                            else
+                            { <span>2</span> }
+                        </div>
+                        <span style="font-weight:600;font-size:.95rem">Transferencia de datos</span>
+                        @if (_isTransferring)
+                        {
+                            <span class="spinner-border spinner-border-sm text-primary ms-1" role="status"></span>
+                        }
+                        @if (_edrResponse?.Success == true)
+                        {
+                            <span class="badge bg-success ms-1">Lista</span>
+                        }
+                    </div>
+
+                    @if (_transferProcessId != null || _isTransferring)
+                    {
+                        <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6)">
+                            <EdcProcessStepper Steps="_transferSteps"
+                                               CurrentStepIndex="_transferStepIndex"
+                                               IsError="_transferError" />
+                            @if (_transferProcessId != null)
+                            {
+                                <div class="text-muted" style="font-size:.75rem;margin-top:.25rem">
+                                    ID: <code style="font-size:.72rem">@_transferProcessId</code>
+                                </div>
+                            }
+                            @if (_transferError && !string.IsNullOrEmpty(_transferErrorMessage))
+                            {
+                                <div class="alert alert-danger py-2 mt-2 d-flex align-items-center gap-3">
+                                    <div><i class="bi bi-exclamation-triangle-fill me-1"></i>@_transferErrorMessage</div>
+                                    <button class="btn btn-outline-danger btn-sm ms-auto" @onclick="RetryTransfer">
+                                        <i class="bi bi-arrow-clockwise me-1"></i>Reintentar
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6);color:var(--text-muted,#6E7D78);font-size:.85rem">
+                            Se iniciará automáticamente al finalizar la negociación.
+                        </div>
+                    }
+                </div>
+
+                @* Conector visual entre fases *@
+                <div style="width:2px;height:20px;background:@(_edrResponse?.Success == true ? "#198754" : "var(--border,#dee2e6)");margin:0 auto -12px 13px"></div>
+
+                @* ── Fase 3: Descarga de datos ── *@
+                <div class="mb-2">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;flex-shrink:0;
+                                    background:@(_downloadResponse?.Success == true ? "#198754" : _downloadResponse?.Success == false ? "#dc3545" : _isDownloading ? "var(--primary,#0A404B)" : "#dee2e6");
+                                    color:@(_downloadResponse != null || _isDownloading ? "#fff" : "#6c757d")">
+                            @if (_downloadResponse?.Success == true)
+                            { <i class="bi bi-check-lg"></i> }
+                            else if (_downloadResponse?.Success == false)
+                            { <i class="bi bi-x-lg"></i> }
+                            else if (_isDownloading)
+                            { <span class="spinner-border spinner-border-sm" role="status"></span> }
+                            else
+                            { <span>3</span> }
+                        </div>
+                        <span style="font-weight:600;font-size:.95rem">Descarga de datos</span>
+                        @if (_downloadResponse?.Success == true)
+                        {
+                            <span class="badge bg-success ms-1">Completada</span>
+                        }
+                    </div>
+
+                    <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6)">
+                        @if (_edrResponse?.Success == true && _downloadResponse == null && !_isDownloading)
+                        {
+                            <button class="btn btn-success" @onclick="DownloadData">
+                                <i class="bi bi-cloud-download me-2"></i>Descargar datos
+                            </button>
+                        }
+                        else if (_isDownloading)
+                        {
+                            <span class="text-muted" style="font-size:.85rem">
+                                <span class="spinner-border spinner-border-sm me-2"></span>Descargando…
+                            </span>
+                        }
+                        else if (_downloadResponse?.Success == true)
+                        {
+                            <div class="alert alert-success py-2">
+                                <i class="bi bi-check-circle-fill me-2"></i>Datos recibidos correctamente.
+                                @if (!string.IsNullOrEmpty(_downloadResponse.ContentType))
+                                {
+                                    <span class="badge bg-info ms-2">@_downloadResponse.ContentType</span>
+                                }
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm mb-2" @onclick="ExportDownloadToFile">
+                                <i class="bi bi-file-earmark-arrow-down me-1"></i>Exportar a fichero
+                            </button>
+                            <details>
+                                <summary style="cursor:pointer;font-size:.82rem;color:var(--text-muted,#6E7D78)">Ver datos descargados</summary>
+                                <pre style="max-height:300px;overflow:auto;font-size:.75rem;background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:6px;margin-top:.5rem">@_downloadResponse.Data</pre>
+                            </details>
+                        }
+                        else if (_downloadResponse?.Success == false)
+                        {
+                            <div class="alert alert-danger py-2">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i>@_downloadResponse.ErrorMessage
+                            </div>
+                        }
+                        else
+                        {
+                            <span style="color:var(--text-muted,#6E7D78);font-size:.85rem">Se habilitará al completar la transferencia.</span>
+                        }
+                    </div>
+                </div>
+
+            </div>
+
+            @* Pie del modal *@
+            @if (_downloadResponse?.Success == true)
+            {
+                <div style="padding:.75rem 1.5rem 1.25rem;display:flex;justify-content:flex-end">
+                    <button class="btn btn-primary" @onclick="ClearNegotiationSelection">
+                        <i class="bi bi-check-lg me-1"></i>Cerrar
+                    </button>
+                </div>
+            }
+
         </div>
     </div>
 }
@@ -610,6 +834,32 @@ else
     private EdcProviderParsedCatalogDto?       _selectedProvider = null;
     private bool                               _showDatasetDetail = false;
     private bool                               _showNegotiationConfirmation = false;
+
+    // ── Estado del proceso de negociación + transferencia ──────────────────
+    private bool _isNegotiating  = false;
+    private bool _isTransferring = false;
+    private bool _isDownloading  = false;
+
+    private string? _negotiationId;
+    private int     _negotiationStepIndex  = 0;
+    private bool    _negotiationError      = false;
+    private string? _negotiationErrorMessage;
+    private string? _contractAgreementId;
+
+    private string? _transferProcessId;
+    private int     _transferStepIndex = 0;
+    private bool    _transferError     = false;
+    private string? _transferErrorMessage;
+
+    private EdcEndpointDataReferenceResponse? _edrResponse;
+    private EdcDataDownloadResponse?          _downloadResponse;
+    private CancellationTokenSource?          _pollingCts;
+
+    private readonly List<string> _negotiationSteps = new()
+        { "Solicitada", "Oferta recibida", "Aceptada", "Acordada", "Verificada", "Finalizada" };
+
+    private readonly List<string> _transferSteps = new()
+        { "Iniciada", "Solicitada", "En curso", "Completada" };
 
     protected override async Task OnInitializedAsync()
     {
@@ -756,6 +1006,15 @@ else
         StateHasChanged();
     }
 
+    private async Task SelectOfferAndStartNegotiation(EdcProviderParsedCatalogDto provider, EdcDatasetDto dataset)
+    {
+        _selectedProvider = provider;
+        _selectedDataset  = dataset;
+        OnSelectOfferForNegotiation();
+        await InvokeAsync(StateHasChanged);
+        await StartNegotiation();
+    }
+
     private void OnSelectOfferForNegotiation()
     {
         if (_selectedDataset?.Offer == null || _selectedProvider == null)
@@ -768,8 +1027,23 @@ else
             ProviderParticipantId    = _selectedProvider.ProviderParticipantId,
             ProviderProtocolEndpoint = _selectedProvider.ProviderProtocolEndpoint,
             DatasetName              = _selectedDataset.Name,
-            ProviderUserName         = _selectedProvider.ProviderUserName
+            ProviderUserName         = _selectedProvider.ProviderUserName,
+            RawOfferJson             = _selectedDataset.Offer.RawOfferJson,
+            Offer                    = _selectedDataset.Offer
         };
+
+        // Resetear estado de negociación anterior
+        _negotiationId          = null;
+        _negotiationStepIndex   = 0;
+        _negotiationError       = false;
+        _negotiationErrorMessage = null;
+        _contractAgreementId    = null;
+        _transferProcessId      = null;
+        _transferStepIndex      = 0;
+        _transferError          = false;
+        _transferErrorMessage   = null;
+        _edrResponse            = null;
+        _downloadResponse       = null;
 
         CloseDatasetDetail();
         _showNegotiationConfirmation = true;
@@ -778,9 +1052,362 @@ else
 
     private void ClearNegotiationSelection()
     {
+        _pollingCts?.Cancel();
         _negotiationSelection        = null;
         _showNegotiationConfirmation = false;
         StateHasChanged();
+    }
+
+    // ── Lógica de negociación + transferencia ──────────────────────────────
+
+    private async Task StartNegotiation()
+    {
+        if (_negotiationSelection == null) return;
+
+        _isNegotiating        = true;
+        _negotiationError     = false;
+        _negotiationErrorMessage = null;
+        _negotiationStepIndex = 0;
+        StateHasChanged();
+
+        try
+        {
+            var response = await Mediator.Send(new StartContractNegotiationCommand
+            {
+                ConsumerUserId           = _activeConsumerUserId,
+                DatasetId                = _negotiationSelection.SelectedDatasetId,
+                OfferId                  = _negotiationSelection.SelectedOfferId,
+                ProviderParticipantId    = _negotiationSelection.ProviderParticipantId,
+                ProviderProtocolEndpoint = _negotiationSelection.ProviderProtocolEndpoint,
+                RawOfferJson             = _negotiationSelection.RawOfferJson,
+                Offer                    = _negotiationSelection.Offer
+            });
+
+            if (!response.Success)
+            {
+                _negotiationError        = true;
+                _negotiationErrorMessage = response.ErrorMessage;
+                _isNegotiating           = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            _negotiationId = response.NegotiationId;
+            await InvokeAsync(StateHasChanged);
+
+            await PollNegotiationState();
+        }
+        catch (Exception ex)
+        {
+            _negotiationError        = true;
+            _negotiationErrorMessage = ex.Message;
+            _isNegotiating           = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollNegotiationState()
+    {
+        _pollingCts?.Cancel();
+        _pollingCts = new CancellationTokenSource();
+        var ct = _pollingCts.Token;
+
+        using var timer    = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        var maxAttempts    = 120;
+        var attempt        = 0;
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct) && attempt++ < maxAttempts)
+            {
+                var state = await Mediator.Send(new GetNegotiationStateQuery
+                {
+                    ConsumerUserId = _activeConsumerUserId,
+                    NegotiationId  = _negotiationId!
+                }, ct);
+
+                if (!state.Success)
+                {
+                    _negotiationError        = true;
+                    _negotiationErrorMessage = state.ErrorMessage;
+                    _isNegotiating           = false;
+                    StateHasChanged();
+                    return;
+                }
+
+                _negotiationStepIndex = MapNegotiationStateToStep(state.State);
+                await InvokeAsync(StateHasChanged);
+
+                if (state.State is "FINALIZED")
+                {
+                    _contractAgreementId = state.ContractAgreementId;
+                    _isNegotiating       = false;
+                    await InvokeAsync(StateHasChanged);
+                    await StartTransferProcess();
+                    return;
+                }
+
+                if (state.State is "TERMINATED" or "TERMINATING")
+                {
+                    _negotiationError        = true;
+                    _negotiationErrorMessage = !string.IsNullOrWhiteSpace(state.ErrorDetail)
+                        ? state.ErrorDetail
+                        : !string.IsNullOrWhiteSpace(state.RawJson)
+                            ? $"Negociación terminada ({state.State}). Detalle: {state.RawJson}"
+                            : $"Negociación terminada con estado: {state.State}";
+                    _isNegotiating           = false;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+
+            if (attempt >= maxAttempts)
+            {
+                _negotiationError        = true;
+                _negotiationErrorMessage = "Timeout: la negociación no se completó en el tiempo esperado.";
+                _isNegotiating           = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _negotiationError        = true;
+            _negotiationErrorMessage = ex.Message;
+            _isNegotiating           = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task StartTransferProcess()
+    {
+        if (_contractAgreementId == null || _negotiationSelection == null) return;
+
+        _isTransferring      = true;
+        _transferError       = false;
+        _transferErrorMessage = null;
+        _transferStepIndex   = 0;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var response = await Mediator.Send(new StartTransferProcessCommand
+            {
+                ConsumerUserId           = _activeConsumerUserId,
+                ContractAgreementId      = _contractAgreementId,
+                AssetId                  = _negotiationSelection.SelectedDatasetId,
+                ProviderProtocolEndpoint = _negotiationSelection.ProviderProtocolEndpoint,
+                TransferType             = "HttpData-PULL"
+            });
+
+            if (!response.Success)
+            {
+                _transferError        = true;
+                _transferErrorMessage = response.ErrorMessage;
+                _isTransferring       = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            _transferProcessId = response.TransferProcessId;
+            await InvokeAsync(StateHasChanged);
+
+            await PollTransferState();
+        }
+        catch (Exception ex)
+        {
+            _transferError        = true;
+            _transferErrorMessage = ex.Message;
+            _isTransferring       = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollTransferState()
+    {
+        _pollingCts?.Cancel();
+        _pollingCts = new CancellationTokenSource();
+        var ct = _pollingCts.Token;
+
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        var maxAttempts = 60;
+        var attempt     = 0;
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct) && attempt++ < maxAttempts)
+            {
+                var state = await Mediator.Send(new GetTransferStateQuery
+                {
+                    ConsumerUserId    = _activeConsumerUserId,
+                    TransferProcessId = _transferProcessId!
+                }, ct);
+
+                if (!state.Success)
+                {
+                    _transferError        = true;
+                    _transferErrorMessage = state.ErrorMessage;
+                    _isTransferring       = false;
+                    StateHasChanged();
+                    return;
+                }
+
+                _transferStepIndex = MapTransferStateToStep(state.State);
+                await InvokeAsync(StateHasChanged);
+
+                if (state.State is "STARTED" or "COMPLETED")
+                {
+                    _isTransferring = false;
+                    await InvokeAsync(StateHasChanged);
+                    await ObtainEndpointDataReference();
+                    return;
+                }
+
+                if (state.State is "TERMINATED" or "TERMINATING")
+                {
+                    _transferError        = true;
+                    _transferErrorMessage = !string.IsNullOrWhiteSpace(state.ErrorDetail)
+                        ? state.ErrorDetail
+                        : !string.IsNullOrWhiteSpace(state.RawJson)
+                            ? $"Transferencia terminada ({state.State}). Detalle: {state.RawJson}"
+                            : $"Transferencia terminada con estado: {state.State}";
+                    _isTransferring       = false;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+
+            if (attempt >= maxAttempts)
+            {
+                _transferError        = true;
+                _transferErrorMessage = "Timeout: la transferencia no se completó en el tiempo esperado.";
+                _isTransferring       = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _transferError        = true;
+            _transferErrorMessage = ex.Message;
+            _isTransferring       = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ObtainEndpointDataReference()
+    {
+        try
+        {
+            _edrResponse = await Mediator.Send(new GetEndpointDataReferenceQuery
+            {
+                ConsumerUserId    = _activeConsumerUserId,
+                TransferProcessId = _transferProcessId!
+            });
+
+            if (!_edrResponse.Success)
+            {
+                _transferError        = true;
+                _transferErrorMessage = $"No se pudo obtener referencia de descarga: {_edrResponse.ErrorMessage}";
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _transferError        = true;
+            _transferErrorMessage = $"Error obteniendo referencia de descarga: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadData()
+    {
+        if (_edrResponse == null) return;
+
+        _isDownloading = true;
+        StateHasChanged();
+
+        try
+        {
+            _downloadResponse = await Mediator.Send(new DownloadTransferDataCommand
+            {
+                DataPlaneEndpoint = _edrResponse.Endpoint!,
+                AuthType          = _edrResponse.AuthType ?? "Bearer",
+                AuthCode          = _edrResponse.AuthCode!
+            });
+        }
+        catch (Exception ex)
+        {
+            _downloadResponse = new EdcDataDownloadResponse { Success = false, ErrorMessage = ex.Message };
+        }
+        finally
+        {
+            _isDownloading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportDownloadToFile()
+    {
+        if (_downloadResponse?.Data == null) return;
+
+        var fileName    = $"ecodatanet-{_negotiationSelection?.DatasetName ?? "data"}.json";
+        var mimeType    = _downloadResponse.ContentType ?? "application/json";
+        await JS.InvokeVoidAsync("saveAsTextFile", fileName, _downloadResponse.Data, mimeType);
+    }
+
+    private void RetryNegotiation()
+    {
+        _negotiationId           = null;
+        _negotiationError        = false;
+        _negotiationErrorMessage = null;
+        _negotiationStepIndex    = 0;
+        _contractAgreementId     = null;
+        _transferProcessId       = null;
+        _transferError           = false;
+        _edrResponse             = null;
+        _downloadResponse        = null;
+        StateHasChanged();
+        _ = StartNegotiation();
+    }
+
+    private void RetryTransfer()
+    {
+        _transferProcessId    = null;
+        _transferError        = false;
+        _transferErrorMessage = null;
+        _transferStepIndex    = 0;
+        _edrResponse          = null;
+        _downloadResponse     = null;
+        StateHasChanged();
+        _ = StartTransferProcess();
+    }
+
+    private static int MapNegotiationStateToStep(string? state) => state switch
+    {
+        "INITIAL" or "REQUESTING" or "REQUESTED" => 0,
+        "OFFERED"                                 => 1,
+        "ACCEPTING" or "ACCEPTED"                 => 2,
+        "AGREEING"  or "AGREED"                   => 3,
+        "VERIFYING" or "VERIFIED"                 => 4,
+        "FINALIZING" or "FINALIZED"               => 5,
+        _                                         => 0
+    };
+
+    private static int MapTransferStateToStep(string? state) => state switch
+    {
+        "INITIAL" or "PROVISIONING" or "PROVISIONED" => 0,
+        "REQUESTING" or "REQUESTED"                  => 1,
+        "STARTING"   or "STARTED"                    => 2,
+        "COMPLETING" or "COMPLETED"                  => 3,
+        _                                            => 0
+    };
+
+    public void Dispose()
+    {
+        _pollingCts?.Cancel();
+        _pollingCts?.Dispose();
     }
 
     private static string HumanizeOdrl(string term)

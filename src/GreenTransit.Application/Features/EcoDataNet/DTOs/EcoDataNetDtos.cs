@@ -106,6 +106,12 @@ public class EdcOfferDto
     public List<EdcPermissionDto> Permissions { get; set; } = new();
     public List<EdcProhibitionDto> Prohibitions { get; set; } = new();
     public List<EdcObligationDto> Obligations { get; set; } = new();
+
+    /// <summary>
+    /// JSON crudo del nodo odrl:hasPolicy tal como vino del catálogo.
+    /// Se usa para construir el payload ContractRequest sin perder campos.
+    /// </summary>
+    public string? RawOfferJson { get; set; }
 }
 
 /// <summary>Permiso ODRL con su acción y restricciones.</summary>
@@ -145,6 +151,80 @@ public class EdcDistributionDto
     public string? EndpointUrl { get; set; }
 }
 
+// ── DTOs de negociación de contrato ──────────────────────────────────────────
+
+/// <summary>Respuesta al iniciar una negociación de contrato.</summary>
+public class EdcNegotiationResponse
+{
+    public bool Success { get; set; }
+    public string? NegotiationId { get; set; }
+    public string? State { get; set; }
+    public string? ErrorMessage { get; set; }
+    public int HttpStatusCode { get; set; }
+}
+
+/// <summary>Estado actual de una negociación de contrato.</summary>
+public class EdcNegotiationStateResponse
+{
+    public bool Success { get; set; }
+    public string? NegotiationId { get; set; }
+    public string? State { get; set; }
+    public string? ContractAgreementId { get; set; }
+    public string? ErrorDetail { get; set; }
+    public string? ErrorMessage { get; set; }
+    public int HttpStatusCode { get; set; }
+    public string? RawJson { get; set; }
+}
+
+// ── DTOs de proceso de transferencia ─────────────────────────────────────────
+
+/// <summary>Respuesta al iniciar un proceso de transferencia.</summary>
+public class EdcTransferResponse
+{
+    public bool Success { get; set; }
+    public string? TransferProcessId { get; set; }
+    public string? State { get; set; }
+    public string? ErrorMessage { get; set; }
+    public int HttpStatusCode { get; set; }
+}
+
+/// <summary>Estado actual de un proceso de transferencia.</summary>
+public class EdcTransferStateResponse
+{
+    public bool Success { get; set; }
+    public string? TransferProcessId { get; set; }
+    public string? State { get; set; }
+    public string? ErrorDetail { get; set; }
+    public string? ErrorMessage { get; set; }
+    public int HttpStatusCode { get; set; }
+    public string? RawJson { get; set; }
+}
+
+// ── DTOs de descarga (EDR) ────────────────────────────────────────────────────
+
+/// <summary>Referencia del endpoint de datos (EDR) para descarga.</summary>
+public class EdcEndpointDataReferenceResponse
+{
+    public bool Success { get; set; }
+    public string? Endpoint { get; set; }
+    public string? AuthType { get; set; }
+    public string? AuthCode { get; set; }
+    public string? ErrorMessage { get; set; }
+    public int HttpStatusCode { get; set; }
+    public string? RawJson { get; set; }
+}
+
+/// <summary>Resultado de la descarga de datos del data plane.</summary>
+public class EdcDataDownloadResponse
+{
+    public bool Success { get; set; }
+    public string? ContentType { get; set; }
+    public string? Data { get; set; }
+    public byte[]? RawData { get; set; }
+    public string? ErrorMessage { get; set; }
+    public int HttpStatusCode { get; set; }
+}
+
 /// <summary>Catálogo parseado de un proveedor específico, con datos del usuario proveedor.</summary>
 public class EdcProviderParsedCatalogDto
 {
@@ -162,7 +242,6 @@ public class EdcProviderParsedCatalogDto
 
 /// <summary>
 /// Estado de selección de oferta listo para iniciar negociación.
-/// Se guarda en el componente Blazor y se usará en el futuro paso de negociación.
 /// </summary>
 public class EdcNegotiationSelection
 {
@@ -172,4 +251,12 @@ public class EdcNegotiationSelection
     public string ProviderProtocolEndpoint { get; set; } = string.Empty;
     public string DatasetName { get; set; } = string.Empty;
     public string ProviderUserName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// JSON crudo de la offer ODRL tal como vino del catálogo.
+    /// </summary>
+    public string? RawOfferJson { get; set; }
+
+    /// <summary>Offer parseada (para acceso a permisos, prohibiciones, obligaciones).</summary>
+    public EdcOfferDto? Offer { get; set; }
 }

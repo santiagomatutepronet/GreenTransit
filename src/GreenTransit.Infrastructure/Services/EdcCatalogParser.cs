@@ -148,7 +148,8 @@ public class EdcCatalogParser : IEdcCatalogParser
     {
         var offer = new EdcOfferDto
         {
-            OfferId = GetStringProperty(element, "@id", "id")
+            OfferId      = GetStringProperty(element, "@id", "id"),
+            RawOfferJson = element.GetRawText()
         };
 
         var permElement = GetProperty(element, "odrl:permission",
