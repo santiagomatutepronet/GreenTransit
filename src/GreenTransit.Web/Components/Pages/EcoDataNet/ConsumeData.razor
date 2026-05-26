@@ -1,0 +1,807 @@
+@using Radzen
+@using Radzen.Blazor
+@using GreenTransit.Application.Features.EcoDataNet.DTOs
+@using GreenTransit.Application.Features.EcoDataNet.Queries
+@using GreenTransit.Application.Features.EcoDataNet.Commands
+@using GreenTransit.Application.Common.Interfaces
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using System.Text.Json
+
+@page "/ecodatanet/consume-data"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEDCConsumeData)]
+@rendermode InteractiveServer
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>Consumir datos — EcoDataNet</PageTitle>
+
+<style>
+    .edc-asset-card {
+        border: 1px solid var(--border, #D1D5D4);
+        border-radius: 10px;
+        padding: .875rem;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: .5rem;
+        background: var(--surface, #fff);
+        transition: box-shadow .18s, transform .18s;
+        cursor: default;
+    }
+    .edc-asset-card:hover { box-shadow: 0 4px 18px rgba(10,64,75,.12); transform: translateY(-2px); }
+    .edc-asset-card.has-offer { border-top: 3px solid var(--primary, #0A404B); }
+    .edc-asset-card.no-offer  { border-top: 3px solid var(--warning, #FFA800); opacity: .75; }
+    .edc-asset-card-icon {
+        font-size: 1.6rem;
+        color: var(--primary, #0A404B);
+        line-height: 1;
+    }
+    .edc-asset-card-body { flex: 1; }
+    .edc-asset-name {
+        font-weight: 600;
+        font-size: .875rem;
+        line-height: 1.35;
+        color: var(--text-primary, #262626);
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .edc-asset-type {
+        font-size: .7rem;
+        color: var(--text-muted, #6E7D78);
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+    .edc-asset-card-footer { margin-top: auto; }
+    .edc-btn-offer {
+        display: inline-flex;
+        align-items: center;
+        font-size: .78rem;
+        font-weight: 500;
+        padding: .3rem .75rem;
+        border-radius: 6px;
+        border: 1.5px solid var(--primary, #0A404B);
+        color: var(--primary, #0A404B);
+        background: transparent;
+        cursor: pointer;
+        transition: background .15s, color .15s;
+        white-space: nowrap;
+    }
+    .edc-btn-offer:hover { background: var(--primary, #0A404B); color: #fff; }
+    .edc-no-offer { font-size: .78rem; color: var(--text-muted, #6E7D78); }
+    /* Chips */
+    .edc-chip {
+        display: inline-flex;
+        align-items: baseline;
+        font-size: .75rem;
+        padding: .2rem .55rem;
+        border-radius: 6px;
+        line-height: 1.5;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        max-width: 100%;
+    }
+    .edc-chip-success { background: var(--success-bg, #DEF2E6);  color: var(--text-primary, #262626); }
+    .edc-chip-info    { background: var(--primary-light, #BEE2E4); color: var(--primary, #0A404B); }
+    .edc-chip-danger  { background: var(--danger-bg, #FFEFF0);    color: var(--danger, #DC2B2B); }
+    .edc-chip-warning { background: var(--warning-bg, #FFF6E4);   color: var(--text-primary, #262626); }
+    .edc-chip-neutral { background: var(--surface-alt, #F0F2F1);  color: var(--text-secondary, #4F5E5A); }
+    /* Acordeón de proveedores colapsado */
+    details.edc-more-info > summary::-webkit-details-marker { display: none; }
+    .edc-chevron { transition: transform .2s; }
+    details[open] .edc-chevron { transform: rotate(90deg); }
+</style>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-cloud-download-fill me-2 text-success"></i>Consumir datos EcoDataNet
+        </h1>
+        <p class="page-subtitle text-muted">Accede a los datasets compartidos en el dataspace EDC.</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+    </div>
+}
+else if (_isAdmin && _selectedConsumerUser is null)
+{
+    @* ── Vista ADMIN: lista de usuarios con conector EDC configurado ─────── *@
+    <RadzenCard>
+        <RadzenText TextStyle="TextStyle.H6" class="mb-1">Seleccione el usuario consumidor</RadzenText>
+        <RadzenText TextStyle="TextStyle.Caption" class="text-muted mb-3">
+            Sólo se muestran usuarios con conector EDC configurado. La petición al catálogo se realizará desde ese conector.
+        </RadzenText>
+
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" class="mb-3" AlignItems="AlignItems.Center">
+            <RadzenTextBox Placeholder="Buscar por nombre o login…"
+                           @bind-Value="_searchTerm"
+                           @oninput="@(e => OnSearchChanged(e.Value?.ToString()))"
+                           Style="width:280px" />
+            @if (_isLoadingUsers)
+            {
+                <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+            }
+        </RadzenStack>
+
+        <RadzenDataGrid Data="@_users" TItem="UserForEDCListDto"
+                        AllowSorting="true" Density="Density.Compact" class="rz-shadow-2"
+                        AllowPaging="true" PageSize="15" Count="@_usersTotal"
+                        LoadData="@LoadUsersAsync" IsLoading="@_isLoadingUsers">
+            <Columns>
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="CompleteName" Title="Nombre" />
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="Login" Title="Login" Width="180px" />
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="ProfileReference" Title="Perfil" Width="140px" />
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Title="Conector" Width="100px" Sortable="false">
+                    <Template Context="row">
+                        @if (row.HasEDCConnector)
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Configurado" />
+                        }
+                        else
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Sin conector" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Title="" Width="130px" Sortable="false">
+                    <Template Context="row">
+                        <RadzenButton Text="Consumir datos" Icon="cloud_download"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Size="ButtonSize.ExtraSmall"
+                                      Disabled="@(!row.HasEDCConnector)"
+                                      Click="@(_ => SelectConsumerUser(row))" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+}
+else
+{
+    @* ── Vista de consumo: usuario consumidor ya seleccionado ────────────── *@
+    <RadzenCard>
+        <RadzenStack Gap="0.75rem">
+            @if (_isAdmin)
+            {
+                <RadzenButton Text="← Volver a la lista de usuarios" ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small" Click="@BackToList" class="mb-2" />
+            }
+
+            <RadzenText TextStyle="TextStyle.H6">
+                Consumo de datos — Usuario consumidor: <strong>@_activeConsumerName</strong>
+            </RadzenText>
+            <RadzenText TextStyle="TextStyle.Caption" class="text-muted">
+                Las peticiones al catálogo se realizarán desde el conector EDC de este usuario.
+            </RadzenText>
+
+            @if (_consumableProfiles.Count == 0)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" class="mt-2">
+                    No hay perfiles de datos configurados para consumir. Contacte al administrador.
+                </RadzenAlert>
+            }
+            else
+            {
+                <RadzenRow Gap="1rem" AlignItems="AlignItems.End">
+                    <RadzenColumn SizeMD="5">
+                        <RadzenFormField Text="Perfil a consumir" Style="width:100%">
+                            <RadzenDropDown @bind-Value="_selectedConsumedProfileId"
+                                            Data="@_consumableProfiles"
+                                            TextProperty="ProfileReference"
+                                            ValueProperty="ProfileId"
+                                            Placeholder="— Seleccione un perfil —"
+                                            Style="width:100%" />
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    @if (_selectedConsumedProfileId > 0)
+                    {
+                        <RadzenColumn SizeMD="3">
+                            <RadzenButton Text="@(_isLoadingCatalog ? "Consultando..." : "Consumir catálogo")"
+                                          Icon="cloud_download"
+                                          ButtonStyle="ButtonStyle.Primary"
+                                          IsBusy="@_isLoadingCatalog"
+                                          Disabled="@_isLoadingCatalog"
+                                          Click="@OnConsumeCatalogAsync" />
+                        </RadzenColumn>
+                    }
+                </RadzenRow>
+
+                @if (!string.IsNullOrEmpty(_catalogError))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" class="mt-3">
+                        <RadzenIcon Icon="error" class="me-2" />@_catalogError
+                    </RadzenAlert>
+                }
+
+                @if (_catalogResponse != null)
+                {
+                    @* ── CATÁLOGO DE DATOS DISPONIBLES (tarjetas) ── *@
+                    @if (_parsedCatalogs != null && _parsedCatalogs.Any(c => c.ParseSuccess))
+                    {
+                        <div class="mt-4">
+                            <RadzenText TextStyle="TextStyle.H5" class="mb-3">
+                                <i class="bi bi-database-fill-check me-2 text-success"></i>Catálogo de datos disponibles
+                            </RadzenText>
+
+                            @{ var successProviders = _parsedCatalogs.Where(c => c.ParseSuccess && c.Catalog != null).ToList(); }
+                            @foreach (var provCatalog in successProviders)
+                            {
+                                <details class="mb-4" @(successProviders.Count == 1 ? "open" : "")>
+                                    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:.6rem;padding:.6rem .75rem;border-radius:8px;background:var(--surface-alt,#F0F2F1);border:1px solid var(--border,#D1D5D4);margin-bottom:.75rem;user-select:none">
+                                        <i class="bi bi-chevron-right edc-chevron" style="font-size:.75rem;color:var(--primary,#0A404B)"></i>
+                                        <i class="bi bi-building fs-5" style="color:var(--primary,#0A404B)"></i>
+                                        <span class="fw-semibold" style="color:var(--text-primary,#262626)">@provCatalog.ProviderUserName</span>
+                                        <span style="font-size:.82rem;color:var(--text-muted,#6E7D78)">@provCatalog.ProviderUserLogin</span>
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Primary" Text="@($"{provCatalog.Catalog!.Datasets.Count} assets")" />
+                                    </summary>
+
+                                    <div class="row g-3">
+                                        @foreach (var ds in provCatalog.Catalog!.Datasets)
+                                        {
+                                            <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
+                                                <div class="edc-asset-card @(ds.Offer != null ? "has-offer" : "no-offer")">
+                                                    <div class="edc-asset-card-icon">
+                                                        <i class="bi bi-file-earmark-bar-graph"></i>
+                                                    </div>
+                                                    <div class="edc-asset-card-body">
+                                                        <div class="edc-asset-name" title="@(string.IsNullOrEmpty(ds.Name) ? ds.DatasetId : ds.Name)">
+                                                            @(string.IsNullOrEmpty(ds.Name) ? ds.DatasetId : ds.Name)
+                                                        </div>
+                                                        @if (!string.IsNullOrEmpty(ds.ContentType))
+                                                        {
+                                                            <span class="edc-asset-type">@ds.ContentType</span>
+                                                        }
+                                                    </div>
+                                                    <div class="edc-asset-card-footer">
+                                                        @if (ds.Offer != null)
+                                                        {
+                                                            <button class="edc-btn-offer" @onclick="() => ShowDatasetDetail(provCatalog, ds)">
+                                                                <i class="bi bi-eye me-1"></i>Ver oferta
+                                                            </button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="edc-no-offer"><i class="bi bi-slash-circle me-1"></i>Sin oferta</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </details>
+                            }
+
+                            @foreach (var provError in _parsedCatalogs.Where(c => !c.ParseSuccess))
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Warning" class="mb-2">
+                                    Error al parsear catálogo de <strong>@provError.ProviderUserName</strong>: @provError.ParseError
+                                </RadzenAlert>
+                            }
+                        </div>
+                    }
+
+                    @* ── OFERTA SELECCIONADA ── *@
+                    @if (_negotiationSelection != null)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Success" class="mt-3">
+                            <div class="d-flex align-items-start justify-content-between">
+                                <div>
+                                    <strong><i class="bi bi-check-circle-fill me-2"></i>Oferta seleccionada</strong>
+                                    <p class="mb-0 small mt-1">
+                                        <strong>Dataset:</strong> @_negotiationSelection.DatasetName<br />
+                                        <strong>Proveedor:</strong> @_negotiationSelection.ProviderUserName<br />
+                                        <strong>Offer ID:</strong> <code>@_negotiationSelection.SelectedOfferId</code>
+                                    </p>
+                                    <p class="text-muted small mt-1 mb-0">
+                                        <i class="bi bi-info-circle me-1"></i>La negociación de contrato estará disponible en una próxima versión.
+                                    </p>
+                                </div>
+                                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light"
+                                              Size="ButtonSize.ExtraSmall"
+                                              Click="@ClearNegotiationSelection" />
+                            </div>
+                        </RadzenAlert>
+                    }
+
+                    @* ── PROVEEDORES CONSULTADOS (contraído al final) ── *@
+                    <div class="mt-4">
+                        <details>
+                            <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem;padding:0.6rem 0.75rem;background:var(--surface-alt,#F0F2F1);border:1px solid var(--border,#D1D5D4);border-radius:6px;user-select:none">
+                                <i class="bi bi-chevron-right edc-chevron me-1"></i>
+                                <span class="fw-semibold text-muted small">Detalle de proveedores consultados</span>
+                                <RadzenBadge BadgeStyle="BadgeStyle.Info"    Text="@($"{_catalogResponse.TotalProviders} proveedores")" class="ms-2" />
+                                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="@($"{_catalogResponse.SuccessCount} OK")" />
+                                @if (_catalogResponse.ErrorCount > 0)
+                                {
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="@($"{_catalogResponse.ErrorCount} errores")" />
+                                }
+                                @if (_catalogResponse.NoConnectorCount > 0)
+                                {
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="@($"{_catalogResponse.NoConnectorCount} sin conector")" />
+                                }
+                            </summary>
+                            <div style="border:1px solid var(--border,#D1D5D4);border-top:none;border-radius:0 0 6px 6px;padding:0.75rem">
+                                <RadzenAccordion>
+                                    <Items>
+                                        @foreach (var result in _catalogResponse.Results)
+                                        {
+                                            <RadzenAccordionItem>
+                                                <Template>
+                                                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                                        @switch (result.Status)
+                                                        {
+                                                            case EdcProviderStatus.Ok:
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="OK" />
+                                                                break;
+                                                            case EdcProviderStatus.Error:
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="ERROR" />
+                                                                break;
+                                                            case EdcProviderStatus.Timeout:
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="TIMEOUT" />
+                                                                break;
+                                                            case EdcProviderStatus.NoConnector:
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="SIN CONECTOR" />
+                                                                break;
+                                                        }
+                                                        <RadzenText>@result.UserName</RadzenText>
+                                                        <RadzenText TextStyle="TextStyle.Caption" class="text-muted">(@result.UserLogin)</RadzenText>
+                                                        @if (result.Status == EdcProviderStatus.Ok && result.CatalogResult != null)
+                                                        {
+                                                            <RadzenText TextStyle="TextStyle.Caption">— @result.CatalogResult.DatasetCount datasets</RadzenText>
+                                                        }
+                                                    </RadzenStack>
+                                                </Template>
+                                                <ChildContent>
+                                                    @if (result.EDCServerName != null)
+                                                    {
+                                                        <p class="small mb-1"><strong>Servidor:</strong> @result.EDCServerName</p>
+                                                        <p class="small mb-1"><strong>Conector ID:</strong> @result.EDCConnectorId</p>
+                                                    }
+                                                    @if (result.CatalogResult != null)
+                                                    {
+                                                        @if (!string.IsNullOrEmpty(result.CatalogResult.ErrorMessage))
+                                                        {
+                                                            <RadzenAlert AlertStyle="AlertStyle.Warning">@result.CatalogResult.ErrorMessage</RadzenAlert>
+                                                        }
+                                                        @if (!string.IsNullOrEmpty(result.CatalogResult.RawJson))
+                                                        {
+                                                            <details class="mt-2">
+                                                                <summary style="cursor:pointer">Ver JSON completo del catálogo</summary>
+                                                                <pre style="max-height:400px;overflow-y:auto;font-size:12px;background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:4px;margin-top:0.5rem">@FormatJson(result.CatalogResult.RawJson)</pre>
+                                                            </details>
+                                                        }
+                                                    }
+                                                    @if (result.Status == EdcProviderStatus.NoConnector)
+                                                    {
+                                                        <RadzenText TextStyle="TextStyle.Caption" class="text-muted">
+                                                            Este usuario no tiene un conector EDC configurado.
+                                                        </RadzenText>
+                                                    }
+                                                </ChildContent>
+                                            </RadzenAccordionItem>
+                                        }
+                                    </Items>
+                                </RadzenAccordion>
+                            </div>
+                        </details>
+                    </div>
+                }
+            }
+        </RadzenStack>
+    </RadzenCard>
+}
+
+@* ── MODAL DETALLE DATASET / OFERTA ODRL ── *@
+@if (_showDatasetDetail && _selectedDataset != null && _selectedProvider != null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1050;display:flex;align-items:center;justify-content:center;padding:1rem">
+        <div style="width:min(95vw,640px);max-height:90vh;overflow-y:auto;border-radius:12px;background:var(--surface,#fff);box-shadow:0 20px 60px rgba(10,64,75,.25)">
+
+            @* Cabecera *@
+            <div style="background:linear-gradient(135deg,var(--primary,#0A404B) 0%,var(--primary-hover,#083338) 100%);padding:1.25rem 1.5rem;border-radius:12px 12px 0 0;color:#fff">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div style="font-size:1.1rem;font-weight:700;line-height:1.3">
+                            @(string.IsNullOrEmpty(_selectedDataset.Name) ? _selectedDataset.DatasetId : _selectedDataset.Name)
+                        </div>
+                        <div style="opacity:.85;font-size:.85rem;margin-top:.25rem">
+                            <i class="bi bi-building me-1"></i>@_selectedProvider.ProviderUserName
+                            <span style="opacity:.7;margin-left:.5rem">@_selectedProvider.ProviderUserLogin</span>
+                        </div>
+                    </div>
+                    <button style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:32px;height:32px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center"
+                            @onclick="CloseDatasetDetail">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div style="padding:1.5rem">
+
+                @* Permisos como chips visuales *@
+                @if (_selectedDataset.Offer?.Permissions.Any() == true)
+                {
+                    <div class="mb-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-shield-fill-check text-success fs-5"></i>
+                            <span style="font-weight:600;font-size:.95rem">Permisos</span>
+                        </div>
+                        @foreach (var perm in _selectedDataset.Offer.Permissions)
+                        {
+                            <div class="mb-2">
+                                <span class="edc-chip edc-chip-success">
+                                    <i class="bi bi-check2 me-1"></i>@HumanizeOdrl(perm.Action)
+                                </span>
+                                @if (perm.Constraints.Any())
+                                {
+                                    <div class="d-flex flex-wrap gap-1 mt-1 ms-2" style="max-width:100%;overflow:hidden">
+                                        @foreach (var c in perm.Constraints)
+                                        {
+                                            <span class="edc-chip edc-chip-info">
+                                                <strong>@HumanizeOdrl(c.LeftOperand)</strong>
+                                                <span style="opacity:.7;margin:0 .25rem">@HumanizeOdrl(c.Operator)</span>
+                                                <em>@c.RightOperand</em>
+                                            </span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* Más información (colapsable) *@
+                <details class="edc-more-info">
+                    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;border-radius:8px;background:var(--surface-alt,#F0F2F1);border:1px solid var(--border,#D1D5D4);margin-bottom:.75rem">
+                        <i class="bi bi-info-circle-fill text-primary"></i>
+                        <span style="font-size:.875rem;font-weight:500">Más información</span>
+                        <i class="bi bi-chevron-down ms-auto text-muted edc-chevron" style="font-size:.75rem"></i>
+                    </summary>
+
+                    @* Datos del asset *@
+                    <div class="mb-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-file-earmark-text text-secondary"></i>
+                            <span style="font-weight:600;font-size:.875rem">Datos del asset</span>
+                        </div>
+                        <dl class="row small mb-0" style="font-size:.8rem">
+                            <dt class="col-sm-5 text-muted">ID</dt>
+                            <dd class="col-sm-7"><code style="font-size:.75rem">@_selectedDataset.DatasetId</code></dd>
+                            @if (!string.IsNullOrEmpty(_selectedDataset.Version))
+                            {
+                                <dt class="col-sm-5 text-muted">Versión</dt>
+                                <dd class="col-sm-7">@_selectedDataset.Version</dd>
+                            }
+                            @if (!string.IsNullOrEmpty(_selectedDataset.ContentType))
+                            {
+                                <dt class="col-sm-5 text-muted">Tipo de contenido</dt>
+                                <dd class="col-sm-7"><span class="edc-chip edc-chip-neutral">@_selectedDataset.ContentType</span></dd>
+                            }
+                            <dt class="col-sm-5 text-muted">Participant ID</dt>
+                            <dd class="col-sm-7"><code style="font-size:.75rem">@_selectedProvider.ProviderParticipantId</code></dd>
+                        </dl>
+                    </div>
+
+                    @* Prohibiciones *@
+                    @if (_selectedDataset.Offer?.Prohibitions.Any() == true)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-shield-fill-x text-danger"></i>
+                                <span style="font-weight:600;font-size:.875rem">Prohibiciones</span>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var p in _selectedDataset.Offer.Prohibitions)
+                                {
+                                    <span class="edc-chip edc-chip-danger">
+                                        <i class="bi bi-x me-1"></i>@HumanizeOdrl(p.Action)
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* Obligaciones *@
+                    @if (_selectedDataset.Offer?.Obligations.Any() == true)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                                <span style="font-weight:600;font-size:.875rem">Obligaciones</span>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var o in _selectedDataset.Offer.Obligations)
+                                {
+                                    <span class="edc-chip edc-chip-warning">
+                                        <i class="bi bi-exclamation me-1"></i>@HumanizeOdrl(o.Action)
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* Distribuciones *@
+                    @if (_selectedDataset.Distributions.Any())
+                    {
+                        <div class="mb-1">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-cloud-download text-secondary"></i>
+                                <span style="font-weight:600;font-size:.875rem">Distribuciones</span>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var dist in _selectedDataset.Distributions)
+                                {
+                                    <span class="edc-chip edc-chip-neutral">
+                                        @dist.Format
+                                        @if (!string.IsNullOrEmpty(dist.EndpointUrl))
+                                        {
+                                            <span style="opacity:.65;margin-left:.25rem;font-size:.7rem">@dist.EndpointUrl</span>
+                                        }
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* ID de oferta *@
+                    @if (_selectedDataset.Offer != null)
+                    {
+                        <div class="mt-2" style="font-size:.75rem;color:var(--text-muted,#6E7D78)">
+                            Offer ID: <code style="font-size:.7rem">@_selectedDataset.Offer.OfferId</code>
+                        </div>
+                    }
+                </details>
+
+                @* Botones de acción *@
+                <div class="d-flex justify-content-end gap-2 mt-1">
+                    <RadzenButton Text="Cerrar" ButtonStyle="ButtonStyle.Light"
+                                  Click="@CloseDatasetDetail" />
+                    @if (_selectedDataset.Offer != null && !string.IsNullOrEmpty(_selectedDataset.Offer.OfferId))
+                    {
+                        <RadzenButton Text="Iniciar negociación"
+                                      Icon="handshake"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Click="@OnSelectOfferForNegotiation" />
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading   = true;
+    private bool _isAdmin   = false;
+
+    // ── ADMIN: lista de usuarios consumidores ──────────────────────────────
+    private List<UserForEDCListDto> _users        = [];
+    private int                     _usersTotal   = 0;
+    private bool                    _isLoadingUsers = false;
+    private string?                 _searchTerm;
+    private int                     _currentPage  = 1;
+
+    // ── Usuario consumidor activo ──────────────────────────────────────────
+    private UserForEDCListDto? _selectedConsumerUser;
+    private int                _activeConsumerUserId   = 0;
+    private string             _activeConsumerName     = string.Empty;
+
+    // ── Vista de consumo ───────────────────────────────────────────────────
+    private List<ProfileEDCConsumerDto> _consumableProfiles     = [];
+    private int                         _selectedConsumedProfileId;
+
+    // ── Estado del catálogo ────────────────────────────────────────────────
+    private bool                       _isLoadingCatalog = false;
+    private RequestEdcCatalogResponse? _catalogResponse  = null;
+    private string?                    _catalogError     = null;
+
+    // ── Catálogos parseados (DCAT/ODRL) ───────────────────────────────────
+    private List<EdcProviderParsedCatalogDto>? _parsedCatalogs   = null;
+    private EdcNegotiationSelection?           _negotiationSelection = null;
+    private EdcDatasetDto?                     _selectedDataset  = null;
+    private EdcProviderParsedCatalogDto?       _selectedProvider = null;
+    private bool                               _showDatasetDetail = false;
+    private bool                               _showNegotiationConfirmation = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAdmin = CurrentUser.IsInProfile(ProfileConstants.Admin);
+
+        if (_isAdmin)
+        {
+            await LoadUsersPageAsync(1, null);
+        }
+        else
+        {
+            // No-ADMIN: va directo a la vista de consumo con su propio usuario
+            _activeConsumerUserId = CurrentUser.IdUser;
+            _activeConsumerName   = CurrentUser.UserName;
+            _consumableProfiles   = await Mediator.Send(new GetConsumableProfilesQuery(CurrentUser.ProfileId));
+        }
+
+        _loading = false;
+    }
+
+    // ── Carga de usuarios (ADMIN) ──────────────────────────────────────────
+
+    private async Task LoadUsersAsync(LoadDataArgs args)
+    {
+        _currentPage = (int)(args.Skip / args.Top ?? 15) + 1;
+        await LoadUsersPageAsync(_currentPage, _searchTerm);
+    }
+
+    private async Task OnSearchChanged(string? term)
+    {
+        _searchTerm = term;
+        await LoadUsersPageAsync(1, term);
+    }
+
+    private async Task LoadUsersPageAsync(int page, string? term)
+    {
+        _isLoadingUsers = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Mediator.Send(new GetUsersForEDCListQuery(term, page, 15));
+            _users      = result.Items.Where(u => u.HasEDCConnector).ToList();
+            _usersTotal = result.Items.Count(u => u.HasEDCConnector);
+        }
+        finally
+        {
+            _isLoadingUsers = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectConsumerUser(UserForEDCListDto user)
+    {
+        _selectedConsumerUser      = user;
+        _activeConsumerUserId      = user.Id;
+        _activeConsumerName        = user.CompleteName;
+        _selectedConsumedProfileId = 0;
+        _catalogResponse           = null;
+        _catalogError              = null;
+        _consumableProfiles        = await Mediator.Send(new GetConsumableProfilesForUserQuery(_activeConsumerUserId));
+    }
+
+    private void BackToList()
+    {
+        _selectedConsumerUser      = null;
+        _activeConsumerUserId      = 0;
+        _activeConsumerName        = string.Empty;
+        _consumableProfiles        = [];
+        _selectedConsumedProfileId = 0;
+        _catalogResponse           = null;
+        _catalogError              = null;
+    }
+
+    // ── Consumo del catálogo ───────────────────────────────────────────────
+
+    private async Task OnConsumeCatalogAsync()
+    {
+        _isLoadingCatalog = true;
+        _catalogResponse  = null;
+        _catalogError     = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await Mediator.Send(new RequestEdcCatalogCommand
+            {
+                ConsumerUserId    = _activeConsumerUserId,
+                ConsumedProfileId = _selectedConsumedProfileId
+            });
+
+            _catalogResponse  = response;
+            _parsedCatalogs  = null;
+            _negotiationSelection = null;
+
+            if (_catalogResponse != null && _catalogResponse.SuccessCount > 0)
+            {
+                _parsedCatalogs = await Mediator.Send(
+                    new ParseEdcCatalogsQuery(_catalogResponse));
+            }
+        }
+        catch (FluentValidation.ValidationException ex)
+        {
+            _catalogError = ex.Errors.Any()
+                ? string.Join(" ", ex.Errors.Select(e => e.ErrorMessage))
+                : ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _catalogError = $"Error inesperado: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingCatalog = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string FormatJson(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+
+    private void ShowDatasetDetail(EdcProviderParsedCatalogDto provider, EdcDatasetDto dataset)
+    {
+        _selectedProvider  = provider;
+        _selectedDataset   = dataset;
+        _showDatasetDetail = true;
+        StateHasChanged();
+    }
+
+    private void CloseDatasetDetail()
+    {
+        _showDatasetDetail = false;
+        _selectedDataset   = null;
+        _selectedProvider  = null;
+        StateHasChanged();
+    }
+
+    private void OnSelectOfferForNegotiation()
+    {
+        if (_selectedDataset?.Offer == null || _selectedProvider == null)
+            return;
+
+        _negotiationSelection = new EdcNegotiationSelection
+        {
+            SelectedDatasetId        = _selectedDataset.DatasetId,
+            SelectedOfferId          = _selectedDataset.Offer.OfferId,
+            ProviderParticipantId    = _selectedProvider.ProviderParticipantId,
+            ProviderProtocolEndpoint = _selectedProvider.ProviderProtocolEndpoint,
+            DatasetName              = _selectedDataset.Name,
+            ProviderUserName         = _selectedProvider.ProviderUserName
+        };
+
+        CloseDatasetDetail();
+        _showNegotiationConfirmation = true;
+        StateHasChanged();
+    }
+
+    private void ClearNegotiationSelection()
+    {
+        _negotiationSelection        = null;
+        _showNegotiationConfirmation = false;
+        StateHasChanged();
+    }
+
+    private static string HumanizeOdrl(string term)
+    {
+        if (string.IsNullOrEmpty(term)) return "—";
+
+        var prefixes = new[]
+        {
+            "odrl:", "edc:",
+            "http://www.w3.org/ns/odrl/2/",
+            "https://w3id.org/edc/v0.0.1/ns/"
+        };
+        foreach (var prefix in prefixes)
+        {
+            if (term.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                term = term[prefix.Length..];
+                break;
+            }
+        }
+
+        return char.ToUpper(term[0]) + term[1..];
+    }
+}

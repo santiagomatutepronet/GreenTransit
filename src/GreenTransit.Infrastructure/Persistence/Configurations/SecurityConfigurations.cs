@@ -63,6 +63,49 @@ public class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
     }
 }
 
+public class UserEDCConnectorConfiguration : IEntityTypeConfiguration<UserEDCConnector>
+{
+    public void Configure(EntityTypeBuilder<UserEDCConnector> builder)
+    {
+        builder.ToTable("UserEDCConnector");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).HasColumnName("ID");
+        builder.Property(x => x.EDCServerName).HasMaxLength(255).IsRequired();
+        builder.Property(x => x.EDCConnectorId).HasMaxLength(255).IsRequired();
+
+        builder.HasOne(x => x.User)
+            .WithOne(u => u.EDCConnector)
+            .HasForeignKey<UserEDCConnector>(x => x.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(x => x.UserId).IsUnique().HasDatabaseName("UQ_UserEDCConnector_UserId");
+    }
+}
+
+public class ProfileEDCConsumerConfiguration : IEntityTypeConfiguration<ProfileEDCConsumer>
+{
+    public void Configure(EntityTypeBuilder<ProfileEDCConsumer> builder)
+    {
+        builder.ToTable("ProfileEDCConsumer");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).HasColumnName("ID");
+
+        builder.HasOne(x => x.Profile)
+            .WithMany(p => p.EDCConsumerPermissions)
+            .HasForeignKey(x => x.ProfileId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(x => x.ConsumedProfile)
+            .WithMany(p => p.EDCConsumedByPermissions)
+            .HasForeignKey(x => x.ConsumedProfileId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(x => new { x.ProfileId, x.ConsumedProfileId })
+            .IsUnique()
+            .HasDatabaseName("UQ_ProfileEDCConsumer_ProfileId_ConsumedProfileId");
+    }
+}
+
 public class PageDefinitionConfiguration : IEntityTypeConfiguration<PageDefinition>
 {
     public void Configure(EntityTypeBuilder<PageDefinition> builder)

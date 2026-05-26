@@ -12,6 +12,8 @@ public class UserProfile
 
     // Navegación inversa
     public ICollection<AppUser> Users { get; set; } = [];
+    public ICollection<ProfileEDCConsumer> EDCConsumerPermissions { get; set; } = [];
+    public ICollection<ProfileEDCConsumer> EDCConsumedByPermissions { get; set; } = [];
 }
 
 /// <summary>Usuarios del sistema. Tabla: Users</summary>
@@ -43,6 +45,8 @@ public class AppUser
     public Municipality? Municipality { get; set; }
     // Relación 1:1 (UQ_UserSharePointCredentials_UserID)
     public UserSharePointCredential? UserSharePointCredentials { get; set; }
+    // Relación 1:1 con UserEDCConnector
+    public UserEDCConnector? EDCConnector { get; set; }
 }
 
 /// <summary>Credenciales SharePoint por usuario. Tabla: UserSharePointCredentials</summary>
@@ -58,4 +62,30 @@ public class UserSharePointCredential
 
     // FK saliente
     public AppUser User { get; set; } = null!;
+}
+
+/// <summary>Configuración del conector EDC de un usuario. Tabla: UserEDCConnector</summary>
+public class UserEDCConnector
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public string EDCServerName { get; set; } = string.Empty;
+    public string EDCConnectorId { get; set; } = string.Empty;
+    /// <summary>API Key para autenticarse en la Management API del conector (header X-Api-Key).</summary>
+    public string? ApiKey { get; set; }
+
+    // Navegación
+    public AppUser User { get; set; } = null!;
+}
+
+/// <summary>Relación de consumo entre perfiles en el dataspace EDC. Tabla: ProfileEDCConsumer</summary>
+public class ProfileEDCConsumer
+{
+    public int Id { get; set; }
+    public int ProfileId { get; set; }
+    public int ConsumedProfileId { get; set; }
+
+    // Navegación
+    public UserProfile Profile { get; set; } = null!;
+    public UserProfile ConsumedProfile { get; set; } = null!;
 }

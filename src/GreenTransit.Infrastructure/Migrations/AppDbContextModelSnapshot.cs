@@ -1472,6 +1472,62 @@ namespace GreenTransit.Infrastructure.Migrations
                     b.ToTable("MunicipalityZipCode", (string)null);
                 });
 
+            modelBuilder.Entity("GreenTransit.Domain.Entities.ProfileEDCConsumer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("ID");
+
+                    b.Property<int>("ConsumedProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProfileId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConsumedProfileId");
+
+                    b.HasIndex(new[] { "ProfileId", "ConsumedProfileId" }, "UQ_ProfileEDCConsumer_ProfileId_ConsumedProfileId")
+                        .IsUnique();
+
+                    b.ToTable("ProfileEDCConsumer", (string)null);
+                });
+
+            modelBuilder.Entity("GreenTransit.Domain.Entities.UserEDCConnector", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("ID");
+
+                    b.Property<string>("ApiKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("EDCConnectorId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("EDCServerName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "UQ_UserEDCConnector_UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_UserEDCConnector_UserId");
+
+                    b.ToTable("UserEDCConnector", (string)null);
+                });
+
             modelBuilder.Entity("GreenTransit.Domain.Entities.PageDefinition", b =>
                 {
                     b.Property<int>("ID")
@@ -3523,6 +3579,35 @@ namespace GreenTransit.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("GreenTransit.Domain.Entities.UserEDCConnector", b =>
+                {
+                    b.HasOne("GreenTransit.Domain.Entities.AppUser", "User")
+                        .WithOne("EDCConnector")
+                        .HasForeignKey("GreenTransit.Domain.Entities.UserEDCConnector", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("GreenTransit.Domain.Entities.ProfileEDCConsumer", b =>
+                {
+                    b.HasOne("GreenTransit.Domain.Entities.UserProfile", "Profile")
+                        .WithMany("EDCConsumerPermissions")
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GreenTransit.Domain.Entities.UserProfile", "ConsumedProfile")
+                        .WithMany("EDCConsumedByPermissions")
+                        .HasForeignKey("ConsumedProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Profile");
+                    b.Navigation("ConsumedProfile");
                 });
 
             modelBuilder.Entity("GreenTransit.Domain.Entities.WasteMove", b =>

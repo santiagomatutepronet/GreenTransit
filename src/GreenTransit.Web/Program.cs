@@ -655,6 +655,14 @@ try
         options.AddPolicy(PolicyConstants.CanAccessEcoDataNet, policy =>
             policy.RequireAuthenticatedUser());
 
+        // EcoDataNet — Configuración conector EDC: todos los perfiles autenticados.
+        options.AddPolicy(PolicyConstants.CanAccessEDCConnectorConfig, policy =>
+            policy.RequireAuthenticatedUser());
+
+        // EcoDataNet — Consumir datos: todos los perfiles autenticados.
+        options.AddPolicy(PolicyConstants.CanAccessEDCConsumeData, policy =>
+            policy.RequireAuthenticatedUser());
+
         // Operaciones exclusivas de administración del sistema.
         options.AddPolicy(PolicyConstants.AdminOnly, policy =>
             policy.AddRequirements(new ProfileRequirement(
@@ -746,6 +754,21 @@ try
     builder.Services.Configure<GreenTransit.Application.Features.PlantEnergies.Queries.PlantEnergyOptions>(
         builder.Configuration.GetSection(
             GreenTransit.Application.Features.PlantEnergies.Queries.PlantEnergyOptions.Section));
+
+    builder.Services.Configure<GreenTransit.Application.Common.Options.EdcOptions>(
+        builder.Configuration.GetSection(GreenTransit.Application.Common.Options.EdcOptions.SectionName));
+
+    // ── HttpClient EDC Management API ────────────────────────────────────────
+    builder.Services.AddHttpClient<GreenTransit.Application.Common.Interfaces.IEdcManagementClient,
+        GreenTransit.Infrastructure.Services.EdcManagementClient>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(60);
+        client.DefaultRequestHeaders.Accept.Add(
+            new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+    });
+
+    builder.Services.AddSingleton<GreenTransit.Application.Common.Interfaces.IEdcCatalogParser,
+        GreenTransit.Infrastructure.Services.EdcCatalogParser>();
 
     // ── Caché en memoria (catálogos geográficos y otros estáticos) ───────────
     builder.Services.AddMemoryCache();

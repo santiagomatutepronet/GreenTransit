@@ -10,7 +10,7 @@ namespace GreenTransit.Infrastructure.Services;
 
 /// <summary>
 /// Escanea por reflexión los componentes Blazor con @page y sincroniza la tabla PageDefinitions.
-/// Solo inserta entradas nuevas; nunca elimina las existentes.
+/// Inserta entradas nuevas y desactiva las rutas que ya no existen como componentes.
 /// </summary>
 public sealed class PageDiscoveryService : IPageDiscoveryService
 {
@@ -76,6 +76,29 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
                 page.UpdatedAt  = DateTime.UtcNow;
                 _logger.LogInformation(
                     "Página de sistema desactivada en PageDefinitions: {Route}", page.Route);
+            }
+            await _db.SaveChangesAsync(ct);
+        }
+
+        // 3b. Desactivar rutas activas en BD que ya no existen como componentes Blazor
+        //     (pantallas eliminadas del proyecto).
+        var discoveredRoutes = discovered
+            .Select(dp => dp.Route)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var obsoletePages = await _db.PageDefinitions
+            .Where(d => d.IsActive && d.ModuleName != "General" && !discoveredRoutes.Contains(d.Route))
+            .ToListAsync(ct);
+
+        if (obsoletePages.Count > 0)
+        {
+            foreach (var page in obsoletePages)
+            {
+                page.IsActive  = false;
+                page.UpdatedAt = DateTime.UtcNow;
+                _logger.LogInformation(
+                    "Ruta obsoleta desactivada en PageDefinitions: {Route} ({Component})",
+                    page.Route, page.ComponentName);
             }
             await _db.SaveChangesAsync(ct);
         }
@@ -264,7 +287,10 @@ public sealed class PageDiscoveryService : IPageDiscoveryService
             ["CoordinatorAnalysis"]             = "Movilidad — Análisis Coordinador",
             ["DispatchData"]                    = "Movilidad — Datos Oficina de Asignación",
             ["PublishData"]                = "Publicar Datos — EcoDataNet",
-            // EcoDataNet Dataspace — Configuración
+            // EcoDataNet — Nuevas pantallas refactorizadas
+            ["EDCConnectorConfig"]         = "EcoDataNet — Configuración conector EDC",
+            ["ConsumeData"]                = "EcoDataNet — Consumir datos",
+            // EcoDataNet Dataspace — Configuración (entradas legacy, se mantienen por compatibilidad con BD)
             ["EdcConfigDispatchOffice"]    = "EDN — Configuración Oficina Asignación",
             ["EdcConfigScrap"]             = "EDN — Configuración SCRAP",
             ["EdcConfigPublicEntity"]      = "EDN — Configuración Ayuntamiento",
