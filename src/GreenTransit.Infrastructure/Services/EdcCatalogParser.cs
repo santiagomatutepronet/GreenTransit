@@ -238,7 +238,7 @@ public class EdcCatalogParser : IEdcCatalogParser
                 "odrl:leftOperand", "leftOperand", "http://www.w3.org/ns/odrl/2/leftOperand")),
             Operator     = ExtractIdOrValue(GetProperty(element,
                 "odrl:operator", "operator", "http://www.w3.org/ns/odrl/2/operator")),
-            RightOperand = ExtractIdOrValue(GetProperty(element,
+            RightOperand = ExtractIdOrValueOrArray(GetProperty(element,
                 "odrl:rightOperand", "rightOperand", "http://www.w3.org/ns/odrl/2/rightOperand"))
         };
     }
@@ -313,6 +313,27 @@ public class EdcCatalogParser : IEdcCatalogParser
         if (element.Value.ValueKind == JsonValueKind.String)
             return element.Value.GetString() ?? string.Empty;
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Como ExtractIdOrValue pero soporta arrays JSON (p.ej. odrl:rightOperand con isAnyOf).
+    /// Los valores del array se unen con '|' para poder comparar fácilmente.
+    /// </summary>
+    private static string ExtractIdOrValueOrArray(JsonElement? element)
+    {
+        if (!element.HasValue) return string.Empty;
+        if (element.Value.ValueKind == JsonValueKind.Array)
+        {
+            var values = element.Value.EnumerateArray()
+                .Select(e => e.ValueKind == JsonValueKind.Object
+                    ? GetStringProperty(e, "@id", "id")
+                    : e.ValueKind == JsonValueKind.String
+                        ? e.GetString() ?? string.Empty
+                        : string.Empty)
+                .Where(v => !string.IsNullOrEmpty(v));
+            return string.Join("|", values);
+        }
+        return ExtractIdOrValue(element);
     }
 
     private static string? NullIfEmpty(string value)

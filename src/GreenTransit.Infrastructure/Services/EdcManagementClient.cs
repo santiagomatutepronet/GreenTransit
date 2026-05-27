@@ -16,17 +16,20 @@ namespace GreenTransit.Infrastructure.Services;
 public sealed class EdcManagementClient : IEdcManagementClient
 {
     private readonly HttpClient                    _httpClient;
+    private readonly IHttpClientFactory            _httpClientFactory;
     private readonly IOptions<EdcOptions>          _options;
     private readonly ILogger<EdcManagementClient>  _logger;
 
     public EdcManagementClient(
         HttpClient                   httpClient,
+        IHttpClientFactory           httpClientFactory,
         IOptions<EdcOptions>         options,
         ILogger<EdcManagementClient> logger)
     {
-        _httpClient = httpClient;
-        _options    = options;
-        _logger     = logger;
+        _httpClient        = httpClient;
+        _httpClientFactory = httpClientFactory;
+        _options           = options;
+        _logger            = logger;
     }
 
     public async Task<EdcCatalogResult> RequestCatalogAsync(
@@ -174,6 +177,7 @@ public sealed class EdcManagementClient : IEdcManagementClient
         try
         {
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+            httpRequest.Headers.Accept.ParseAdd("application/json");
             httpRequest.Content = new StringContent(contractRequestPayload, Encoding.UTF8, "application/json");
             AddApiKeyHeader(httpRequest, apiKey);
 
@@ -252,7 +256,18 @@ public sealed class EdcManagementClient : IEdcManagementClient
 
             var state = GetJsonLdString(root, "state", "https://w3id.org/edc/v0.0.1/ns/state");
 
-            _logger.LogInformation("Estado negociación {Id}: {State}", negotiationId, state);
+            // Intentar leer errorDetail con todos los aliases JSON-LD posibles
+            var errorDetail = GetJsonLdString(root,
+                "errorDetail",
+                "edc:errorDetail",
+                "https://w3id.org/edc/v0.0.1/ns/errorDetail",
+                "https://w3id.org/edc/v0.0.1/ns/state/errorDetail");
+
+            _logger.LogInformation(
+                "Estado negociación {Id}: {State} | errorDetail={Err} | bodyCompleto={Body}",
+                negotiationId, state,
+                string.IsNullOrEmpty(errorDetail) ? "(vacío)" : errorDetail,
+                body.Length > 4000 ? body[..4000] : body);
 
             return new EdcNegotiationStateResponse
             {
@@ -262,8 +277,7 @@ public sealed class EdcManagementClient : IEdcManagementClient
                 ContractAgreementId = GetJsonLdString(root, "contractAgreementId",
                                           "https://w3id.org/edc/v0.0.1/ns/contractAgreementId",
                                           "edc:contractAgreementId"),
-                ErrorDetail         = GetJsonLdString(root, "errorDetail",
-                                          "https://w3id.org/edc/v0.0.1/ns/errorDetail"),
+                ErrorDetail         = errorDetail,
                 HttpStatusCode      = (int)response.StatusCode,
                 RawJson             = body
             };
@@ -423,6 +437,10 @@ public sealed class EdcManagementClient : IEdcManagementClient
                 resolvedType = authType;
             }
 
+            // Normalizar a Pascal case: "bearer" → "Bearer", "BEARER" → "Bearer"
+            if (!string.IsNullOrEmpty(resolvedType))
+                resolvedType = char.ToUpperInvariant(resolvedType[0]) + resolvedType[1..].ToLowerInvariant();
+
             _logger.LogInformation("EDR obtenido para transferencia {Id}: endpoint={Endpoint}", transferProcessId, endpoint);
 
             return new EdcEndpointDataReferenceResponse
@@ -452,14 +470,21 @@ public sealed class EdcManagementClient : IEdcManagementClient
         string authCode,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("GET {Endpoint} — Descargando datos del data plane", dataPlaneEndpoint);
+        _logger.LogInformation("GET {Endpoint} — Descargando datos del data plane | AuthType={AuthType} | TokenHead={TokenHead}",
+            dataPlaneEndpoint, authType,
+            authCode?.Length > 20 ? authCode[..20] + "…" : authCode);
 
         try
         {
+            // Crear un cliente limpio sin DefaultRequestHeaders (sin Accept: application/json)
+            // para no interferir con el backend al que el data plane hace proxy.
+            using var dataPlaneClient = _httpClientFactory.CreateClient();
             using var httpRequest = new HttpRequestMessage(HttpMethod.Get, dataPlaneEndpoint);
-            httpRequest.Headers.Authorization = new AuthenticationHeaderValue(authType, authCode);
 
-            var response    = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            // El data plane EDC valida el token raw sin prefijo "Bearer ".
+            httpRequest.Headers.TryAddWithoutValidation("Authorization", authCode);
+
+            var response    = await dataPlaneClient.SendAsync(httpRequest, cancellationToken);
             var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
 
             if (!response.IsSuccessStatusCode)

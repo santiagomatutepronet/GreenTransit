@@ -592,13 +592,10 @@ else
                             </span>
                         </div>
                     </div>
-                    @if (!_isNegotiating && !_isTransferring && _downloadResponse == null)
-                    {
-                        <button style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:34px;height:34px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"
-                                @onclick="ClearNegotiationSelection" title="Cancelar">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                    }
+                    <button style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:34px;height:34px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"
+                            @onclick="ClearNegotiationSelection" title="Cerrar">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
                 </div>
             </div>
 
@@ -1323,13 +1320,26 @@ else
 
     private async Task DownloadData()
     {
-        if (_edrResponse == null) return;
+        if (_transferProcessId is null) return;
 
         _isDownloading = true;
         StateHasChanged();
 
         try
         {
+            // Refrescar el EDR justo antes de descargar para evitar token caducado
+            await ObtainEndpointDataReference();
+
+            if (_edrResponse is null || !_edrResponse.Success)
+            {
+                _downloadResponse = new EdcDataDownloadResponse
+                {
+                    Success      = false,
+                    ErrorMessage = _transferErrorMessage ?? "No se pudo obtener referencia de descarga."
+                };
+                return;
+            }
+
             _downloadResponse = await Mediator.Send(new DownloadTransferDataCommand
             {
                 DataPlaneEndpoint = _edrResponse.Endpoint!,
@@ -1384,6 +1394,7 @@ else
         _ = StartTransferProcess();
     }
 
+    // CurrentStepIndex > último índice → todos los pasos muestran checkmark (isCompleted = idx < CurrentStepIndex)
     private static int MapNegotiationStateToStep(string? state) => state switch
     {
         "INITIAL" or "REQUESTING" or "REQUESTED" => 0,
@@ -1391,16 +1402,21 @@ else
         "ACCEPTING" or "ACCEPTED"                 => 2,
         "AGREEING"  or "AGREED"                   => 3,
         "VERIFYING" or "VERIFIED"                 => 4,
-        "FINALIZING" or "FINALIZED"               => 5,
+        "FINALIZING"                              => 5,
+        "FINALIZED"                               => 6,  // > último índice → todos completados
         _                                         => 0
     };
 
+    // En HttpData-PULL el estado final del consumer es STARTED (no pasa a COMPLETED)
+    // CurrentStepIndex > último índice → todos los pasos muestran checkmark
     private static int MapTransferStateToStep(string? state) => state switch
     {
         "INITIAL" or "PROVISIONING" or "PROVISIONED" => 0,
         "REQUESTING" or "REQUESTED"                  => 1,
-        "STARTING"   or "STARTED"                    => 2,
-        "COMPLETING" or "COMPLETED"                  => 3,
+        "STARTING"                                   => 2,
+        "STARTED"                                    => 4,  // > último índice 3 → todos completados
+        "COMPLETING"                                 => 3,
+        "COMPLETED"                                  => 4,  // > último índice 3 → todos completados
         _                                            => 0
     };
 
