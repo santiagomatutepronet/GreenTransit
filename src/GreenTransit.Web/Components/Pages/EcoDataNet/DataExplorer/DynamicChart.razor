@@ -102,7 +102,9 @@
     {
         // Clave única que fuerza la recreación del RadzenChart cuando cambia cualquier parámetro de binding.
         // Evita el error "duplicate key" de Blazor cuando las categorías cambian de forma.
-        _chartKey = $"{Widget.WidgetId}|{Widget.ChartType}|{Widget.ChartCategoryField}|{string.Join(',', Widget.ChartValueFields ?? [])}";
+        // Incluye un hash de los datos para detectar cuando ChartData se reconstruye
+        var dataHash = Widget.ChartData?.Count ?? 0;
+        _chartKey = $"{Widget.WidgetId}|{Widget.ChartType}|{Widget.ChartCategoryField}|{string.Join(',', Widget.ChartValueFields ?? [])}|{dataHash}";
 
         _seriesFields = (Widget.ChartValueFields ?? [])
             .Select((f, i) => (f, i))

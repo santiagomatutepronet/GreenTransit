@@ -271,7 +271,7 @@ else if (_result?.Success == true)
                         break;
                 }
 
-                @* Controles de edición — posición absoluta, no empujan el contenido *@
+                @* ── Controles de edición — posición absoluta, no empujan el contenido *@
                 @if (_isEditMode)
                 {
                     @* Handle de arrastre *@
@@ -281,6 +281,7 @@ else if (_result?.Success == true)
 
                     @* Panel de configuración (trigger + popover) *@
                     <WidgetConfigPanel Widget="widget"
+                                       Schema="_result!.Schema"
                                        OnWidgetChanged="OnWidgetEdited"
                                        OnWidgetHidden="HideWidget" />
 

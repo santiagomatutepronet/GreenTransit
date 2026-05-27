@@ -1,6 +1,9 @@
 @using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using GreenTransit.Application.Features.EcoDataNet.Services
 @using Radzen
 @using Radzen.Blazor
+
+@inject IChartDataRebuilder ChartDataRebuilder
 
 <style>
     .widget-config-trigger {
@@ -81,7 +84,7 @@
                                         Data="@GetCategoryFieldOptions()"
                                         TextProperty="Label" ValueProperty="Value"
                                         Style="width:100%"
-                                        Change="@(_ => NotifyChange())" />
+                                        Change="@OnCategoryFieldChanged" />
                     </ChildContent>
                 </RadzenFormField>
             }
@@ -162,6 +165,7 @@
 
 @code {
     [Parameter] public DynamicWidgetDescriptor Widget { get; set; } = null!;
+    [Parameter] public JsonDataSchema? Schema { get; set; }
     [Parameter] public EventCallback<DynamicWidgetDescriptor> OnWidgetChanged { get; set; }
     [Parameter] public EventCallback<string> OnWidgetHidden { get; set; }
 
@@ -216,10 +220,20 @@
     private string GetSingleValueField() =>
         Widget.ChartValueFields?.FirstOrDefault() ?? string.Empty;
 
+    private void OnCategoryFieldChanged(object? value)
+    {
+        // El @bind-Value ya actualizó Widget.ChartCategoryField
+        RebuildChartData();
+        NotifyChange();
+    }
+
     private void OnSingleValueFieldChanged(object? value)
     {
         if (value is string newField && !string.IsNullOrWhiteSpace(newField))
+        {
             Widget.ChartValueFields = [newField];
+            RebuildChartData();
+        }
 
         NotifyChange();
     }
@@ -227,7 +241,10 @@
     private void OnValueFieldsChanged(object? value)
     {
         if (value is IEnumerable<string> fields)
+        {
             Widget.ChartValueFields = fields.ToList();
+            RebuildChartData();
+        }
 
         NotifyChange();
     }
@@ -244,6 +261,7 @@
                 && Widget.ChartValueFields?.Count > 1)
             {
                 Widget.ChartValueFields = [Widget.ChartValueFields.First()];
+                RebuildChartData();
             }
         }
 
@@ -252,6 +270,48 @@
 
     private static bool IsMonoSeriesChartType(ChartSubType? type) =>
         type is ChartSubType.Donut or ChartSubType.Pie;
+
+    /// <summary>
+    /// Reconstruye los datos del gráfico cuando el usuario cambia los campos de categoría o valores.
+    /// </summary>
+    private void RebuildChartData()
+    {
+        // Solo para widgets de tipo Chart
+        if (Widget.Type != WidgetType.Chart 
+            || Schema == null 
+            || string.IsNullOrEmpty(Widget.SourceArrayName))
+            return;
+
+        // Buscar el array fuente en el esquema
+        var sourceArray = Schema.Arrays.FirstOrDefault(a => a.Name == Widget.SourceArrayName);
+        if (sourceArray == null || sourceArray.RawData.Count == 0)
+            return;
+
+        // Validar que tengamos campo de categoría y al menos un campo de valor
+        if (string.IsNullOrEmpty(Widget.ChartCategoryField) 
+            || Widget.ChartValueFields == null 
+            || Widget.ChartValueFields.Count == 0)
+            return;
+
+        // Detectar si debemos agrupar por mes (para campos temporales con muchos valores)
+        bool truncateToMonth = false;
+        if (sourceArray.TemporalProperty == Widget.ChartCategoryField)
+        {
+            int rawKeys = sourceArray.RawData
+                .Select(r => r.TryGetValue(Widget.ChartCategoryField, out var v) ? v?.ToString() : null)
+                .Where(v => v != null)
+                .Distinct()
+                .Count();
+            truncateToMonth = rawKeys > 30;
+        }
+
+        // Reconstruir datos del gráfico
+        Widget.ChartData = ChartDataRebuilder.RebuildChartData(
+            sourceArray.RawData,
+            Widget.ChartCategoryField,
+            Widget.ChartValueFields,
+            truncateToMonth);
+    }
 
     private void OnColumnVisibilityChanged(TableColumnDescriptor col, bool visible)
     {

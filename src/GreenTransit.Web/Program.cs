@@ -792,13 +792,15 @@ try
         GreenTransit.Infrastructure.Services.EdcCatalogParser>();
 
     // ── EDC Data Explorer (análisis dinámico de JSON) ─────────────────────────
+    builder.Services.AddScoped<GreenTransit.Application.Features.EcoDataNet.Services.EdcDataExplorerStateService>();
     builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.IJsonSchemaAnalyzer,
         GreenTransit.Application.Features.EcoDataNet.Services.JsonSchemaAnalyzer>();
     builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.IDashboardLayoutBuilder,
         GreenTransit.Application.Features.EcoDataNet.Services.DashboardLayoutBuilder>();
     builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.ILayoutCustomizationService,
         GreenTransit.Application.Features.EcoDataNet.Services.LayoutCustomizationService>();
-    builder.Services.AddScoped<GreenTransit.Application.Features.EcoDataNet.Services.EdcDataExplorerStateService>();
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.IChartDataRebuilder,
+        GreenTransit.Application.Features.EcoDataNet.Services.ChartDataRebuilder>();
 
     // ── Caché en memoria (catálogos geográficos y otros estáticos) ───────────
     builder.Services.AddMemoryCache();
@@ -915,5 +917,6 @@ finally
     // Garantiza que todos los logs pendientes se escriben antes de cerrar
     await Log.CloseAndFlushAsync();
 }
+
 
 
