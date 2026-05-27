@@ -143,6 +143,28 @@ IF NOT EXISTS (SELECT 1 FROM dbo.ProfileEDCConsumer WHERE ProfileId = @coordinat
 IF NOT EXISTS (SELECT 1 FROM dbo.Profiles WHERE Reference = 'CERTIFIER')
     INSERT INTO dbo.Profiles (Reference, Description, CreateDate)
     VALUES ('CERTIFIER', 'Certificador / Auditor, Validación y coherencia', GETDATE());
+
+
+
+
+    GO
+
+    DECLARE @scrap  INT = (SELECT ID FROM dbo.Profiles WHERE Reference = 'SCRAP');
+    DECLARE @producer  INT = (SELECT ID FROM dbo.Profiles WHERE Reference = 'PRODUCER');
+    DECLARE @carrier  INT = (SELECT ID FROM dbo.Profiles WHERE Reference = 'CARRIER');
+    DECLARE @plant  INT = (SELECT ID FROM dbo.Profiles WHERE Reference = 'PLANT_OP');
+    DECLARE @office INT = (SELECT ID FROM dbo.Profiles WHERE Reference = 'DISPATCH_OFFICE');
+    DECLARE @certifier INT = (SELECT ID FROM dbo.Profiles WHERE Reference = 'CERTIFIER');
+
+    INSERT INTO dbo.ProfileEDCConsumer (ProfileId, ConsumedProfileId)
+    VALUES 
+        (@scrap, @producer),
+        (@certifier, @office),
+        (@certifier, @carrier),
+        (@certifier, @plant);
+
+    DELETE FROM dbo.ProfileEDCConsumer
+    WHERE ProfileId = @carrier AND ConsumedProfileId = @scrap;
 -- =============================================================================
 -- Verificación
 -- =============================================================================

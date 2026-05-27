@@ -1,4 +1,4 @@
-﻿# 🗺️ Mapa de Funcionalidades — Sistema de Trazabilidad **GreenTransit**
+# 🗺️ Mapa de Funcionalidades — Sistema de Trazabilidad **GreenTransit**
 
 > Plataforma web **multi-rol**, **multi-tenant** (`OwnerId`) y preparada para **data spaces (EDC)** que cubre el ciclo completo del residuo: planificación → ejecución → pesaje → tratamiento → justificación económica → reporting regulatorio.
 >
@@ -485,6 +485,8 @@ Cada usuario tiene exactamente un perfil (`Users.IdProfile → Profiles.ID`). El
 | `PLANT_OP` | Operador de Planta de Tratamiento | `Plant` | Registrar entradas en planta, pesaje, clasificación, tratamiento, declarar energía |
 | `COORDINATOR` | Coordinador del acuerdo | `Coordinator` | Lectura transversal del ámbito de los acuerdos |
 | `DISPATCH_OFFICE` | Oficina de Asignación / Gestor logístico | *(perfil funcional, sin EntityRole directo)* | Crear traslados, planificar logística, asignar transportistas, gestionar maestros operativos |
+| `REGULATOR` | Regulador — Autoridad de supervisión normativa | `Regulator` | Lectura transversal de KPIs, cumplimiento normativo e indicadores del ecosistema. Solo lectura |
+| `CERTIFIER` | Certificador / Auditor — Validación y coherencia | `Certifier` | Lectura de evidencias de tratamiento, huella de carbono, reporting y KPIs. Solo lectura (ej. AENOR) |
 | `ADMIN` | Administrador del sistema | *(superusuario del tenant)* | CRUD total, gestión de usuarios/perfiles, catálogos normativos, configuración |
 
 ### 2.2. Nuevo perfil: Oficina de Asignación (`DISPATCH_OFFICE`)
@@ -518,9 +520,11 @@ Al dar de alta una `Entity`, el sistema crea automáticamente un `Users` vincula
 | `CAC` | `CAC_OP` |
 | `PublicEntity` | `PUBLIC_ENT` |
 | `Coordinator` | `COORDINATOR` |
+| `Regulator` | `REGULATOR` |
+| `Certifier` | `CERTIFIER` |
 | `Source` / `Destination` / `Other` | *(no se crea usuario automáticamente)* |
 
-> **Nota**: `DISPATCH_OFFICE` y `ADMIN` se crean manualmente por un administrador, ya que no corresponden a una entidad del ecosistema sino a roles funcionales internos.
+> **Nota**: `DISPATCH_OFFICE` y `ADMIN` se crean manualmente por un administrador, ya que no corresponden a una entidad del ecosistema sino a roles funcionales internos. `REGULATOR` y `CERTIFIER` se crean automáticamente al dar de alta una entidad con `EntityRole = Regulator` o `Certifier`.
 
 ---
 
@@ -543,6 +547,10 @@ Cuando un permiso indica **"Propios"**, el filtro adicional depende del perfil:
 | `PLANT_OP` | `EntryPlants` / `TreatmentPlants` de su entidad | Solo su planta |
 | `CAC_OP` | `EntryCACs` de su entidad | Solo su CAC |
 | `COORDINATOR` | `Agreements` donde figura como `IdCoordinator` | Lectura transversal del ámbito del acuerdo |
+| `DISPATCH_OFFICE` | Todo el tenant | Solo `OwnerId` |
+| `REGULATOR` | Todo el tenant | Solo `OwnerId` — lectura transversal de KPIs e indicadores |
+| `CERTIFIER` | Todo el tenant | Solo `OwnerId` — lectura de evidencias y reporting para auditoría |
+| `ADMIN` | Todo el tenant | Solo `OwnerId` |
 
 #### ✅ Implementación del filtrado en `ServiceOrders`
 
@@ -612,7 +620,7 @@ CanManagePlantEnergy            PLANT_OP, ADMIN
 CanManageEmissionFactors        ADMIN
 CanManageUsers                  ADMIN
 CanManageProfiles               ADMIN
-CanViewKPIs                     SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, ADMIN
+CanViewKPIs                     SCRAP, PUBLIC_ENT, PLANT_OP, COORDINATOR, DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN
 CanViewReporting                Todos (con filtrado por datos propios)
 CanManageEntities               DISPATCH_OFFICE, ADMIN
 CanCreateEntitiesRestricted     SCRAP (alta limitada a su ámbito)
@@ -630,6 +638,17 @@ CanManageDeclarationDicts       ADMIN
 CanViewHeatMapWasteDensity      SCRAP, DISPATCH_OFFICE, ADMIN          ← Mapa Calor HM-A
 CanViewHeatMapPatternAnalysis   SCRAP, DISPATCH_OFFICE, ADMIN          ← Mapa Calor HM-B
 CanViewHeatMapPublicView        PUBLIC_ENT, DISPATCH_OFFICE, ADMIN     ← Mapa Calor HM-C
+CanViewScrapComplianceOverview        SCRAP, DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN  ← CN-A
+CanViewMarketShareAudit               SCRAP, DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN  ← CN-B
+CanViewAgreementComplianceMonitoring  SCRAP, DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN  ← CN-C
+CanViewDispatchOfficeComplianceData   DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN         ← CN-E
+CanViewCarbonFootprintOverview        SCRAP, DISPATCH_OFFICE, CERTIFIER, ADMIN             ← HC-A
+CanViewCarbonFootprintTransport       CARRIER, SCRAP, CERTIFIER, ADMIN                     ← HC-B
+CanViewCarbonFootprintPlantEnergy     PLANT_OP, SCRAP, CERTIFIER, ADMIN                    ← HC-C
+CanAccessEDCConnectorConfig     Todos los perfiles autenticados         ← EcoDataNet
+CanAccessEDCConsumeData         Todos los perfiles autenticados         ← EcoDataNet
+CanViewRegulatoryDashboard      REGULATOR, ADMIN                        ← Dashboard Regulador
+CanViewCertificationDashboard   CERTIFIER, ADMIN                        ← Dashboard Certificador
 AdminOnly                       ADMIN
 ```
 
@@ -661,7 +680,9 @@ INSERT INTO Profiles (Reference, Description) VALUES
 ('CAC_OP', 'Operador de Centro de Acopio'),
 ('PUBLIC_ENT', 'Entidad Pública / Ayuntamiento'),
 ('COORDINATOR', 'Coordinador del acuerdo'),
-('DISPATCH_OFFICE', 'Oficina de Asignación — Gestor logístico');
+('DISPATCH_OFFICE', 'Oficina de Asignación — Gestor logístico'),
+('REGULATOR', 'Regulador — Autoridad de supervisión normativa'),
+('CERTIFIER', 'Certificador / Auditor — Validación y coherencia');
 ```
 
 ---
@@ -1358,12 +1379,13 @@ El sistema incluye tres dashboards logísticos diferenciados según el perfil de
 
 ---
 
-### 5.5. Interoperabilidad y Data Space (EDC)
+### 5.5. Interoperabilidad y Data Space (EDC) ✅ IMPLEMENTADO
 
-- **Lógica**: la plataforma está preparada para participar en ecosistemas tipo IDSA/Gaia-X. Los usuarios tienen `PortalEDCProvider` y `PortalEDCConsumer` (URLs de conector EDC) que permiten publicar/consumir datasets regulados.
-- **Entidades**: `Users.PortalEDCProvider`, `Users.PortalEDCConsumer`, `SourceSystem`, `Hash` (integridad entre sistemas).
-- **Funciones**: publicación de datasets agregados (sin PII), catálogo de recursos disponibles, contratos de uso de datos.
-- **Roles**: **Administrador**, **SCRAP**, **Entidad Pública**.
+- **Lógica**: la plataforma participa activamente en el data space EcoDataNet mediante conectores EDC (Eclipse Dataspace Components). Cada usuario tiene un conector EDC configurado (tabla `UserEDCConnector`) y la tabla `ProfileEDCConsumer` define qué perfiles pueden consumir datos de qué otros perfiles.
+- **Entidades**: `UserEDCConnector` (UserId, EDCServerName, EDCConnectorId, ApiKey), `ProfileEDCConsumer` (ProfileId, ConsumedProfileId).
+- **Funciones**: descubrimiento de catálogos DCAT/ODRL, visualización de datasets y ofertas, negociación de contratos EDC v3, transferencia de datos (HttpData-PULL), descarga desde data plane con token EDR.
+- **Roles**: todos los perfiles pueden configurar su conector; el consumo de catálogos se regula dinámicamente por `ProfileEDCConsumer`. `REGULATOR` consume de todos los perfiles operativos; `CERTIFIER` consume de perfiles que generan evidencias auditables.
+- **Ver §11 para detalle completo del módulo EcoDataNet.**
 
 ---
 
@@ -2130,36 +2152,245 @@ Reglas de transición:
 
 ---
 
-## 11. 🌐 Módulo EcoDataNet — Espacio de Datos
+## 11. 🌐 Módulo EcoDataNet — Espacio de Datos ✅ IMPLEMENTADO
 
-> Epígrafe dedicado a la integración de GreenTransit con el **data space EcoDataNet** mediante conectores EDC (Eclipse Dataspace Components). En esta primera fase la funcionalidad es de tipo **atrezzo / mock frontend**: permite visualizar el flujo de publicación y validar la propuesta UX antes de conectar el backend real.
+> Módulo de integración de GreenTransit con el **data space EcoDataNet** mediante conectores EDC (Eclipse Dataspace Components v3). Permite a los usuarios del ecosistema descubrir catálogos de datos, visualizar ofertas DCAT/ODRL, negociar contratos de uso, transferir y descargar datos reales entre conectores.
 
-### 11.1. Publicar Datos en EcoDataNet
+### 11.0. Modelo de datos — Tablas del módulo EcoDataNet
 
-- **Lógica (mock)**: permite al usuario iniciar un proceso de publicación de sus datos de gestión de residuos hacia la plataforma EcoDataNet. No realiza llamadas reales a ningún API; el proceso de publicación se simula en el frontend mediante una barra de progreso animada.
-- **Ruta**: `/ecodatanet/publish`
-- **Acceso**: `@attribute [Authorize]` — cualquier usuario autenticado.
-- **Entidades / campos referenciados**:
-  - `Users.PortalEDCProvider` → campo de solo lectura que identifica el conector EDC del participante (actualmente simulado con un valor mock constante).
-- **Componentes de la pantalla**:
-  | Elemento | Detalle |
+#### `UserEDCConnector`
+
+Almacena la configuración del conector EDC asociado a cada usuario (relación 1:1 con `Users`).
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `ID` | `INT IDENTITY` | PK |
+| `UserId` | `INT NOT NULL` | FK → `Users.ID` (índice único) |
+| `EDCServerName` | `NVARCHAR(255)` | Nombre/URL base del servidor EDC (ej: `ecoucofiasignacion.ecodatanetconn3.dataspace.wastenode.com`) |
+| `EDCConnectorId` | `NVARCHAR(255)` | Identificador único del conector dentro del servidor EDC |
+| `ApiKey` | `NVARCHAR(255)` | API Key para la Management API del conector (header `X-Api-Key`) |
+
+**Construcción de URLs EDC a partir de `EDCServerName`**:
+
+| API EDC | URL resultante |
+|---|---|
+| Management | `https://mgmt.{EDCServerName}/management` |
+| Protocol | `https://proto.{EDCServerName}/protocol` |
+| Control | `https://control.{EDCServerName}/control` |
+| Public (Data Plane) | `https://public.{EDCServerName}/public` |
+
+#### `ProfileEDCConsumer`
+
+Define qué perfiles pueden consumir datos de qué otros perfiles en el espacio de datos (relación N:M entre `Profiles`).
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `ID` | `INT IDENTITY` | PK |
+| `ProfileId` | `INT NOT NULL` | FK → `Profiles.ID` — perfil que consume |
+| `ConsumedProfileId` | `INT NOT NULL` | FK → `Profiles.ID` — perfil cuyos datos se consumen |
+
+- Índice único compuesto (`ProfileId`, `ConsumedProfileId`).
+- Sin `OwnerId` (los perfiles son globales, compartidos entre tenants).
+- Ejemplo: `REGULATOR` consume de DISPATCH_OFFICE, SCRAP, PUBLIC_ENT, PLANT_OP, CARRIER, CAC_OP, PRODUCER, COORDINATOR (8 relaciones). `CERTIFIER` consume de DISPATCH_OFFICE, SCRAP, PLANT_OP, PRODUCER (4 relaciones).
+
+---
+
+### 11.1. Configuración conector EDC
+
+- **Lógica**: permite a cada usuario configurar los datos de conexión de su conector EDC (servidor y ID del conector). Los administradores pueden configurar el conector de cualquier usuario del tenant; los demás perfiles solo ven y editan su propio conector.
+- **Ruta**: `/ecodatanet/connector-config`
+- **Policy**: `CanAccessEDCConnectorConfig` — todos los perfiles autenticados.
+- **Entidades**: `UserEDCConnector`, `Users`.
+- **Comportamiento ADMIN**: tabla paginada de usuarios del tenant con búsqueda por nombre/login, indicador "Tiene conector" (Sí/No), selección de usuario para configurar. Usa `GetUsersForEDCListQuery`.
+- **Comportamiento NO ADMIN**: formulario directo con los datos del usuario logueado. Usa `GetUserEDCConnectorQuery(currentUserId)`.
+- **Formulario** (compartido):
+  | Campo | Tipo | Comportamiento |
+  |---|---|---|
+  | Nombre de usuario | `InputText` | Solo lectura (`Users.CompleteName`) |
+  | Nombre del servidor EDC | `InputText` | Editable → `UserEDCConnector.EDCServerName` |
+  | Identificador del conector | `InputText` | Editable → `UserEDCConnector.EDCConnectorId` |
+- **Guardar**: ejecuta `UpsertUserEDCConnectorCommand` (Upsert: crea si no existe, actualiza si existe). Validación: `EDCServerName` y `EDCConnectorId` no vacíos, `UserId > 0`.
+- **Seguridad**: un usuario NO ADMIN no puede consultar ni modificar la configuración de otro usuario (validación en handler). Multi-tenant: filtro por `OwnerId`.
+- **CQRS**:
+  - `Application/Features/EcoDataNet/Queries/GetUserEDCConnectorQuery.cs`
+  - `Application/Features/EcoDataNet/Queries/GetUsersForEDCListQuery.cs`
+  - `Application/Features/EcoDataNet/Commands/UpsertUserEDCConnectorCommand.cs`
+  - `Application/Features/EcoDataNet/Validators/UpsertUserEDCConnectorValidator.cs`
+  - `Application/Features/EcoDataNet/DTOs/UserEDCConnectorDto.cs`, `UserForEDCListDto.cs`
+- **Ficheros Blazor**:
+  - `Web/Components/Pages/EcoDataNet/EDCConnectorConfig.razor`
+- **Estado**: ✅ IMPLEMENTADO.
+
+---
+
+### 11.2. Consumir datos — Descubrimiento de catálogo
+
+- **Lógica**: el usuario selecciona un perfil cuyos datos quiere consumir (regulado por `ProfileEDCConsumer`). El sistema identifica todos los usuarios del tenant con ese perfil, lee sus conectores EDC, y lanza solicitudes `POST /v3/catalog/request` contra la Management API del conector consumidor (el del usuario logueado) con el `counterPartyAddress` de cada proveedor. Muestra un resumen por proveedor (OK/Error/Sin conector) y el JSON bruto del catálogo en panel colapsable.
+- **Ruta**: `/ecodatanet/consume-data`
+- **Policy**: `CanAccessEDCConsumeData` — todos los perfiles autenticados.
+- **Entidades**: `ProfileEDCConsumer`, `UserEDCConnector`, `Users`, `Profiles`.
+- **Comportamiento ADMIN**: tabla de perfiles del sistema → seleccionar perfil → desplegable de perfiles consumibles → botón "Consumir catálogo".
+- **Comportamiento NO ADMIN**: carga directa del perfil del usuario logueado → desplegable de perfiles consumibles del perfil → botón "Consumir catálogo".
+- **Flujo de la solicitud**:
+  1. Validar que el usuario tiene permiso (`ProfileEDCConsumer` o ADMIN).
+  2. Obtener `UserEDCConnector` del consumidor (si no tiene → error "Configure su conector primero").
+  3. Listar usuarios del tenant con `IdProfile == perfilConsumidoId` y `IsActive`.
+  4. Para cada proveedor con conector: `POST https://mgmt.{consumerServer}/management/v3/catalog/request` con body JSON-LD (`CatalogRequest`, `counterPartyAddress: https://proto.{providerServer}/protocol`, `protocol: dataspace-protocol-http`).
+  5. Paralelización con `SemaphoreSlim` (máx. 5 concurrentes, configurable). Timeout individual configurable (30s por defecto).
+  6. Agregar resultados: OK (con JSON + nº datasets) / Error / Sin conector / Timeout.
+- **Resultados en pantalla**: badges resumen (nº proveedores, OK, errores, sin conector), accordion con detalle por proveedor, JSON bruto colapsable formateado.
+- **Servicios**:
+  - `IEdcManagementClient` (Application) → `EdcManagementClient` (Infrastructure): encapsula llamadas HTTP a la Management API.
+  - `HttpClientFactory` con timeout global. API Key vía header `X-Api-Key` (configurable, vacío = no se envía).
+- **Configuración** (`appsettings.json`):
+  ```json
+  "EcoDataNet": {
+    "Edc": {
+      "MaxConcurrentRequests": 5,
+      "RequestTimeoutSeconds": 30,
+      "ManagementApiKey": "",
+      "NegotiationPollingIntervalSeconds": 3,
+      "TransferPollingIntervalSeconds": 3,
+      "NegotiationPollingMaxAttempts": 120,
+      "TransferPollingMaxAttempts": 60
+    }
+  }
+  ```
+- **CQRS**:
+  - `Application/Features/EcoDataNet/Commands/RequestEdcCatalogCommand.cs` — orquesta el descubrimiento multiproveedor.
+  - `Application/Features/EcoDataNet/Queries/GetConsumableProfilesQuery.cs`
+  - `Application/Features/EcoDataNet/Queries/GetProfilesForConsumptionListQuery.cs`
+  - `Application/Features/EcoDataNet/DTOs/EdcCatalogResult.cs`, `EdcProviderCatalogResult.cs`, `RequestEdcCatalogResponse.cs`, `EdcProviderStatus.cs`
+  - `Application/Common/Options/EdcOptions.cs`
+  - `Application/Common/Interfaces/IEdcManagementClient.cs`
+  - `Infrastructure/Services/EdcManagementClient.cs`
+- **Estado**: ✅ IMPLEMENTADO.
+
+---
+
+### 11.3. Visualización del catálogo DCAT/ODRL — Vista Marketplace
+
+- **Lógica**: tras recibir los JSON de catálogo de cada proveedor, se parsean los datos DCAT/ODRL a DTOs tipados y se muestran en una vista de marketplace: tabla de datasets agrupados por proveedor, con nombre, versión, tipo de contenido y badge de oferta ODRL disponible. El usuario puede ver el detalle de cada dataset y su oferta (permisos, prohibiciones, obligaciones humanizadas), y seleccionar una oferta para futura negociación.
+- **Ruta**: misma pantalla `/ecodatanet/consume-data` (sección post-consumo de catálogo).
+- **Parsing**: se realiza en `IEdcCatalogParser` (Application) → `EdcCatalogParser` (Infrastructure), que normaliza JSON-LD con prefijos compactos (`dcat:dataset`) e IRIs completas, y maneja arrays u objetos únicos.
+- **DTOs del catálogo parseado**:
+  | DTO | Propósito |
   |---|---|
-  | Bloque informativo | Texto descriptivo sobre EcoDataNet: soberanía del dato, interoperabilidad, trazabilidad y cumplimiento regulatorio. |
-  | Diagrama de integración | Imagen estática `wwwroot/images/ecodatanet/integracion-greentransit-ecodatanet.png` que ilustra el flujo GreenTransit → Secure API / Data ingestion / HTTPS REST → EcoDataNet (Data Platform, Data Catalog, Observability). |
-  | Campo "Conector EDC EcoDataNet del participante" | Solo lectura. Valor procedente de `Users.PortalEDCProvider` (mock: `https://edc.greentransit.example.com/connector`). |
-  | Campo "API Key" | Solo lectura. GUID autogenerado en el frontend al cargar la pantalla (`Guid.NewGuid()`). Botón de regeneración disponible. |
-  | Barra de progreso | Visible únicamente durante la simulación. Avanza de 0 % a 100 % en 20 pasos de 80 ms cada uno. |
-  | Alerta de éxito | Aparece al completar el proceso: `"Proceso completado con éxito"`. |
-  | Botón principal | `"Publicar datos en EcoDataNet"`. Deshabilitado mientras el proceso está en curso. |
-- **Comportamiento del botón**:
-  1. Inicia `_publishing = true` → deshabilita el botón.
-  2. Itera 20 pasos con `Task.Delay(80 ms)` actualizando `_progress` (0 → 100 %).
-  3. Al finalizar: `_publishing = false`, `_completed = true` → muestra alerta de éxito.
-- **Ficheros**:
-  - `src/GreenTransit.Web/Components/Pages/EcoDataNet/PublishData.razor`
-  - `src/GreenTransit.Web/Components/Pages/EcoDataNet/PublishData.razor.css`
-- **Menú lateral**: nuevo epígrafe colapsable **EcoDataNet** (icono `bi-broadcast`) con ítem hijo **Publicar Datos** (icono `bi-cloud-upload-fill`). Posicionado antes del epígrafe Seguridad en `NavMenu.razor`.
-- **Estado**: ✅ IMPLEMENTADO (mock frontend) — pendiente de conectar con backend EDC real.
+  | `EdcCatalogDto` | Catálogo DCAT completo (CatalogId, ParticipantId, lista de Datasets) |
+  | `EdcDatasetDto` | Dataset individual (DatasetId, Name, Version, ContentType, Offer, Distributions) |
+  | `EdcOfferDto` | Oferta ODRL (OfferId, Permissions, Prohibitions, Obligations, RawOfferJson) |
+  | `EdcPermissionDto` | Permiso ODRL (Action, Constraints) |
+  | `EdcConstraintDto` | Restricción ODRL (LeftOperand, Operator, RightOperand) |
+  | `EdcProhibitionDto` | Prohibición ODRL |
+  | `EdcObligationDto` | Obligación ODRL |
+  | `EdcDistributionDto` | Distribución DCAT (Format, EndpointUrl) |
+  | `EdcProviderParsedCatalogDto` | Catálogo parseado + datos del proveedor |
+  | `EdcNegotiationSelection` | Estado de selección de oferta para negociación |
+- **Vista detalle dataset**: modal con info del dataset, condiciones ODRL humanizadas (sin prefijos `odrl:`/`edc:`/IRIs), distribuciones informativas, botón "Iniciar negociación" (solo si la oferta tiene `OfferId` válido).
+- **Selección de oferta**: guarda `SelectedDatasetId`, `SelectedOfferId`, `ProviderParticipantId`, `ProviderProtocolEndpoint`, `RawOfferJson` en `EdcNegotiationSelection`.
+- **CQRS**:
+  - `Application/Features/EcoDataNet/Queries/ParseEdcCatalogsQuery.cs`
+  - `Application/Common/Interfaces/IEdcCatalogParser.cs`
+  - `Infrastructure/Services/EdcCatalogParser.cs`
+- **Estado**: ✅ IMPLEMENTADO.
+
+---
+
+### 11.4. Negociación de contrato EDC v3
+
+- **Lógica**: ejecuta el flujo de negociación de contrato contra la Management API del conector consumidor. Envía `POST /v3/contractnegotiations/` con un `ContractRequest` que incluye la offer ODRL original del proveedor, y hace polling del estado hasta que la negociación alcanza `FINALIZED` (o error/timeout).
+- **Ruta**: misma pantalla `/ecodatanet/consume-data` (sección de negociación y transferencia).
+- **Máquina de estados de negociación (EDC v3)**:
+  `INITIAL → REQUESTING → REQUESTED → OFFERED → ACCEPTING → ACCEPTED → AGREEING → AGREED → VERIFYING → VERIFIED → FINALIZING → FINALIZED`
+  (o `TERMINATING → TERMINATED` en caso de error)
+- **Stepper visual**: componente `EdcProcessStepper.razor` reutilizable, 6 pasos simplificados: Solicitada → Oferta recibida → Aceptada → Acordada → Verificada → Finalizada.
+- **Payload ContractRequest** (JSON-LD):
+  ```json
+  {
+    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
+    "@type": "ContractRequest",
+    "counterPartyAddress": "https://proto.{providerServer}/protocol",
+    "protocol": "dataspace-protocol-http",
+    "policy": { /* offer ODRL original con assigner y target */ }
+  }
+  ```
+- **Al finalizar**: se extrae `contractAgreementId` de la respuesta y se inicia automáticamente la transferencia (§11.5).
+- **Polling**: `PeriodicTimer` con intervalo configurable (3s), máx. 120 intentos (6 min). Cancelación limpia con `CancellationTokenSource` al salir de la página (`IDisposable`).
+- **CQRS**:
+  - `Application/Features/EcoDataNet/Commands/StartContractNegotiationCommand.cs`
+  - `Application/Features/EcoDataNet/Queries/GetNegotiationStateQuery.cs`
+  - `Application/Features/EcoDataNet/Validators/StartContractNegotiationCommandValidator.cs`
+  - DTOs: `EdcNegotiationResponse.cs`, `EdcNegotiationStateResponse.cs`
+- **Estado**: ✅ IMPLEMENTADO.
+
+---
+
+### 11.5. Transferencia de datos y descarga (EDC v3)
+
+- **Lógica**: tras negociación finalizada, se inicia una transferencia de datos con `POST /v3/transferprocesses` (TransferRequestDto: `contractId`, `assetId`, `counterPartyAddress`, `transferType: HttpData-PULL`). Se hace polling del estado hasta `STARTED` o `COMPLETED`, tras lo cual se obtiene el EDR (Endpoint Data Reference) con `GET /v3/edrs/{transferProcessId}/dataaddress` y se habilita la descarga real desde el data plane del proveedor.
+- **Máquina de estados de transferencia**:
+  `INITIAL → PROVISIONING → PROVISIONED → REQUESTING → REQUESTED → STARTING → STARTED → COMPLETING → COMPLETED`
+  (o `TERMINATING → TERMINATED`)
+- **Stepper visual**: 4 pasos: Iniciada → Solicitada → En curso → Completada.
+- **EDR (Endpoint Data Reference)**: contiene `endpoint` (URL del data plane) y `authorization` (token temporal Bearer). Se descarga con `GET {endpoint}` + header `Authorization: Bearer {token}`.
+- **Descarga**: el contenido se muestra al usuario (JSON, CSV, etc.) en panel colapsable, con botón "Exportar a fichero" (descarga al navegador vía `JSRuntime`).
+- **Retry**: botones "Reintentar" disponibles tanto para negociación fallida como para transferencia fallida. Resetean estado y reinician desde cero.
+- **CQRS**:
+  - `Application/Features/EcoDataNet/Commands/StartTransferProcessCommand.cs`
+  - `Application/Features/EcoDataNet/Queries/GetTransferStateQuery.cs`
+  - `Application/Features/EcoDataNet/Queries/GetEndpointDataReferenceQuery.cs`
+  - `Application/Features/EcoDataNet/Commands/DownloadTransferDataCommand.cs`
+  - DTOs: `EdcTransferResponse.cs`, `EdcTransferStateResponse.cs`, `EdcEndpointDataReferenceResponse.cs`, `EdcDataDownloadResponse.cs`
+- **Estado**: ✅ IMPLEMENTADO.
+
+---
+
+### 11.6. Menú lateral — Sección EcoDataNet
+
+```
+🌐 EcoDataNet (grupo colapsable, icono bi-broadcast)
+   ├── Configuración conector EDC  →  /ecodatanet/connector-config  (icono bi-gear)
+   └── Consumir datos              →  /ecodatanet/consume-data       (icono bi-cloud-download)
+```
+
+- Cada enlace verifica `IPagePermissionService.CanAccessRouteAsync` antes de renderizarse.
+- El grupo padre solo es visible si al menos un hijo tiene permisos (`HasAnyVisibleChild`).
+- `_groupRoutes["EcoDataNet"] = new[] { "/ecodatanet/connector-config", "/ecodatanet/consume-data" }`.
+
+### 11.7. Configuración de permisos recomendada por defecto
+
+Tras despliegue, las pantallas aparecen en amarillo en `/security/page-permissions`. Configuración recomendada:
+
+| Pantalla | ADMIN | SCRAP | PRODUCER | CARRIER | PLANT_OP | CAC_OP | PUBLIC_ENT | COORDINATOR | DISPATCH_OFFICE | REGULATOR | CERTIFIER |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Configuración conector EDC | Ambos | Ambos | Ambos | Ambos | Ambos | Ambos | Ambos | Ambos | Ambos | Ambos | Ambos |
+| Consumir datos | Ambos | Lectura | Lectura | Sin acceso | Lectura | Sin acceso | Lectura | Lectura | Lectura | Lectura | Lectura |
+
+### 11.8. Ficheros implementados (resumen de árbol)
+
+**Domain:**
+- `Domain/Entities/UserEDCConnector.cs`
+- `Domain/Entities/ProfileEDCConsumer.cs`
+
+**Infrastructure:**
+- `Infrastructure/Persistence/Configurations/UserEDCConnectorConfiguration.cs`
+- `Infrastructure/Persistence/Configurations/ProfileEDCConsumerConfiguration.cs`
+- `Infrastructure/Services/EdcManagementClient.cs` — implementa `IEdcManagementClient` (catalog, negociación, transferencia, EDR, descarga)
+- `Infrastructure/Services/EdcCatalogParser.cs` — implementa `IEdcCatalogParser` (parsing DCAT/ODRL)
+
+**Application:**
+- `Application/Common/Interfaces/IEdcManagementClient.cs`
+- `Application/Common/Interfaces/IEdcCatalogParser.cs`
+- `Application/Common/Options/EdcOptions.cs`
+- `Application/Features/EcoDataNet/DTOs/` — todos los DTOs del módulo
+- `Application/Features/EcoDataNet/Queries/` — GetUserEDCConnectorQuery, GetUsersForEDCListQuery, GetConsumableProfilesQuery, GetProfilesForConsumptionListQuery, ParseEdcCatalogsQuery, GetNegotiationStateQuery, GetTransferStateQuery, GetEndpointDataReferenceQuery
+- `Application/Features/EcoDataNet/Commands/` — UpsertUserEDCConnectorCommand, RequestEdcCatalogCommand, StartContractNegotiationCommand, StartTransferProcessCommand, DownloadTransferDataCommand
+- `Application/Features/EcoDataNet/Validators/` — validators FluentValidation para cada command
+
+**Web:**
+- `Web/Components/Pages/EcoDataNet/EDCConnectorConfig.razor`
+- `Web/Components/Pages/EcoDataNet/ConsumeData.razor`
+- `Web/Components/Pages/EcoDataNet/EdcProcessStepper.razor` — stepper visual reutilizable
 
 ---
 
@@ -3495,6 +3726,21 @@ Leyenda: **C**=Create, **R**=Read, **U**=Update, **D**=Delete, **V**=Validar, **
 | **Dash. Cumplimiento Ent. Pública** | `MarketShares`, `Settlements`, `Agreements`, `Incidents` | — | — | — | R | — | — | — | — | R |
 | **Dash. Datos Cumplimiento Oficina** | `MarketShares`, `TreatmentPlantResidues`, `Agreements`, `Settlements` | — | — | — | — | — | — | — | R | R |
 
+**Acceso de REGULATOR y CERTIFIER a dashboards de reporting**: `REGULATOR` accede en modo lectura (R) a: KPIs, Dash. Cumplimiento SCRAP, Dash. Auditoría Cuotas, Dash. Monitorización Convenios, Dash. Datos Cumplimiento Oficina. `CERTIFIER` accede en modo lectura (R) a: KPIs, Dash. Cumplimiento SCRAP, Dash. Auditoría Cuotas, Dash. Monitorización Convenios, Dash. Datos Cumplimiento Oficina, Dash. Huella Carbono Consolidada, Dash. Huella Carbono Transporte, Dash. Huella Carbono Plantas. Ambos ven todos los datos del tenant (solo filtro `OwnerId`, sin `LinkedEntityId`). Este acceso se configura dinámicamente desde `/security/page-permissions` — NO hardcodeado en código.
+
+---
+
+### 4.5. ECODATANET
+
+| Pantalla | Entidad BD | PRODUCER | CARRIER | SCRAP | PUBLIC_ENT | CAC_OP | PLANT_OP | COORDINATOR | DISPATCH_OFFICE | REGULATOR | CERTIFIER | ADMIN |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Configuración conector EDC** | `UserEDCConnector`, `Users` | CRUD-P | CRUD-P | CRUD-P | CRUD-P | CRUD-P | CRUD-P | CRUD-P | CRUD-P | CRUD-P | CRUD-P | CRUD |
+| **Consumir datos** | `ProfileEDCConsumer`, `UserEDCConnector` | R | — | R | R | — | R | R | R | R | R | R |
+
+**Justificación:**
+- **Configuración conector EDC**: cada perfil puede configurar su propio conector (CRUD-P = solo su usuario). ADMIN puede configurar el conector de cualquier usuario del tenant.
+- **Consumir datos**: regulado por `ProfileEDCConsumer`. CARRIER y CAC_OP no consumen datos por defecto (sin acceso). REGULATOR consume de todos los perfiles operativos; CERTIFIER consume de perfiles que generan evidencias auditables.
+
 **Justificación:**
 - **Trazabilidad y Vista 360°**: Todos los perfiles acceden pero ven solo los traslados en los que participan. `SCRAP`, `PUBLIC_ENT`, `COORDINATOR`, `DISPATCH_OFFICE` y `ADMIN` ven transversalmente.
 - **KPIs**: Solo perfiles con responsabilidad de supervisión o cumplimiento normativo. No tiene sentido para `PRODUCER`, `CARRIER` o `CAC_OP` aislados.
@@ -3944,6 +4190,37 @@ Se añaden los siguientes ítems:
 - [x] Filtros persistidos en query string.
 - [x] Todos los dashboards incluyen al menos un gráfico (no solo tablas y cards).
 - [ ] Tras despliegue: configurar permisos por perfil desde `/security/page-permissions`.
+
+### Checklist adicional — Módulo EcoDataNet (Espacio de Datos)
+
+- [x] Pantallas mock eliminadas (PublishData, configuración mock, consumo mock) y código asociado.
+- [x] Entidades `UserEDCConnector` y `ProfileEDCConsumer` creadas en Domain + EF Core.
+- [x] Migración EF Core `AddEDCConnectorTables` aplicada.
+- [x] CQRS completo para configuración de conector EDC: `GetUserEDCConnectorQuery`, `GetUsersForEDCListQuery`, `UpsertUserEDCConnectorCommand`.
+- [x] CQRS completo para consumo de catálogo: `RequestEdcCatalogCommand`, `GetConsumableProfilesQuery`, `GetProfilesForConsumptionListQuery`.
+- [x] `IEdcManagementClient` / `EdcManagementClient` con `RequestCatalogAsync` y paralelización (`SemaphoreSlim`).
+- [x] Parsing DCAT/ODRL: `IEdcCatalogParser` / `EdcCatalogParser` con soporte para prefijos compactos e IRIs.
+- [x] DTOs del catálogo parseado: `EdcCatalogDto`, `EdcDatasetDto`, `EdcOfferDto`, etc.
+- [x] Vista marketplace en `ConsumeData.razor`: datasets agrupados por proveedor, badge de oferta, modal de detalle ODRL humanizado.
+- [x] Negociación de contrato EDC v3: `StartContractNegotiationCommand`, `GetNegotiationStateQuery`, stepper visual.
+- [x] Transferencia de datos EDC v3: `StartTransferProcessCommand`, `GetTransferStateQuery`, `GetEndpointDataReferenceQuery`, `DownloadTransferDataCommand`.
+- [x] Stepper visual reutilizable `EdcProcessStepper.razor`.
+- [x] Polling con `PeriodicTimer` + `CancellationTokenSource` + `IDisposable`.
+- [x] `EdcOptions` en `appsettings.json` (MaxConcurrentRequests, RequestTimeoutSeconds, ManagementApiKey, polling).
+- [x] Menú lateral actualizado con "Configuración conector EDC" y "Consumir datos".
+- [x] Policies `CanAccessEDCConnectorConfig` y `CanAccessEDCConsumeData` registradas.
+- [ ] Tras despliegue: configurar permisos EcoDataNet por perfil desde `/security/page-permissions`.
+
+### Checklist adicional — Perfiles REGULATOR y CERTIFIER
+
+- [x] `ProfileConstants.cs` tiene 11 constantes (+ REGULATOR, CERTIFIER).
+- [x] `EntityRoleToProfileMapping.cs` incluye "Regulator" y "Certifier".
+- [x] Policies `CanViewRegulatoryDashboard` y `CanViewCertificationDashboard` registradas.
+- [x] REGULATOR/CERTIFIER añadidos a policies de reporting existentes.
+- [x] `DataScopeService` trata REGULATOR/CERTIFIER como visión completa del tenant.
+- [x] Dropdown de EntityRole incluye "Regulator" y "Certifier".
+- [x] Seed actualizado a 11 perfiles, 11 usuarios sandbox, 11 UserEDCConnector, 12 ProfileEDCConsumer.
+- [ ] Tras despliegue: configurar permisos para REGULATOR y CERTIFIER desde `/security/page-permissions`.
 
 
 ---
