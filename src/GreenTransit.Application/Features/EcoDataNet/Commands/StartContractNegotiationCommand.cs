@@ -35,7 +35,11 @@ public sealed class StartContractNegotiationCommandValidator
         RuleFor(x => x.ProviderParticipantId).NotEmpty();
         RuleFor(x => x.ProviderProtocolEndpoint).NotEmpty()
             .Must(url => Uri.TryCreate(url, UriKind.Absolute, out _))
-            .WithMessage("ProviderProtocolEndpoint debe ser una URL válida.");
+            .WithMessage("ProviderProtocolEndpoint debe ser una URL válida.")
+            .Must(url => url.Contains("/protocol", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("ProviderProtocolEndpoint debe apuntar al endpoint de protocolo DSP (/protocol), no al de management.")
+            .Must(url => !url.Contains("/management", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("ProviderProtocolEndpoint no debe apuntar al endpoint /management del conector provider.");
     }
 }
 
@@ -84,7 +88,39 @@ public sealed class StartContractNegotiationCommandHandler
 
         var consumerMgmtUrl = $"https://mgmt.{consumerConnector.EDCServerName}/management";
 
-        // 3. CONSTRUIR PAYLOAD
+        // 3. VALIDACIÓN SEMÁNTICA: detectar campos null/vacíos que causarían
+        //    "Value in JsonObjects name/value pair cannot be null" en EDC.
+        var fieldErrors = new List<string>();
+        if (string.IsNullOrWhiteSpace(request.ProviderParticipantId))
+            fieldErrors.Add("ProviderParticipantId (connectorId/assigner) está vacío — debe coincidir con el participantId del provider.");
+        if (string.IsNullOrWhiteSpace(request.ProviderProtocolEndpoint))
+            fieldErrors.Add("ProviderProtocolEndpoint (counterPartyAddress) está vacío.");
+        if (string.IsNullOrWhiteSpace(request.DatasetId))
+            fieldErrors.Add("DatasetId (target del asset) está vacío — debe coincidir con el assetId exacto del catálogo.");
+        if (string.IsNullOrWhiteSpace(request.OfferId))
+            fieldErrors.Add("OfferId está vacío — debe obtenerse del campo @id de odrl:hasPolicy en /catalog/request, NO construirse manualmente.");
+
+        // Log diagnóstico antes de construir el payload
+        _logger.LogInformation(
+            "Validación campos negociación — ConsumerMgmt={ConsumerMgmt} | ConnectorId(provider)={ConnectorId} | " +
+            "CounterPartyAddress={CounterParty} | AssetId(target)={AssetId} | OfferId={OfferId} | " +
+            "ProviderParticipantId={ParticipantId} | RawOfferJson presente={HasRaw}",
+            consumerMgmtUrl,
+            request.ProviderParticipantId,
+            request.ProviderProtocolEndpoint,
+            request.DatasetId,
+            request.OfferId,
+            request.ProviderParticipantId,
+            !string.IsNullOrWhiteSpace(request.RawOfferJson ?? request.Offer?.RawOfferJson));
+
+        if (fieldErrors.Count > 0)
+        {
+            var errorMsg = "Payload de negociación inválido: " + string.Join(" | ", fieldErrors);
+            _logger.LogError("StartContractNegotiation abortado — {Errors}", errorMsg);
+            throw new ValidationException(errorMsg);
+        }
+
+        // 4. CONSTRUIR PAYLOAD
         var payload = BuildContractRequestPayload(request);
 
         // Diagnóstico: comparar OfferId con el @id real de la RawOfferJson capturada
@@ -105,7 +141,7 @@ public sealed class StartContractNegotiationCommandHandler
 
         _logger.LogInformation("Payload de negociación enviado:\n{Payload}", payload);
 
-        // 4. ENVIAR
+        // 5. ENVIAR
         return await _edcClient.StartNegotiationAsync(consumerMgmtUrl, payload, consumerConnector.ApiKey, ct);
     }
 
@@ -134,8 +170,8 @@ public sealed class StartContractNegotiationCommandHandler
 
         writer.WriteStartObject();
 
-        // @context mínimo: solo @vocab EDC — no incluimos odrl.jsonld para evitar
-        // que EDC intente resolver IRIs ODRL en el contexto y falle la validación.
+        // @context raíz: vocabulario EDC para los campos del ContractRequest.
+        // El contexto ODRL se declara dentro del objeto policy.
         writer.WritePropertyName("@context");
         writer.WriteStartObject();
         writer.WriteString("@vocab", "https://w3id.org/edc/v0.0.1/ns/");
@@ -145,19 +181,13 @@ public sealed class StartContractNegotiationCommandHandler
         writer.WriteString("counterPartyAddress", request.ProviderProtocolEndpoint);
         writer.WriteString("protocol", "dataspace-protocol-http");
 
-        // offerId, connectorId y assetId en raíz (formato EDC 0.13 con DSP)
-        writer.WriteString("offerId", request.OfferId);
         writer.WriteString("connectorId", request.ProviderParticipantId);
-        writer.WriteString("assetId", request.DatasetId);
+        writer.WriteString("offerId", request.OfferId);
 
-        // policy: copia literal del RawOfferJson del catálogo.
-        // El provider valida que sea idéntica a la de su contractDefinition.
+        // Policy ODRL Offer completa: se usa la policy del catálogo (RawOfferJson)
+        // para que el @id coincida exactamente con el OfferId del provider y evitar TERMINATED.
         writer.WritePropertyName("policy");
         WritePolicyFromRawOrDto(writer, request);
-
-        writer.WritePropertyName("callbackAddresses");
-        writer.WriteStartArray();
-        writer.WriteEndArray();
 
         writer.WriteEndObject();
         writer.Flush();
@@ -207,11 +237,12 @@ public sealed class StartContractNegotiationCommandHandler
                     // @id, @type, assigner y target para asegurar coherencia.
                     writer.WriteStartObject();
 
-                    var root         = doc.RootElement;
-                    var writtenAtId  = false;
-                    var writtenType  = false;
+                    var root            = doc.RootElement;
+                    var writtenAtId     = false;
+                    var writtenType     = false;
                     var writtenAssigner = false;
                     var writtenTarget   = false;
+                    var writtenContext  = false;
 
                     foreach (var prop in root.EnumerateObject())
                     {
@@ -237,7 +268,10 @@ public sealed class StartContractNegotiationCommandHandler
                                 writtenTarget = true;
                                 break;
                             case "@context":
-                                // No replicar el @context interno de la offer
+                                // Siempre emitir el contexto ODRL para que EDC resuelva
+                                // los prefijos odrl: que vienen literalmente del catálogo.
+                                writer.WriteString("@context", "http://www.w3.org/ns/odrl.jsonld");
+                                writtenContext = true;
                                 break;
                             default:
                                 // Copiar el resto literalmente (permission, prohibition, obligation, …)
@@ -247,6 +281,7 @@ public sealed class StartContractNegotiationCommandHandler
                         }
                     }
 
+                    if (!writtenContext)    writer.WriteString("@context",  "http://www.w3.org/ns/odrl.jsonld");
                     if (!writtenAtId)      writer.WriteString("@id",      request.OfferId);
                     if (!writtenType)      writer.WriteString("@type",     "Offer");
                     if (!writtenAssigner)  writer.WriteString("assigner",  request.ProviderParticipantId);

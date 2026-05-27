@@ -185,9 +185,9 @@ public sealed class EdcManagementClient : IEdcManagementClient
                 var truncatedBody    = body.Length > 2000 ? body[..2000] : body;
                 var truncatedPayload = contractRequestPayload.Length > 4000 ? contractRequestPayload[..4000] : contractRequestPayload;
 
-                _logger.LogWarning(
-                    "Negociación fallida: {StatusCode} — {Body} — Payload enviado: {Payload}",
-                    (int)response.StatusCode, truncatedBody, truncatedPayload);
+                _logger.LogError(
+                    "Negociación fallida: HTTP {StatusCode} | URL: {Url} | ResponseBody: {Body} | PayloadEnviado: {Payload}",
+                    (int)response.StatusCode, url, truncatedBody, truncatedPayload);
 
                 return new EdcNegotiationResponse
                 {
@@ -199,11 +199,18 @@ public sealed class EdcManagementClient : IEdcManagementClient
 
             using var doc  = JsonDocument.Parse(body);
             var       root = doc.RootElement;
+            var       negotiationId = GetJsonLdString(root, "@id");
+
+            _logger.LogInformation(
+                "Negociación iniciada correctamente — NegotiationId: {NegotiationId} | State: {State} | ResponseBody: {Body}",
+                negotiationId,
+                GetJsonLdString(root, "state", "https://w3id.org/edc/v0.0.1/ns/state"),
+                body.Length > 1000 ? body[..1000] : body);
 
             return new EdcNegotiationResponse
             {
                 Success        = true,
-                NegotiationId  = GetJsonLdString(root, "@id"),
+                NegotiationId  = negotiationId,
                 State          = GetJsonLdString(root, "state", "https://w3id.org/edc/v0.0.1/ns/state"),
                 HttpStatusCode = (int)response.StatusCode
             };

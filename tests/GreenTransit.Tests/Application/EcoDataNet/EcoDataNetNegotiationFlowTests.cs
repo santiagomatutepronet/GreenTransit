@@ -183,38 +183,19 @@ public sealed class EcoDataNetNegotiationFlowTests
         result.Success.Should().BeTrue();
         result.NegotiationId.Should().Be(NegotiationId);
 
-        // Assert — formato del payload
+        // Assert — formato del payload EDC 0.5+ / DSP (sin policy inline)
         capturedPayload.Should().NotBeNullOrEmpty();
         capturedPayload.Should().Contain(@"""@vocab"":""https://w3id.org/edc/v0.0.1/ns/""");
         capturedPayload.Should().Contain(@"""@type"":""ContractRequest""");
         capturedPayload.Should().Contain(@"""counterPartyAddress"":""" + ProviderProtocol + @"""");
         capturedPayload.Should().Contain(@"""protocol"":""dataspace-protocol-http""");
+        capturedPayload.Should().Contain(@"""offerId"":""" + OfferId + @"""");
+        capturedPayload.Should().Contain(@"""connectorId"":""" + ProviderParticipantId + @"""");
 
-        // La policy se construye reenviando las reglas ODRL parseadas del catálogo
-        // (permission/prohibition/obligation), normalizando el rightOperand Java
-        // toString a un array JSON limpio. Esto evita el TERMINATED que produce
-        // el provider cuando recibe arrays vacíos en lugar de las reglas reales.
-        capturedPayload.Should().Contain(@"""@context"":""http://www.w3.org/ns/odrl.jsonld""");
-        capturedPayload.Should().Contain(@"""@id"":""" + OfferId + @"""");
-        capturedPayload.Should().Contain(@"""@type"":""Offer""");
-        capturedPayload.Should().Contain(@"""assigner"":""" + ProviderParticipantId + @"""");
-        capturedPayload.Should().Contain(@"""target"":""" + AssetId + @"""");
-
-        // Permission con constraint poblada
-        capturedPayload.Should().Contain("odrl:permission");
-        capturedPayload.Should().Contain("odrl:constraint");
-        capturedPayload.Should().Contain(@"""@id"":""edc:participant""");
-        capturedPayload.Should().Contain(@"""@id"":""odrl:isAnyOf""");
-        capturedPayload.Should().Contain("eco_uc_scrapa");
-        capturedPayload.Should().Contain("eco_uc_scrapb");
-
-        // Prohibition poblada (caso real del log)
-        capturedPayload.Should().Contain(@"""@id"":""odrl:distribute""");
-
-        // El rightOperand Java toString debe estar saneado: no debe filtrarse
-        // el formato sin parsear al payload final.
-        capturedPayload.Should().NotContain("valueType=STRING");
-        capturedPayload.Should().NotContain("@value=");
+        // Campos que NO deben estar (provocan HTTP 400 en EDC moderno)
+        capturedPayload.Should().NotContain(@"""assetId""");
+        capturedPayload.Should().NotContain(@"""policy""");
+        capturedPayload.Should().NotContain(@"""callbackAddresses""");
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -504,5 +485,169 @@ public sealed class EcoDataNetNegotiationFlowTests
         result.Success.Should().BeFalse();
         result.HttpStatusCode.Should().Be(400);
         result.ErrorMessage.Should().Contain("400");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // TEST 5 — Payload NO debe contener assetId, policy ni callbackAddresses
+    //          (formato EDC 0.5+ / DSP — causa HTTP 400 si se incluyen)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task StartNegotiation_Payload_DoesNotContainForbiddenFields()
+    {
+        // Arrange
+        var (db, user, edcMock) = CreateSetup();
+
+        string? capturedPayload = null;
+        edcMock.Setup(c => c.StartNegotiationAsync(
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, string?, CancellationToken>((_, payload, _, _) =>
+                capturedPayload = payload)
+            .ReturnsAsync(new EdcNegotiationResponse { Success = true, NegotiationId = NegotiationId, HttpStatusCode = 200 });
+
+        var handler = new StartContractNegotiationCommandHandler(
+            db, user, edcMock.Object,
+            NullLogger<StartContractNegotiationCommandHandler>.Instance);
+
+        // Act
+        await handler.Handle(new StartContractNegotiationCommand
+        {
+            ConsumerUserId           = ConsumerUserId,
+            DatasetId                = AssetId,
+            OfferId                  = OfferId,
+            ProviderParticipantId    = ProviderParticipantId,
+            ProviderProtocolEndpoint = ProviderProtocol,
+            RawOfferJson             = SampleOffer.RawOfferJson,
+            Offer                    = SampleOffer
+        }, CancellationToken.None);
+
+        // Assert — campos que causan HTTP 400 en EDC 0.5+ no deben estar presentes
+        capturedPayload.Should().NotBeNullOrEmpty();
+        capturedPayload.Should().NotContain(@"""assetId""",
+            because: "assetId no es requerido en /contractnegotiations y provoca 400 en EDC moderno");
+        capturedPayload.Should().NotContain(@"""policy""",
+            because: "policy inline provoca 400; el provider la resuelve por offerId");
+        capturedPayload.Should().NotContain(@"""callbackAddresses""",
+            because: "callbackAddresses vacío provoca 400 en algunas versiones de EDC");
+
+        // Campos obligatorios sí deben estar
+        capturedPayload.Should().Contain(@"""offerId""");
+        capturedPayload.Should().Contain(@"""connectorId""");
+        capturedPayload.Should().Contain(@"""counterPartyAddress""");
+        capturedPayload.Should().Contain(@"""protocol"":""dataspace-protocol-http""");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // TEST 6 — Validador rechaza endpoint /management como counterPartyAddress
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public void Validator_Rejects_ManagementEndpointAsProtocolEndpoint()
+    {
+        var validator = new StartContractNegotiationCommandValidator();
+
+        var command = new StartContractNegotiationCommand
+        {
+            ConsumerUserId           = ConsumerUserId,
+            DatasetId                = AssetId,
+            OfferId                  = OfferId,
+            ProviderParticipantId    = ProviderParticipantId,
+            // URL de management — NO es la correcta para counterPartyAddress
+            ProviderProtocolEndpoint = "https://mgmt.ecoucofiasignacion.ecodatanetconn3.dataspace.wastenode.com/management"
+        };
+
+        var result = validator.Validate(command);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == nameof(StartContractNegotiationCommand.ProviderProtocolEndpoint));
+    }
+
+    [Fact]
+    public void Validator_Rejects_EndpointWithoutProtocolSegment()
+    {
+        var validator = new StartContractNegotiationCommandValidator();
+
+        var command = new StartContractNegotiationCommand
+        {
+            ConsumerUserId           = ConsumerUserId,
+            DatasetId                = AssetId,
+            OfferId                  = OfferId,
+            ProviderParticipantId    = ProviderParticipantId,
+            ProviderProtocolEndpoint = "https://connector.example.com/api/v1"
+        };
+
+        var result = validator.Validate(command);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == nameof(StartContractNegotiationCommand.ProviderProtocolEndpoint));
+    }
+
+    [Fact]
+    public void Validator_Accepts_CorrectProtocolEndpoint()
+    {
+        var validator = new StartContractNegotiationCommandValidator();
+
+        var command = new StartContractNegotiationCommand
+        {
+            ConsumerUserId           = ConsumerUserId,
+            DatasetId                = AssetId,
+            OfferId                  = OfferId,
+            ProviderParticipantId    = ProviderParticipantId,
+            ProviderProtocolEndpoint = ProviderProtocol   // contiene /protocol
+        };
+
+        var result = validator.Validate(command);
+        result.IsValid.Should().BeTrue();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // TEST 7 — EdcContractRequestDto.Validate() detecta errores de estructura
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public void EdcContractRequestDto_Validate_ThrowsWhenManagementEndpoint()
+    {
+        var dto = new GreenTransit.Application.Features.EcoDataNet.DTOs.EdcContractRequestDto
+        {
+            CounterPartyAddress = "https://provider.example.com/management",
+            OfferId             = OfferId,
+            ConnectorId         = ProviderParticipantId
+        };
+
+        var act = () => dto.Validate();
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*management*");
+    }
+
+    [Fact]
+    public void EdcContractRequestDto_Validate_ThrowsWhenMissingProtocolSegment()
+    {
+        var dto = new GreenTransit.Application.Features.EcoDataNet.DTOs.EdcContractRequestDto
+        {
+            CounterPartyAddress = "https://provider.example.com/api/v1",
+            OfferId             = OfferId,
+            ConnectorId         = ProviderParticipantId
+        };
+
+        var act = () => dto.Validate();
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*/protocol*");
+    }
+
+    [Fact]
+    public void EdcContractRequestDto_Validate_PassesForCorrectEndpoint()
+    {
+        var dto = new GreenTransit.Application.Features.EcoDataNet.DTOs.EdcContractRequestDto
+        {
+            CounterPartyAddress = ProviderProtocol,
+            OfferId             = OfferId,
+            ConnectorId         = ProviderParticipantId
+        };
+
+        var act = () => dto.Validate();
+        act.Should().NotThrow();
     }
 }
