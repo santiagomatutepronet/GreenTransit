@@ -1,0 +1,27 @@
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using Radzen.Blazor
+
+<div class="section-header">
+    <RadzenText TextStyle="TextStyle.H5">@Widget.Title</RadzenText>
+    @if (Widget.KeyValuePairs?.Count > 0)
+    {
+        <div class="section-metadata">
+            @foreach (var kv in Widget.KeyValuePairs)
+            {
+                <span class="metadata-item">
+                    <strong>@kv.Key:</strong>&nbsp;@kv.Value
+                </span>
+            }
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(Widget.TextContent))
+    {
+        <RadzenText TextStyle="TextStyle.Body2" Style="color:var(--gt-stone-green,#6E7D78)">
+            @Widget.TextContent
+        </RadzenText>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DynamicWidgetDescriptor Widget { get; set; } = default!;
+}

@@ -1,0 +1,31 @@
+.kv-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.kv-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.375rem 0;
+    border-bottom: 1px solid var(--border, #D1D5D4);
+    font-size: 0.875rem;
+}
+
+.kv-row:last-child {
+    border-bottom: none;
+}
+
+.kv-label {
+    color: var(--text-muted, #6E7D78);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.kv-value {
+    color: var(--text-primary, #262626);
+    text-align: right;
+    word-break: break-word;
+}

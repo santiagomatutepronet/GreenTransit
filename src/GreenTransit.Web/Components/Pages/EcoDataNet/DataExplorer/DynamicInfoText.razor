@@ -1,0 +1,13 @@
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using Radzen.Blazor
+
+<RadzenCard>
+    <RadzenText TextStyle="TextStyle.H6" class="mb-2">@Widget.Title</RadzenText>
+    <RadzenText TextStyle="TextStyle.Body1" Style="white-space:pre-wrap; word-break:break-word">
+        @Widget.TextContent
+    </RadzenText>
+</RadzenCard>
+
+@code {
+    [Parameter, EditorRequired] public DynamicWidgetDescriptor Widget { get; set; } = default!;
+}

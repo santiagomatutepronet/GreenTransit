@@ -490,7 +490,9 @@ public sealed class EdcManagementClient : IEdcManagementClient
             if (!response.IsSuccessStatusCode)
             {
                 var errBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                return new EdcDataDownloadResponse { Success = false, HttpStatusCode = (int)response.StatusCode, ErrorMessage = $"HTTP {(int)response.StatusCode}: {(errBody.Length > 200 ? errBody[..200] : errBody)}" };
+                _logger.LogWarning("Error descargando datos del data plane {Endpoint}: HTTP {Status} — {Body}",
+                    dataPlaneEndpoint, (int)response.StatusCode, errBody);
+                return new EdcDataDownloadResponse { Success = false, HttpStatusCode = (int)response.StatusCode, ErrorMessage = $"HTTP {(int)response.StatusCode}: {errBody}" };
             }
 
             // Leer como texto si es JSON/CSV/texto; como bytes si es binario

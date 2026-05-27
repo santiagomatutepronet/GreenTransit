@@ -172,6 +172,7 @@ public class AppDbContext : DbContext, IApplicationDbContext
     IQueryable<PagePermission>   IApplicationDbContext.PagePermissions    => Set<PagePermission>();
     IQueryable<UserEDCConnector>  IApplicationDbContext.UserEDCConnectors  => Set<UserEDCConnector>();
     IQueryable<ProfileEDCConsumer> IApplicationDbContext.ProfileEDCConsumers => Set<ProfileEDCConsumer>();
+    IQueryable<ExplorerLayoutConfig> IApplicationDbContext.ExplorerLayoutConfigs => Set<ExplorerLayoutConfig>();
     IQueryable<DicProductDeclarationCategory> IApplicationDbContext.DicProductDeclarationCategories => Set<DicProductDeclarationCategory>();
     IQueryable<DicProductDeclarationPeriod>   IApplicationDbContext.DicProductDeclarationPeriods    => Set<DicProductDeclarationPeriod>();
     IQueryable<DicProductDeclarationProduct>  IApplicationDbContext.DicProductDeclarationProducts   => Set<DicProductDeclarationProduct>();

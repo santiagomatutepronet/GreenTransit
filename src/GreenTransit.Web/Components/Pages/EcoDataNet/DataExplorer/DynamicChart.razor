@@ -1,0 +1,196 @@
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using Radzen
+@using Radzen.Blazor
+
+<RadzenCard>
+    <RadzenText TextStyle="TextStyle.H6" class="mb-3">@Widget.Title</RadzenText>
+
+    @if (_chartItems.Count == 0)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Light">Sin datos para mostrar</RadzenAlert>
+    }
+    else
+    {
+        <RadzenChart Style="height:300px" @key="@_chartKey">
+            @switch (Widget.ChartType)
+            {
+                case ChartSubType.Donut:
+                    <RadzenDonutSeries Data="@_chartItems"
+                                       CategoryProperty="@nameof(ChartDataItem.Category)"
+                                       ValueProperty="@nameof(ChartDataItem.Value)"
+                                       Title="@Widget.Title" />
+                    break;
+
+                case ChartSubType.Pie:
+                    <RadzenPieSeries Data="@_chartItems"
+                                     CategoryProperty="@nameof(ChartDataItem.Category)"
+                                     ValueProperty="@nameof(ChartDataItem.Value)"
+                                     Title="@Widget.Title" />
+                    break;
+
+                case ChartSubType.BarHorizontal:
+                    <RadzenBarSeries Data="@_chartItems"
+                                     CategoryProperty="@nameof(ChartDataItem.Category)"
+                                     ValueProperty="@nameof(ChartDataItem.Value)"
+                                     Title="@_primarySeriesTitle" />
+                    <RadzenCategoryAxis />
+                    <RadzenValueAxis />
+                    break;
+
+                case ChartSubType.Area:
+                    @foreach (var (field, idx) in _seriesFields)
+                    {
+                        var seriesData = GetSeriesData(field);
+                        var seriesTitle = JsonSchemaAnalyzerHelper.HumanizeName(field);
+                        <RadzenAreaSeries Data="@seriesData"
+                                          CategoryProperty="@nameof(ChartDataItem.Category)"
+                                          ValueProperty="@nameof(ChartDataItem.Value)"
+                                          Title="@seriesTitle"
+                                          Stroke="@GetSeriesColor(idx)"
+                                          Fill="@GetSeriesColor(idx)" />
+                    }
+                    <RadzenCategoryAxis />
+                    <RadzenValueAxis />
+                    break;
+
+                case ChartSubType.Line:
+                    @foreach (var (field, idx) in _seriesFields)
+                    {
+                        var seriesData = GetSeriesData(field);
+                        var seriesTitle = JsonSchemaAnalyzerHelper.HumanizeName(field);
+                        <RadzenLineSeries Data="@seriesData"
+                                          CategoryProperty="@nameof(ChartDataItem.Category)"
+                                          ValueProperty="@nameof(ChartDataItem.Value)"
+                                          Title="@seriesTitle"
+                                          Stroke="@GetSeriesColor(idx)" />
+                    }
+                    <RadzenCategoryAxis />
+                    <RadzenValueAxis />
+                    break;
+
+                // BarVertical es el default
+                default:
+                    <RadzenColumnSeries Data="@_chartItems"
+                                        CategoryProperty="@nameof(ChartDataItem.Category)"
+                                        ValueProperty="@nameof(ChartDataItem.Value)"
+                                        Title="@_primarySeriesTitle"
+                                        Fill="@GetSeriesColor(0)" />
+                    <RadzenCategoryAxis />
+                    <RadzenValueAxis />
+                    break;
+            }
+            <RadzenLegend />
+        </RadzenChart>
+    }
+</RadzenCard>
+
+@code {
+    [Parameter, EditorRequired] public DynamicWidgetDescriptor Widget { get; set; } = default!;
+
+    private static readonly string[] Palette =
+    [
+        "#0A404B", "#8ACCC3", "#D8B00E", "#D36F15",
+        "#C13E43", "#6E4583", "#535497", "#B4B736"
+    ];
+
+    private List<ChartDataItem> _chartItems = [];
+    private List<(string Field, int Index)> _seriesFields = [];
+    private string _primarySeriesTitle = string.Empty;
+    private string _chartKey = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        // Clave única que fuerza la recreación del RadzenChart cuando cambia cualquier parámetro de binding.
+        // Evita el error "duplicate key" de Blazor cuando las categorías cambian de forma.
+        _chartKey = $"{Widget.WidgetId}|{Widget.ChartType}|{Widget.ChartCategoryField}|{string.Join(',', Widget.ChartValueFields ?? [])}";
+
+        _seriesFields = (Widget.ChartValueFields ?? [])
+            .Select((f, i) => (f, i))
+            .ToList();
+
+        _primarySeriesTitle = _seriesFields.Count > 0
+            ? JsonSchemaAnalyzerHelper.HumanizeName(_seriesFields[0].Field)
+            : Widget.Title;
+
+        // Para gráficos de una sola serie (bar, donut, pie) usamos la primera serie
+        var primaryField = _seriesFields.Count > 0 ? _seriesFields[0].Field : null;
+        _chartItems = primaryField != null
+            ? GetSeriesData(primaryField)
+            : [];
+    }
+
+    private List<ChartDataItem> GetSeriesData(string valueField)
+    {
+        var categoryField = Widget.ChartCategoryField;
+        var rawItems = (Widget.ChartData ?? []).Select(row =>
+        {
+            var category = categoryField != null && row.TryGetValue(categoryField, out var c)
+                ? c?.ToString() ?? string.Empty
+                : string.Empty;
+
+            double value = 0;
+            if (row.TryGetValue(valueField, out var v) && v is double d)
+                value = d;
+            else if (v != null && double.TryParse(v.ToString(), out var parsed))
+                value = parsed;
+
+            return new ChartDataItem { Category = category, Value = value };
+        }).ToList();
+
+        // Si las categorías son fechas con muchos valores distintos, agrupar por mes
+        if (ShouldGroupByMonth(rawItems))
+        {
+            return rawItems
+                .Where(i => DateTime.TryParse(i.Category, out _))
+                .GroupBy(i =>
+                {
+                    DateTime.TryParse(i.Category, out var dt);
+                    return new DateTime(dt.Year, dt.Month, 1);
+                })
+                .OrderBy(g => g.Key)
+                .Select(g => new ChartDataItem
+                {
+                    Category = g.Key.ToString("MMM yyyy"),
+                    Value = g.Sum(x => x.Value)
+                })
+                .ToList();
+        }
+
+        // Agregar siempre por categoría: evita múltiples puntos con la misma categoría
+        // que generan rutas SVG idénticas (clave Blazor duplicada).
+        var grouped = rawItems
+            .GroupBy(i => i.Category)
+            .Select(g => new ChartDataItem { Category = g.Key, Value = g.Sum(x => x.Value) })
+            .ToList();
+
+        return grouped;
+    }
+
+    private static bool ShouldGroupByMonth(List<ChartDataItem> items)
+    {
+        if (items.Count < 10) return false;
+        var dateCount = items.Count(i => DateTime.TryParse(i.Category, out _));
+        return dateCount > items.Count * 0.8;
+    }
+
+    private static string GetSeriesColor(int index) => Palette[index % Palette.Length];
+
+    private class ChartDataItem
+    {
+        public string Category { get; set; } = string.Empty;
+        public double Value { get; set; }
+    }
+
+    /// <summary>Helper de humanización para usar en componente sin acceso directo al servicio.</summary>
+    private static class JsonSchemaAnalyzerHelper
+    {
+        public static string HumanizeName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return name;
+            name = name.Replace('_', ' ');
+            name = System.Text.RegularExpressions.Regex.Replace(name, @"([a-z])([A-Z])", "$1 $2");
+            name = System.Text.RegularExpressions.Regex.Replace(name, @"([A-Z]+)([A-Z][a-z])", "$1 $2");
+            return System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(name.ToLower());
+        }
+    }
+}

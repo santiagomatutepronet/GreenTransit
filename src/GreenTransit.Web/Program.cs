@@ -670,6 +670,10 @@ try
         options.AddPolicy(PolicyConstants.CanAccessEDCConsumeData, policy =>
             policy.RequireAuthenticatedUser());
 
+        // EcoDataNet — Data Explorer: todos los perfiles autenticados (control fino en PagePermissions).
+        options.AddPolicy(PolicyConstants.CanAccessEDCDataExplorer, policy =>
+            policy.RequireAuthenticatedUser());
+
         // Operaciones exclusivas de administración del sistema.
         options.AddPolicy(PolicyConstants.AdminOnly, policy =>
             policy.AddRequirements(new ProfileRequirement(
@@ -786,6 +790,15 @@ try
 
     builder.Services.AddSingleton<GreenTransit.Application.Common.Interfaces.IEdcCatalogParser,
         GreenTransit.Infrastructure.Services.EdcCatalogParser>();
+
+    // ── EDC Data Explorer (análisis dinámico de JSON) ─────────────────────────
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.IJsonSchemaAnalyzer,
+        GreenTransit.Application.Features.EcoDataNet.Services.JsonSchemaAnalyzer>();
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.IDashboardLayoutBuilder,
+        GreenTransit.Application.Features.EcoDataNet.Services.DashboardLayoutBuilder>();
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.ILayoutCustomizationService,
+        GreenTransit.Application.Features.EcoDataNet.Services.LayoutCustomizationService>();
+    builder.Services.AddScoped<GreenTransit.Application.Features.EcoDataNet.Services.EdcDataExplorerStateService>();
 
     // ── Caché en memoria (catálogos geográficos y otros estáticos) ───────────
     builder.Services.AddMemoryCache();

@@ -436,7 +436,7 @@
     </RadzenPanelMenuItem>
 
     @* 🌐 EcoDataNet ⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡ *@
-    @if (AllowAny("/ecodatanet/connector-config", "/ecodatanet/consume-data"))
+    @if (AllowAny("/ecodatanet/connector-config", "/ecodatanet/consume-data", "/ecodatanet/data-explorer"))
     {
         <RadzenPanelMenuItem Text="EcoDataNet" Icon="broadcast_on_personal"
                              Expanded="@IsGroupExpanded("ecodatanet")"
@@ -449,6 +449,10 @@
             <RadzenPanelMenuItem Text="Consumir datos" Icon="cloud_download"
                                  Path="/ecodatanet/consume-data"
                                  Visible="@Allow("/ecodatanet/consume-data")" />
+
+            <RadzenPanelMenuItem Text="Explorar datos" Icon="dashboard"
+                                 Path="/ecodatanet/data-explorer"
+                                 Visible="@Allow("/ecodatanet/data-explorer")" />
 
         </RadzenPanelMenuItem>
     }

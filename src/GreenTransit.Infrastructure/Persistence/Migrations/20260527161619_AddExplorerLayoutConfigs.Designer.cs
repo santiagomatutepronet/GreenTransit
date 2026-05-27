@@ -4,16 +4,19 @@ using GreenTransit.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace GreenTransit.Infrastructure.Migrations
+namespace GreenTransit.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260527161619_AddExplorerLayoutConfigs")]
+    partial class AddExplorerLayoutConfigs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1964,7 +1967,7 @@ namespace GreenTransit.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("RegulatoryTargets", (string)null);
+                    b.ToTable("RegulatoryTargets");
                 });
 
             modelBuilder.Entity("GreenTransit.Domain.Entities.Residue", b =>

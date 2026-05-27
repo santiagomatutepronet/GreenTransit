@@ -1,0 +1,90 @@
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using Radzen
+@using Radzen.Blazor
+@using System.Globalization
+
+<RadzenCard Style="overflow:hidden">
+    <RadzenText TextStyle="TextStyle.H6" class="mb-3">@Widget.Title</RadzenText>
+    <RadzenDataGrid Data="@Widget.TableData"
+                    TItem="Dictionary<string, object?>"
+                    AllowPaging="true"
+                    PageSize="10"
+                    AllowSorting="false"
+                    AllowFiltering="false"
+                    AllowColumnResize="true"
+                    ColumnResized="@OnColumnResized"
+                    Style="width:100%"
+                    Density="Radzen.Density.Compact">
+        <Columns>
+            @if (Widget.TableColumns != null)
+            {
+                @foreach (var col in Widget.TableColumns.Where(c => !c.IsHidden))
+                {
+                    <RadzenDataGridColumn TItem="Dictionary<string, object?>"
+                                         Title="@col.Title"
+                                         UniqueID="@col.PropertyName"
+                                         Width="@(col.Width.HasValue ? $"{col.Width}px" : null)"
+                                         Sortable="false"
+                                         Filterable="false"
+                                         Resizable="true">
+                        <Template Context="row">
+                            @FormatCellValue(row, col)
+                        </Template>
+                    </RadzenDataGridColumn>
+                }
+            }
+        </Columns>
+    </RadzenDataGrid>
+</RadzenCard>
+
+@code {
+    [Parameter, EditorRequired] public DynamicWidgetDescriptor Widget { get; set; } = default!;
+    [Parameter] public EventCallback<(string PropertyName, int NewWidth)> OnColumnWidthChanged { get; set; }
+
+    private static readonly CultureInfo EsCulture = new("es-ES");
+
+    private async Task OnColumnResized(DataGridColumnResizedEventArgs<Dictionary<string, object?>> args)
+    {
+        var propertyName = args.Column.UniqueID;
+        if (string.IsNullOrWhiteSpace(propertyName))
+            return;
+
+        var newWidth = (int)Math.Round(args.Width);
+        var col = Widget.TableColumns?.FirstOrDefault(c => c.PropertyName == propertyName);
+        if (col != null)
+            col.Width = newWidth;
+
+        await OnColumnWidthChanged.InvokeAsync((propertyName, newWidth));
+    }
+
+    private string FormatCellValue(Dictionary<string, object?> row, TableColumnDescriptor col)
+    {
+        if (!row.TryGetValue(col.PropertyName, out var rawValue) || rawValue is null)
+            return "—";
+
+        return col.DataType switch
+        {
+            "Number" => rawValue is double d
+                ? d.ToString(col.FormatString ?? "N2", EsCulture)
+                : rawValue.ToString() ?? "—",
+
+            "Percentage" => rawValue is double pct
+                ? pct.ToString(col.FormatString ?? "N1", EsCulture) + " %"
+                : rawValue.ToString() ?? "—",
+
+            "DateTime" => TryFormatDate(rawValue.ToString(), col.FormatString ?? "dd/MM/yyyy"),
+
+            "Boolean" => rawValue is bool b ? (b ? "Sí" : "No") : rawValue.ToString() ?? "—",
+
+            _ => rawValue.ToString() ?? "—"
+        };
+    }
+
+    private static string TryFormatDate(string? value, string format)
+    {
+        if (string.IsNullOrEmpty(value)) return "—";
+        return DateTime.TryParse(value, out var dt)
+            ? dt.ToString(format, EsCulture)
+            : value;
+    }
+}

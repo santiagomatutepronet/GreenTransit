@@ -1,0 +1,639 @@
+@page "/ecodatanet/data-explorer"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEDCDataExplorer)]
+@rendermode InteractiveServer
+
+@using GreenTransit.Application.Features.EcoDataNet.Commands
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using GreenTransit.Application.Features.EcoDataNet.Queries
+@using GreenTransit.Application.Features.EcoDataNet.Services
+@using GreenTransit.Domain.Authorization
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
+@using System.Text
+@using System.Text.Json
+
+@inject IMediator Mediator
+@inject EdcDataExplorerStateService DataExplorerState
+@inject IJsonSchemaAnalyzer SchemaAnalyzer
+@inject ILayoutCustomizationService LayoutCustomization
+@inject NavigationManager NavigationManager
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<PageTitle>Data Explorer — EcoDataNet</PageTitle>
+
+<style>
+    .explorer-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 1rem;
+    }
+
+    .explorer-metadata-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        background: var(--surface-alt, #F0F2F1);
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        border: 1px solid var(--border, #D1D5D4);
+    }
+
+    .metadata-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.8rem;
+        color: var(--text-secondary, #4F5E5A);
+    }
+
+    .metadata-chip strong {
+        color: var(--text-primary, #262626);
+    }
+
+    @@media (max-width: 767px) {
+        .explorer-grid > * {
+            grid-column: span 12 !important;
+        }
+    }
+
+    @@media (min-width: 768px) and (max-width: 1024px) {
+        .explorer-grid > *.kpi-widget {
+            grid-column: span 6 !important;
+        }
+    }
+
+    .widget-wrapper {
+        position: relative;
+    }
+
+    .widget-wrapper.editable {
+        border: 2px dashed transparent;
+        border-radius: 8px;
+        transition: border-color 0.2s, opacity 0.2s;
+        padding-top: 2.2rem; /* espacio para los controles flotantes */
+    }
+
+    .widget-wrapper.editable:hover {
+        border-color: var(--gt-secondary-1, #8ACCC3);
+        background: rgba(138, 204, 195, 0.05);
+    }
+
+    .widget-wrapper.hidden-widget {
+        opacity: 0.45;
+        border-color: var(--rz-base-400) !important;
+        background: repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 8px,
+            rgba(0,0,0,0.03) 8px,
+            rgba(0,0,0,0.03) 16px
+        );
+    }
+
+    .drag-handle {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        z-index: 20;
+        background: var(--rz-base-100, #f5f5f5);
+        border: 1px solid var(--rz-base-300, #ccc);
+        border-radius: 4px;
+        padding: 2px 4px;
+        cursor: grab;
+        display: flex;
+        align-items: center;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+    }
+
+    .drag-handle:hover {
+        opacity: 1;
+    }
+
+    .widget-restore-btn {
+        position: absolute;
+        top: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 20;
+    }
+
+    .edit-mode-overlay {
+        border: 2px solid var(--gt-secondary-1, #8ACCC3) !important;
+        border-radius: 8px;
+    }
+</style>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-graph-up-arrow me-2" style="color:var(--gt-dark-petroleum,#0A404B)"></i>Data Explorer
+        </h1>
+        <p class="page-subtitle text-muted">Visualización dinámica de datos descargados de EcoDataNet.</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center align-items-center py-5">
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+        <span class="ms-3 text-muted">Analizando datos…</span>
+    </div>
+}
+else if (!_hasData)
+{
+    @* Panel informativo cuando no hay datos *@
+    <RadzenCard>
+        <div class="text-center py-4">
+            <i class="bi bi-database-slash" style="font-size:3rem;color:var(--text-muted,#6E7D78)"></i>
+            <RadzenText TextStyle="TextStyle.H5" class="mt-3">Sin datos para explorar</RadzenText>
+            <RadzenText TextStyle="TextStyle.Body1" class="text-muted mb-4">
+                Seleccione un asset desde la pantalla "Consumir datos", complete la descarga
+                y pulse el botón <strong>Explorar datos</strong> para visualizar el dashboard.
+            </RadzenText>
+            <RadzenButton Text="Ir a Consumir datos"
+                          Icon="cloud_download"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Click="@GoToConsumeData" />
+        </div>
+    </RadzenCard>
+}
+else if (_result?.Success == false)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Icon="error" class="mb-3">
+        <strong>Error en el análisis:</strong> @_result.ErrorMessage
+    </RadzenAlert>
+    <RadzenButton Text="← Volver a Consumir datos"
+                  ButtonStyle="ButtonStyle.Light"
+                  Click="@GoToConsumeData" />
+}
+else if (_result?.Success == true)
+{
+    @* ── Barra de metadatos ─────────────────────────────────────────── *@
+    <div class="explorer-metadata-bar">
+        @if (!string.IsNullOrEmpty(_result.Metadata.DatasetName))
+        {
+            <span class="metadata-chip">
+                <i class="bi bi-file-earmark-bar-graph text-primary"></i>
+                <strong>@_result.Metadata.DatasetName</strong>
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_result.Metadata.ProviderName))
+        {
+            <span class="metadata-chip">
+                <i class="bi bi-building"></i>
+                <strong>@_result.Metadata.ProviderName</strong>
+            </span>
+        }
+        <span class="metadata-chip">
+            <i class="bi bi-calendar3"></i>
+            @_result.Metadata.DownloadedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+        </span>
+        <span class="metadata-chip">
+            <i class="bi bi-hdd"></i>
+            @FormatBytes(_result.Metadata.JsonSizeBytes)
+        </span>
+        <span class="metadata-chip">
+            <i class="bi bi-braces"></i>
+            @_result.Metadata.DetectedFormat
+        </span>
+
+        <div class="ms-auto d-flex gap-2">
+            <RadzenButton Text="Ver JSON crudo"
+                          Icon="code"
+                          ButtonStyle="ButtonStyle.Light"
+                          Size="ButtonSize.Small"
+                          Click="@ShowRawJson" />
+            <RadzenButton Text="Exportar XLSX"
+                          Icon="table_view"
+                          ButtonStyle="ButtonStyle.Light"
+                          Size="ButtonSize.Small"
+                          Disabled="true"
+                          title="Próximamente" />
+        </div>
+    </div>
+
+    @* ── Toolbar de personalización ─────────────────────────────────── *@
+    <LayoutEditorToolbar @bind-IsEditMode="_isEditMode"
+                         HasSavedConfig="_hasSavedConfig"
+                         HasUnsavedChanges="_hasUnsavedChanges"
+                         SchemaChanged="_schemaChanged"
+                         ShowHiddenWidgets="_showHiddenWidgets"
+                         OnSave="SaveLayout"
+                         OnReset="ResetLayout"
+                         OnToggleHidden="@(() => { _showHiddenWidgets = !_showHiddenWidgets; StateHasChanged(); })" />
+
+    @* ── Grid de widgets ────────────────────────────────────────────── *@
+    <div class="explorer-grid">
+        @foreach (var widget in _currentWidgets
+            .Where(w => !w.IsHidden || (_isEditMode && _showHiddenWidgets))
+            .OrderBy(w => w.SortOrder))
+        {
+            <div style="grid-column: span @widget.ColumnSpan"
+                 class="widget-wrapper @(widget.Type == WidgetType.KpiCard ? "kpi-widget" : "") @(_isEditMode ? "editable" : "") @(widget.IsHidden ? "hidden-widget" : "")"
+                 draggable="@(_isEditMode ? "true" : "false")"
+                 @ondragstart="() => OnDragStart(widget)"
+                 @ondragover:preventDefault
+                 @ondragenter="() => OnDragEnter(widget)"
+                 @ondrop="() => OnDrop(widget)">
+
+                @* Contenido del widget *@
+                @switch (widget.Type)
+                {
+                    case WidgetType.KpiCard:
+                        <DynamicKpiCard Widget="widget" />
+                        break;
+
+                    case WidgetType.DataTable:
+                        <DynamicDataTable Widget="widget"
+                                          OnColumnWidthChanged="OnTableColumnResized" />
+                        break;
+
+                    case WidgetType.Chart:
+                        <DynamicChart Widget="widget" />
+                        break;
+
+                    case WidgetType.SectionHeader:
+                        <DynamicSectionHeader Widget="widget" />
+                        break;
+
+                    case WidgetType.KeyValueList:
+                        <DynamicKeyValueList Widget="widget" />
+                        break;
+
+                    case WidgetType.InfoText:
+                        <DynamicInfoText Widget="widget" />
+                        break;
+                }
+
+                @* Controles de edición — posición absoluta, no empujan el contenido *@
+                @if (_isEditMode)
+                {
+                    @* Handle de arrastre *@
+                    <div class="drag-handle" title="Arrastrar para reordenar">
+                        <RadzenIcon Icon="drag_indicator" Style="color:var(--gt-dark-petroleum,#0A404B);font-size:1rem" />
+                    </div>
+
+                    @* Panel de configuración (trigger + popover) *@
+                    <WidgetConfigPanel Widget="widget"
+                                       OnWidgetChanged="OnWidgetEdited"
+                                       OnWidgetHidden="HideWidget" />
+
+                    @* Botón restaurar (solo si está oculto) *@
+                    @if (widget.IsHidden)
+                    {
+                        <div class="widget-restore-btn">
+                            <RadzenButton Text="Mostrar" Icon="visibility" Size="ButtonSize.ExtraSmall"
+                                          ButtonStyle="ButtonStyle.Success"
+                                          Click="@(() => ShowWidget(widget.WidgetId))" />
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    // ── Estado base ──────────────────────────────────────────────────────────
+    private bool _loading = true;
+    private bool _hasData = false;
+    private EdcDataExplorerResult? _result;
+    private string? _rawJson;
+
+    // ── Estado de personalización ────────────────────────────────────────────
+    private bool _isEditMode;
+    private bool _hasUnsavedChanges;
+    private bool _showHiddenWidgets;
+    private bool _schemaChanged;
+    private bool _hasSavedConfig;
+    private string? _currentSchemaHash;
+    private List<DynamicWidgetDescriptor> _currentWidgets = new();
+    private List<DynamicWidgetDescriptor> _autoGeneratedWidgets = new();
+
+    // ── Estado drag & drop ───────────────────────────────────────────────────
+    private DynamicWidgetDescriptor? _draggedWidget;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!DataExplorerState.HasData)
+        {
+            _hasData = false;
+            _loading = false;
+            return;
+        }
+
+        _hasData = true;
+        _rawJson = DataExplorerState.JsonContent;
+
+        StateHasChanged();
+        await Task.Yield();
+
+        try
+        {
+            _result = await Mediator.Send(new AnalyzeEdcDataQuery
+            {
+                JsonContent  = DataExplorerState.JsonContent!,
+                ProviderName = DataExplorerState.ProviderName,
+                DatasetName  = DataExplorerState.DatasetName
+            });
+
+            if (_result?.Success == true)
+            {
+                // Calcular hash del esquema para detectar cambios futuros
+                _currentSchemaHash = _result.Schema is not null
+                    ? SchemaAnalyzer.ComputeSchemaHash(_result.Schema)
+                    : null;
+
+                // Backup del layout automático (deep clone)
+                _autoGeneratedWidgets = _result.Widgets.Select(DeepClone).ToList();
+
+                // Intentar cargar configuración guardada si hay AssetId disponible
+                if (!string.IsNullOrEmpty(DataExplorerState.AssetId)
+                    && !string.IsNullOrEmpty(DataExplorerState.ProviderParticipantId))
+                {
+                    var savedConfig = await Mediator.Send(new GetExplorerLayoutConfigQuery
+                    {
+                        AssetId              = DataExplorerState.AssetId,
+                        ProviderParticipantId = DataExplorerState.ProviderParticipantId
+                    });
+
+                    if (savedConfig is not null)
+                    {
+                        _hasSavedConfig = true;
+                        var mergeResult = LayoutCustomization.ApplyOverrides(
+                            _result.Widgets,
+                            savedConfig.Overrides,
+                            savedConfig.SchemaHash,
+                            _currentSchemaHash!);
+
+                        _currentWidgets = mergeResult.Widgets;
+                        _schemaChanged  = mergeResult.SchemaChanged;
+                    }
+                    else
+                    {
+                        _currentWidgets = _result.Widgets;
+                    }
+                }
+                else
+                {
+                    _currentWidgets = _result.Widgets;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _result = new EdcDataExplorerResult
+            {
+                Success      = false,
+                ErrorMessage = $"Error inesperado: {ex.Message}"
+            };
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ── Drag & Drop ──────────────────────────────────────────────────────────
+
+    private void OnDragStart(DynamicWidgetDescriptor widget)
+        => _draggedWidget = widget;
+
+    private void OnDragEnter(DynamicWidgetDescriptor widget) { }
+
+    private void OnDrop(DynamicWidgetDescriptor targetWidget)
+    {
+        if (_draggedWidget is null || _draggedWidget == targetWidget) return;
+
+        var visible = _currentWidgets
+            .Where(w => !w.IsHidden || _showHiddenWidgets)
+            .OrderBy(w => w.SortOrder)
+            .ToList();
+
+        var draggedIndex = visible.IndexOf(_draggedWidget);
+        var targetIndex  = visible.IndexOf(targetWidget);
+
+        if (draggedIndex < 0 || targetIndex < 0) return;
+
+        visible.RemoveAt(draggedIndex);
+        visible.Insert(targetIndex, _draggedWidget);
+
+        for (int i = 0; i < visible.Count; i++)
+            visible[i].SortOrder = i * 10;
+
+        _draggedWidget    = null;
+        _hasUnsavedChanges = true;
+        StateHasChanged();
+    }
+
+    // ── Gestión de widgets ───────────────────────────────────────────────────
+
+    private void OnWidgetEdited(DynamicWidgetDescriptor _)
+        => _hasUnsavedChanges = true;
+
+    private void HideWidget(string widgetId)
+    {
+        var widget = _currentWidgets.FirstOrDefault(w => w.WidgetId == widgetId);
+        if (widget is null) return;
+        widget.IsHidden    = true;
+        _hasUnsavedChanges = true;
+    }
+
+    private void ShowWidget(string widgetId)
+    {
+        var widget = _currentWidgets.FirstOrDefault(w => w.WidgetId == widgetId);
+        if (widget is null) return;
+        widget.IsHidden    = false;
+        _hasUnsavedChanges = true;
+    }
+
+    // ── Guardar configuración ────────────────────────────────────────────────
+
+    private async Task SaveLayout()
+    {
+        var overrides = new List<WidgetLayoutOverride>();
+
+        foreach (var widget in _currentWidgets)
+        {
+            var auto = _autoGeneratedWidgets.FirstOrDefault(w => w.WidgetId == widget.WidgetId);
+            if (auto is null) continue;
+
+            var ov        = new WidgetLayoutOverride { WidgetId = widget.WidgetId };
+            bool hasChanges = false;
+
+            if (widget.SortOrder != auto.SortOrder)
+                { ov.CustomSortOrder = widget.SortOrder; hasChanges = true; }
+            if (widget.ColumnSpan != auto.ColumnSpan)
+                { ov.CustomColumnSpan = widget.ColumnSpan; hasChanges = true; }
+            if (widget.Title != auto.Title)
+                { ov.CustomTitle = widget.Title; hasChanges = true; }
+            if (widget.IsHidden)
+                { ov.IsHidden = true; hasChanges = true; }
+            if (widget.Type == WidgetType.Chart && widget.ChartType != auto.ChartType)
+                { ov.CustomChartType = widget.ChartType; hasChanges = true; }
+
+            if (widget.Type == WidgetType.Chart)
+            {
+                bool categoryChanged = widget.ChartCategoryField != auto.ChartCategoryField;
+                bool valuesChanged = !AreValueFieldsEqual(widget.ChartValueFields, auto.ChartValueFields);
+
+                if (categoryChanged || valuesChanged)
+                {
+                    ov.CustomChartBinding = new ChartFieldBinding();
+                    if (categoryChanged)
+                        ov.CustomChartBinding.CustomCategoryField = widget.ChartCategoryField;
+                    if (valuesChanged)
+                        ov.CustomChartBinding.CustomValueFields = widget.ChartValueFields?.ToList();
+                    hasChanges = true;
+                }
+            }
+
+            if (widget.Type == WidgetType.DataTable && widget.TableColumns != null && auto.TableColumns != null)
+            {
+                var tableOverrides = new List<TableColumnOverride>();
+                foreach (var col in widget.TableColumns)
+                {
+                    var autoCol = auto.TableColumns.FirstOrDefault(c => c.PropertyName == col.PropertyName);
+                    if (autoCol == null) continue;
+
+                    bool hidden = col.IsHidden;
+                    bool widthChanged = col.Width != autoCol.Width;
+
+                    if (hidden || widthChanged)
+                    {
+                        tableOverrides.Add(new TableColumnOverride
+                        {
+                            PropertyName = col.PropertyName,
+                            IsHidden = hidden,
+                            CustomWidth = widthChanged ? col.Width : null
+                        });
+                    }
+                }
+
+                if (tableOverrides.Any())
+                {
+                    ov.CustomTableColumns = tableOverrides;
+                    hasChanges = true;
+                }
+            }
+
+            if (hasChanges) overrides.Add(ov);
+        }
+
+        await Mediator.Send(new SaveExplorerLayoutConfigCommand
+        {
+            AssetId              = DataExplorerState.AssetId!,
+            ProviderParticipantId = DataExplorerState.ProviderParticipantId!,
+            DatasetName          = DataExplorerState.DatasetName,
+            Overrides            = overrides,
+            SchemaHash           = _currentSchemaHash
+        });
+
+        _hasUnsavedChanges = false;
+        _hasSavedConfig    = true;
+        _schemaChanged     = false;
+
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Success,
+            Summary  = "Layout guardado",
+            Detail   = "La personalización se ha guardado correctamente.",
+            Duration = 3000
+        });
+    }
+
+    // ── Resetear a automático ────────────────────────────────────────────────
+
+    private async Task ResetLayout()
+    {
+        var confirmed = await DialogService.Confirm(
+            "¿Deseas descartar la personalización y volver al layout automático?",
+            "Resetear layout",
+            new ConfirmOptions { OkButtonText = "Sí, resetear", CancelButtonText = "Cancelar" });
+
+        if (confirmed != true) return;
+
+        if (!string.IsNullOrEmpty(DataExplorerState.AssetId))
+        {
+            await Mediator.Send(new DeleteExplorerLayoutConfigCommand
+            {
+                AssetId              = DataExplorerState.AssetId!,
+                ProviderParticipantId = DataExplorerState.ProviderParticipantId!
+            });
+        }
+
+        _currentWidgets    = _autoGeneratedWidgets.Select(DeepClone).ToList();
+        _hasSavedConfig    = false;
+        _hasUnsavedChanges = false;
+        _schemaChanged     = false;
+        _isEditMode        = false;
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private static DynamicWidgetDescriptor DeepClone(DynamicWidgetDescriptor source)
+    {
+        var json = JsonSerializer.Serialize(source);
+        return JsonSerializer.Deserialize<DynamicWidgetDescriptor>(json)!;
+    }
+
+    private void OnTableColumnResized((string PropertyName, int NewWidth) args)
+    {
+        _hasUnsavedChanges = true;
+        StateHasChanged();
+    }
+
+    private static bool AreValueFieldsEqual(List<string>? a, List<string>? b)
+    {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        if (a.Count != b.Count) return false;
+        return a.OrderBy(x => x).SequenceEqual(b.OrderBy(x => x));
+    }
+
+    private void GoToConsumeData()
+        => NavigationManager.NavigateTo("/ecodatanet/consume-data");
+
+    private async Task ShowRawJson()
+    {
+        if (string.IsNullOrEmpty(_rawJson)) return;
+
+        var formatted = TryFormatJson(_rawJson);
+        await DialogService.OpenAsync("JSON descargado",
+            ds => @<div>
+                <pre style="max-height:70vh;overflow:auto;font-size:.75rem;
+                            background:#1e1e1e;color:#d4d4d4;padding:1rem;
+                            border-radius:6px;white-space:pre-wrap;word-break:break-all">@formatted</pre>
+                <div class="d-flex justify-content-end mt-3">
+                    <RadzenButton Text="Cerrar" ButtonStyle="ButtonStyle.Light" Click="@(_ => ds.Close())" />
+                </div>
+            </div>,
+            new DialogOptions { Width = "min(95vw,900px)", CloseDialogOnOverlayClick = true });
+    }
+
+    private static string TryFormatJson(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024        => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:N1} KB",
+        _             => $"{bytes / (1024.0 * 1024):N2} MB"
+    };
+}

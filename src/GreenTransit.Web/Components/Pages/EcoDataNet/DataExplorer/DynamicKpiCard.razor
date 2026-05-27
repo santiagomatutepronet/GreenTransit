@@ -1,0 +1,24 @@
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using Radzen.Blazor
+
+<RadzenCard class="dynamic-kpi-card" Style="@($"border-left: 4px solid {Widget.KpiColor}; height: 100%;")">
+    <div class="kpi-card-content">
+        <div class="kpi-icon">
+            <RadzenIcon Icon="@Widget.KpiIcon" Style="@($"font-size:2rem; color:{Widget.KpiColor}")" />
+        </div>
+        <div class="kpi-data">
+            <div class="kpi-value">
+                @Widget.KpiValue
+                @if (!string.IsNullOrEmpty(Widget.KpiUnit))
+                {
+                    <span class="kpi-unit"> @Widget.KpiUnit</span>
+                }
+            </div>
+            <div class="kpi-title">@Widget.Title</div>
+        </div>
+    </div>
+</RadzenCard>
+
+@code {
+    [Parameter, EditorRequired] public DynamicWidgetDescriptor Widget { get; set; } = default!;
+}

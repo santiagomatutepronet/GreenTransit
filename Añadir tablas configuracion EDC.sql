@@ -165,14 +165,26 @@ IF NOT EXISTS (SELECT 1 FROM dbo.Profiles WHERE Reference = 'CERTIFIER')
 
     DELETE FROM dbo.ProfileEDCConsumer
     WHERE ProfileId = @carrier AND ConsumedProfileId = @scrap;
--- =============================================================================
--- Verificación
--- =============================================================================
---SELECT
---    p.Reference  AS ProfileReference,
---    cp.Reference AS ConsumedProfileReference
---FROM dbo.ProfileEDCConsumer pec
---JOIN dbo.Profiles p  ON p.ID  = pec.ProfileId
---JOIN dbo.Profiles cp ON cp.ID = pec.ConsumedProfileId
---ORDER BY p.Reference, cp.Reference;
 
+ GO
+
+ CREATE TABLE [dbo].[ExplorerLayoutConfigs](
+	[Id] [int] IDENTITY(1,1) NOT NULL,
+	[OwnerId] [uniqueidentifier] NOT NULL,
+	[UserId] [int] NOT NULL,
+	[AssetId] [nvarchar](512) NOT NULL,
+	[ProviderParticipantId] [nvarchar](512) NOT NULL,
+	[DatasetName] [nvarchar](256) NULL,
+	[LayoutConfigJson] [nvarchar](max) NOT NULL,
+	[SchemaHash] [nvarchar](64) NULL,
+	[CreatedAt] [datetime2](0) NOT NULL,
+	[UpdatedAt] [datetime2](0) NOT NULL,
+ CONSTRAINT [PK_ExplorerLayoutConfigs] PRIMARY KEY CLUSTERED 
+(
+	[Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+
+ALTER TABLE [dbo].[ExplorerLayoutConfigs] ADD  DEFAULT (N'[]') FOR [LayoutConfigJson]
+GO

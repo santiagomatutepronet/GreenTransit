@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using GreenTransit.Domain.Authorization
 @using System.Text.Json
+@using GreenTransit.Application.Features.EcoDataNet.Services
 
 @page "/ecodatanet/consume-data"
 @attribute [Authorize(Policy = PolicyConstants.CanAccessEDCConsumeData)]
@@ -16,6 +17,8 @@
 @inject IMediator           Mediator
 @inject ICurrentUserService CurrentUser
 @inject IJSRuntime          JS
+@inject EdcDataExplorerStateService DataExplorerState
+@inject NavigationManager   NavigationManager
 
 @implements IDisposable
 
@@ -765,10 +768,19 @@ else
                             <button class="btn btn-outline-primary btn-sm mb-2" @onclick="ExportDownloadToFile">
                                 <i class="bi bi-file-earmark-arrow-down me-1"></i>Exportar a fichero
                             </button>
-                            <details>
-                                <summary style="cursor:pointer;font-size:.82rem;color:var(--text-muted,#6E7D78)">Ver datos descargados</summary>
-                                <pre style="max-height:300px;overflow:auto;font-size:.75rem;background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:6px;margin-top:.5rem">@_downloadResponse.Data</pre>
-                            </details>
+                            <button class="btn btn-outline-success btn-sm mb-2 ms-2" @onclick="NavigateToDataExplorer"
+                                    disabled="@(_isNavigatingToExplorer || string.IsNullOrEmpty(_downloadResponse?.Data))">
+                                @if (_isNavigatingToExplorer)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    <span>Cargando explorador…</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-graph-up-arrow me-1"></i>
+                                    <span>Explorar datos</span>
+                                }
+                            </button>
                         }
                         else if (_downloadResponse?.Success == false)
                         {
@@ -1365,6 +1377,27 @@ else
         var fileName    = $"ecodatanet-{_negotiationSelection?.DatasetName ?? "data"}.json";
         var mimeType    = _downloadResponse.ContentType ?? "application/json";
         await JS.InvokeVoidAsync("saveAsTextFile", fileName, _downloadResponse.Data, mimeType);
+    }
+
+    private bool _isNavigatingToExplorer;
+
+    private async Task NavigateToDataExplorer()
+    {
+        if (string.IsNullOrEmpty(_downloadResponse?.Data)) return;
+
+        _isNavigatingToExplorer = true;
+        StateHasChanged();
+
+        // Pequeño delay para que el spinner se renderice antes de la navegación
+        await Task.Delay(80);
+
+        DataExplorerState.JsonContent          = _downloadResponse.Data;
+        DataExplorerState.ProviderName         = _negotiationSelection?.ProviderUserName;
+        DataExplorerState.DatasetName          = _negotiationSelection?.DatasetName;
+        DataExplorerState.AssetId              = _negotiationSelection?.SelectedDatasetId;
+        DataExplorerState.ProviderParticipantId = _negotiationSelection?.ProviderParticipantId;
+
+        NavigationManager.NavigateTo("/ecodatanet/data-explorer");
     }
 
     private void RetryNegotiation()

@@ -232,6 +232,9 @@ public static class PolicyConstants
     /// <summary>Acceso a la pantalla de consumo de datos EDC. Todos los perfiles autenticados.</summary>
     public const string CanAccessEDCConsumeData = "CanAccessEDCConsumeData";
 
+    /// <summary>Acceso al Data Explorer de EDC (visualizador dinámico de datos descargados). Todos los perfiles autenticados.</summary>
+    public const string CanAccessEDCDataExplorer = "CanAccessEDCDataExplorer";
+
     // ─── Administración del sistema ──────────────────────────────────
 
     /// <summary>Operaciones exclusivas del administrador del sistema (ej. seed de datos).</summary>

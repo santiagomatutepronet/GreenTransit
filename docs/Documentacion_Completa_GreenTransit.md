@@ -1614,6 +1614,37 @@ Integración de GreenTransit con el data space EcoDataNet mediante conectores ED
 }
 ```
 
+### 4.10.7 EDC Data Explorer — Dashboard Dinámico
+
+- **Ruta:** `/ecodatanet/data-explorer`
+- **Propósito:** Visualizador dinámico que recibe cualquier JSON descargado de una transferencia EDC, analiza su estructura en runtime y genera automáticamente un dashboard con KPI cards, tablas y gráficos, sin necesidad de programar un componente específico para cada tipo de asset.
+- **Entidades:** No se crean nuevas entidades de dominio ni tablas. Todo es procesamiento en memoria.
+- **Acceso desde:** Botón "Explorar datos" en `/ecodatanet/consume-data`, visible tras una descarga exitosa.
+- **Análisis de estructura:** `IJsonSchemaAnalyzer` / `JsonSchemaAnalyzer` (Application) usa `System.Text.Json` para detectar propiedades escalares (string, número, booleano, fecha), arrays de objetos homogéneos, objetos anidados. Incluye detección de porcentajes (por nombre o valor), fechas ISO 8601, categorías y propiedades temporales.
+- **Generación de layout:** `IDashboardLayoutBuilder` / `DashboardLayoutBuilder` (Application) aplica heurísticas automáticas: propiedades numéricas raíz → KPI cards; arrays con temporal + numérico → Line/Area chart; arrays con categoría + numérico → Donut/Bar chart; todos los arrays homogéneos → DataTable paginada; objetos anidados → KeyValueList; strings largas → InfoText.
+- **Widgets disponibles:** `KpiCard` (valor grande + icono + unidad), `DataTable` (Radzen paginada/filtrable/sorteable), `Chart` (Radzen: Bar, Line, Area, Donut, Pie), `SectionHeader`, `KeyValueList`, `InfoText`.
+- **Grid CSS:** `display:grid; grid-template-columns: repeat(12, 1fr)`. Cada widget ocupa un `ColumnSpan` determinado por las heurísticas. Responsive: <768px = full width; 768-1024px = KPIs a 6 columnas.
+- **Formato:** Cultura `es-ES` (separador miles = punto, decimal = coma). Porcentaje 0-1 se multiplica ×100. Paleta KPI: rotar entre 8 colores corporativos.
+- **Estado compartido:** `EdcDataExplorerStateService` (Scoped) transporta JSON + metadatos entre ConsumeData y DataExplorer.
+- **CQRS:** `AnalyzeEdcDataQuery` → orquesta `IJsonSchemaAnalyzer` + `IDashboardLayoutBuilder` vía MediatR.
+- **DTOs principales:** `JsonPropertyDescriptor`, `JsonDataSchema`, `JsonArrayDescriptor`, `DynamicWidgetDescriptor`, `EdcDataExplorerResult`, `DataExplorerMetadata`, `TableColumnDescriptor`.
+- **Límites:** JSON máximo 50 MB; arrays procesados hasta 1.000 elementos.
+- **Roles:** Todos los perfiles autenticados (policy `CanAccessEDCDataExplorer`), mismos permisos que "Consumir datos".
+
+### 4.10.8 EDC Data Explorer — Personalización de Layout con Persistencia
+
+- **Ruta:** Misma pantalla `/ecodatanet/data-explorer` (modo edición activable).
+- **Propósito:** Permite al usuario personalizar el layout generado automáticamente (reordenar, ocultar, cambiar tipo de gráfico, ajustar anchos, renombrar) y guardar esa personalización vinculada al AssetId del catálogo EDC, para que al descargar el mismo asset nuevamente, el layout ya esté personalizado.
+- **Entidad nueva:** `ExplorerLayoutConfig` — única excepción a la regla de "no nuevas entidades", justificada por necesidad de persistencia. Campos: `Id`, `OwnerId`, `UserId`, `AssetId`, `ProviderParticipantId`, `DatasetName`, `LayoutConfigJson` (nvarchar(max) con JSON de overrides), `SchemaHash` (MD5), `CreatedAt`, `UpdatedAt`. Índice único sobre `(OwnerId, UserId, AssetId, ProviderParticipantId)`.
+- **Funcionalidades:** Reordenar (drag & drop HTML5), ocultar widgets, cambiar tipo de gráfico, cambiar ancho (3/4/6/12 columnas), renombrar, guardar/cargar config, resetear a automático.
+- **WidgetId determinístico:** Generado a partir del tipo + nombre (`kpi_total_tons_processed`, `chart_waste_by_category_donut`, `table_waste_by_category`) para vincular overrides entre ejecuciones.
+- **Detección de cambios de esquema:** `ComputeSchemaHash()` genera MD5 de la estructura (nombres + tipos sin datos). Si el hash cambia, se muestra badge de advertencia y los widgets nuevos aparecen al final.
+- **Merge de configuración:** `ILayoutCustomizationService` / `LayoutCustomizationService` combina overrides guardados con widgets generados, manteniendo overrides válidos, mostrando widgets nuevos, ignorando obsoletos.
+- **CQRS:** `GetExplorerLayoutConfigQuery` (lectura), `SaveExplorerLayoutConfigCommand` (upsert), `DeleteExplorerLayoutConfigCommand` (reset).
+- **UI de edición:** `LayoutEditorToolbar.razor` (barra toggle modo edición, guardar, resetear), `WidgetConfigPanel.razor` (panel por widget: título, ancho, tipo gráfico, ocultar).
+- **Multi-tenant:** Config aislada por `OwnerId` + `UserId` + `AssetId` + `ProviderParticipantId`. Filtro por OwnerId en todos los handlers.
+- **DTOs:** `WidgetLayoutOverride`, `LayoutConfigDto`, `LayoutMergeResult`.
+
 ---
 
 # 5. 🔄 Flujo Global de Operaciones

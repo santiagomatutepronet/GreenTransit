@@ -68,8 +68,9 @@ public interface IApplicationDbContext
     IQueryable<PagePermission>  PagePermissions  { get; }
 
     // ── EcoDataNet ────────────────────────────────────────────────────────────
-    IQueryable<UserEDCConnector>   UserEDCConnectors   { get; }
-    IQueryable<ProfileEDCConsumer> ProfileEDCConsumers { get; }
+    IQueryable<UserEDCConnector>     UserEDCConnectors     { get; }
+    IQueryable<ProfileEDCConsumer>   ProfileEDCConsumers   { get; }
+    IQueryable<ExplorerLayoutConfig> ExplorerLayoutConfigs { get; }
 
     // ── Diccionarios declaraciones ────────────────────────────────────────────
     IQueryable<DicProductDeclarationCategory> DicProductDeclarationCategories { get; }

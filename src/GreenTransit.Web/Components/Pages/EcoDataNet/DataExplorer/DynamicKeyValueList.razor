@@ -1,0 +1,19 @@
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using Radzen.Blazor
+
+<RadzenCard>
+    <RadzenText TextStyle="TextStyle.H6" class="mb-3">@Widget.Title</RadzenText>
+    <div class="kv-list">
+        @foreach (var kv in Widget.KeyValuePairs ?? new())
+        {
+            <div class="kv-row">
+                <span class="kv-label">@kv.Key</span>
+                <span class="kv-value">@kv.Value</span>
+            </div>
+        }
+    </div>
+</RadzenCard>
+
+@code {
+    [Parameter, EditorRequired] public DynamicWidgetDescriptor Widget { get; set; } = default!;
+}

@@ -1,0 +1,281 @@
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using Radzen
+@using Radzen.Blazor
+
+<style>
+    .widget-config-trigger {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 20;
+    }
+
+    .widget-config-panel {
+        position: absolute;
+        top: 36px;
+        right: 6px;
+        z-index: 100;
+        width: 220px;
+        background: var(--rz-base-background-color, #fff);
+        border: 1px solid var(--rz-base-300, #ccc);
+        border-radius: 8px;
+        padding: 0.75rem;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+</style>
+
+<div class="widget-config-trigger">
+    <RadzenButton Icon="settings" Size="ButtonSize.ExtraSmall"
+                  ButtonStyle="@(_showConfig ? ButtonStyle.Primary : ButtonStyle.Light)"
+                  Variant="Variant.Filled"
+                  title="Configurar widget"
+                  Click="@(() => _showConfig = !_showConfig)" />
+</div>
+
+@if (_showConfig)
+{
+    <div class="widget-config-panel">
+
+        @* Título editable *@
+        <RadzenFormField Text="Título" Variant="Variant.Text" Style="width:100%">
+            <ChildContent>
+                <RadzenTextBox @bind-Value="Widget.Title" Style="width:100%"
+                               Change="@(_ => NotifyChange())" />
+            </ChildContent>
+        </RadzenFormField>
+
+        @* Ancho (ColumnSpan) *@
+        <RadzenFormField Text="Ancho" Variant="Variant.Text" Style="width:100%; margin-top:0.5rem">
+            <ChildContent>
+                <RadzenDropDown @bind-Value="Widget.ColumnSpan"
+                                Data="@_columnSpanOptions"
+                                TextProperty="Label" ValueProperty="Value"
+                                Style="width:100%"
+                                Change="@(_ => NotifyChange())" />
+            </ChildContent>
+        </RadzenFormField>
+
+        @* Tipo de gráfico (solo si es Chart) *@
+        @if (Widget.Type == WidgetType.Chart)
+        {
+            <RadzenFormField Text="Tipo de gráfico" Variant="Variant.Text" Style="width:100%; margin-top:0.5rem">
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="Widget.ChartType"
+                                    Data="@_chartTypeOptions"
+                                    TextProperty="Label" ValueProperty="Value"
+                                    Style="width:100%"
+                                    Change="@OnChartTypeChanged" />
+                </ChildContent>
+            </RadzenFormField>
+
+            @if (Widget.AvailableCategoryFields != null && Widget.AvailableCategoryFields.Any())
+            {
+                <RadzenText TextStyle="TextStyle.Overline" Style="margin-top:0.75rem; margin-bottom:0.25rem; color:var(--gt-stone-green)">
+                    Datos del gráfico
+                </RadzenText>
+
+                <RadzenFormField Text="@GetCategoryFieldLabel()" Variant="Variant.Text" Style="width:100%">
+                    <ChildContent>
+                        <RadzenDropDown TValue="string"
+                                        @bind-Value="Widget.ChartCategoryField"
+                                        Data="@GetCategoryFieldOptions()"
+                                        TextProperty="Label" ValueProperty="Value"
+                                        Style="width:100%"
+                                        Change="@(_ => NotifyChange())" />
+                    </ChildContent>
+                </RadzenFormField>
+            }
+
+            @if (Widget.AvailableValueFields != null && Widget.AvailableValueFields.Any())
+            {
+                @if (IsMonoSeriesChart())
+                {
+                    <RadzenFormField Text="Valor (tamaño del segmento)" Variant="Variant.Text" Style="width:100%; margin-top:0.5rem">
+                        <ChildContent>
+                            <RadzenDropDown TValue="string"
+                                            Value="@GetSingleValueField()"
+                                            Data="@GetValueFieldOptions()"
+                                            TextProperty="Label" ValueProperty="Value"
+                                            Style="width:100%"
+                                            Change="@OnSingleValueFieldChanged" />
+                        </ChildContent>
+                    </RadzenFormField>
+                }
+                else
+                {
+                    <RadzenFormField Text="Series de valores (eje Y)" Variant="Variant.Text" Style="width:100%; margin-top:0.5rem">
+                        <ChildContent>
+                            <RadzenDropDown TValue="IEnumerable<string>"
+                                            Value="@Widget.ChartValueFields"
+                                            Data="@GetValueFieldOptions()"
+                                            TextProperty="Label" ValueProperty="Value"
+                                            Multiple="true"
+                                            Style="width:100%"
+                                            Change="@OnValueFieldsChanged"
+                                            Placeholder="Seleccione al menos un campo" />
+                        </ChildContent>
+                    </RadzenFormField>
+                }
+            }
+        }
+
+        @if (Widget.Type == WidgetType.DataTable && Widget.TableColumns != null && Widget.TableColumns.Any())
+        {
+            <RadzenText TextStyle="TextStyle.Overline"
+                        Style="margin-top:0.75rem; margin-bottom:0.25rem; color:var(--gt-stone-green)">
+                Columnas visibles
+            </RadzenText>
+
+            <div class="table-columns-selector">
+                @foreach (var col in Widget.TableColumns)
+                {
+                    <div class="column-toggle-row">
+                        <RadzenCheckBox TValue="bool"
+                                        Value="@(!col.IsHidden)"
+                                        Change="@((bool visible) => OnColumnVisibilityChanged(col, visible))"
+                                        Name="@($"col_{col.PropertyName}")" />
+                        <RadzenLabel Text="@col.Title"
+                                     Component="@($"col_{col.PropertyName}")"
+                                     Style="@(col.IsHidden ? "text-decoration:line-through; color:var(--gt-stone-green)" : null)" />
+                    </div>
+                }
+            </div>
+
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem"
+                         Style="margin-top:0.5rem">
+                <RadzenButton Text="Todas" Size="ButtonSize.ExtraSmall"
+                              ButtonStyle="ButtonStyle.Light" Variant="Variant.Text"
+                              Click="@ShowAllColumns" />
+                <RadzenButton Text="Ninguna" Size="ButtonSize.ExtraSmall"
+                              ButtonStyle="ButtonStyle.Light" Variant="Variant.Text"
+                              Click="@HideAllColumns" />
+            </RadzenStack>
+        }
+
+        @* Botón ocultar *@
+        <RadzenButton Text="Ocultar widget" Icon="visibility_off"
+                      ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                      Variant="Variant.Outlined" Style="width:100%; margin-top:0.75rem"
+                      Click="@(() => OnWidgetHidden.InvokeAsync(Widget.WidgetId))" />
+    </div>
+}
+
+@code {
+    [Parameter] public DynamicWidgetDescriptor Widget { get; set; } = null!;
+    [Parameter] public EventCallback<DynamicWidgetDescriptor> OnWidgetChanged { get; set; }
+    [Parameter] public EventCallback<string> OnWidgetHidden { get; set; }
+
+    private bool _showConfig;
+
+    private static readonly List<ColumnSpanOption> _columnSpanOptions =
+    [
+        new("25% (3 columnas)",  3),
+        new("33% (4 columnas)",  4),
+        new("50% (6 columnas)",  6),
+        new("100% (12 columnas)", 12)
+    ];
+
+    private static readonly List<ChartTypeOption> _chartTypeOptions =
+    [
+        new("Barras verticales",    ChartSubType.BarVertical),
+        new("Barras horizontales",  ChartSubType.BarHorizontal),
+        new("Líneas",               ChartSubType.Line),
+        new("Área",                 ChartSubType.Area),
+        new("Donut",                ChartSubType.Donut),
+        new("Tarta",                ChartSubType.Pie)
+    ];
+
+    private void NotifyChange() => OnWidgetChanged.InvokeAsync(Widget);
+
+    private string GetCategoryFieldLabel() => Widget.ChartType switch
+    {
+        ChartSubType.Donut or ChartSubType.Pie => "Campo de segmentos",
+        ChartSubType.BarHorizontal => "Eje Y (categorías)",
+        _ => "Eje X (categorías)"
+    };
+
+    private bool IsMonoSeriesChart() =>
+        Widget.ChartType is ChartSubType.Donut or ChartSubType.Pie;
+
+    private List<FieldOption> GetCategoryFieldOptions()
+    {
+        if (Widget.AvailableCategoryFields == null) return [];
+        return Widget.AvailableCategoryFields
+            .Select(f => new FieldOption(Widget.FieldDisplayNames?.GetValueOrDefault(f, f) ?? f, f))
+            .ToList();
+    }
+
+    private List<FieldOption> GetValueFieldOptions()
+    {
+        if (Widget.AvailableValueFields == null) return [];
+        return Widget.AvailableValueFields
+            .Select(f => new FieldOption(Widget.FieldDisplayNames?.GetValueOrDefault(f, f) ?? f, f))
+            .ToList();
+    }
+
+    private string GetSingleValueField() =>
+        Widget.ChartValueFields?.FirstOrDefault() ?? string.Empty;
+
+    private void OnSingleValueFieldChanged(object? value)
+    {
+        if (value is string newField && !string.IsNullOrWhiteSpace(newField))
+            Widget.ChartValueFields = [newField];
+
+        NotifyChange();
+    }
+
+    private void OnValueFieldsChanged(object? value)
+    {
+        if (value is IEnumerable<string> fields)
+            Widget.ChartValueFields = fields.ToList();
+
+        NotifyChange();
+    }
+
+    private void OnChartTypeChanged(object? value)
+    {
+        if (value is ChartSubType newChartType)
+        {
+            var oldChartType = Widget.ChartType;
+            Widget.ChartType = newChartType;
+
+            if (IsMonoSeriesChartType(newChartType)
+                && !IsMonoSeriesChartType(oldChartType)
+                && Widget.ChartValueFields?.Count > 1)
+            {
+                Widget.ChartValueFields = [Widget.ChartValueFields.First()];
+            }
+        }
+
+        NotifyChange();
+    }
+
+    private static bool IsMonoSeriesChartType(ChartSubType? type) =>
+        type is ChartSubType.Donut or ChartSubType.Pie;
+
+    private void OnColumnVisibilityChanged(TableColumnDescriptor col, bool visible)
+    {
+        col.IsHidden = !visible;
+        NotifyChange();
+    }
+
+    private void ShowAllColumns()
+    {
+        if (Widget.TableColumns == null) return;
+        foreach (var col in Widget.TableColumns)
+            col.IsHidden = false;
+        NotifyChange();
+    }
+
+    private void HideAllColumns()
+    {
+        if (Widget.TableColumns == null) return;
+        for (int i = 0; i < Widget.TableColumns.Count; i++)
+            Widget.TableColumns[i].IsHidden = i > 0;
+        NotifyChange();
+    }
+
+    private record ColumnSpanOption(string Label, int Value);
+    private record ChartTypeOption(string Label, ChartSubType Value);
+    private record FieldOption(string Label, string Value);
+}
