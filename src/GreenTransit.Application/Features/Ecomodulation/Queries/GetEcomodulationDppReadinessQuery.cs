@@ -34,6 +34,11 @@ public sealed class GetEcomodulationDppReadinessQueryHandler
     {
         var ownerId = _currentUser.OwnerId;
 
+        // Admin sin tenant o con Guid.Empty: debe ver todos los datos del sandbox.
+        // IgnoreTenantFilter bypasea el global query filter de EF Core.
+        if (ownerId == Guid.Empty || _currentUser.IsInAnyProfile("ADMIN"))
+            _context.IgnoreTenantFilter();
+
         // ── Ámbito de ProductSpecs ────────────────────────────────────────────
         var psQuery = _context.ProductSpecs.AsNoTracking()
             .Where(ps => ownerId == Guid.Empty || ps.OwnerId == ownerId);

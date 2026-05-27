@@ -216,10 +216,12 @@ public class AppDbContext : DbContext, IApplicationDbContext
     {
         // _ignoreTenantFilter: bypass para consultas de administración.
         // !IsAuthenticated: sin sesión activa no se aplica filtro (seeds, migraciones).
-        // OwnerId: filtro estricto de tenant para usuarios autenticados.
+        // OwnerId == Guid.Empty: admin/sistema sin tenant asignado → ve todos los registros.
+        // OwnerId: filtro estricto de tenant para usuarios autenticados con tenant asignado.
         modelBuilder.Entity<T>().HasQueryFilter(
             e => _ignoreTenantFilter
                  || !_currentUserService.IsAuthenticated
+                 || _currentUserService.OwnerId == Guid.Empty
                  || e.OwnerId == _currentUserService.OwnerId);
     }
 

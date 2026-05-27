@@ -513,42 +513,70 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     private async Task Phase2_ResiduesAsync(CancellationToken ct)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        if (await _db.Residues.AnyAsync(x => x.SourceSystem == Seed, ct))
+
+        var residuesExist        = await _db.Residues.AnyAsync(x => x.SourceSystem == Seed, ct);
+        var productSpecsExist    = await _db.ProductSpecs.AnyAsync(x => x.SourceSystem == Seed, ct);
+        var psResiduesExist      = await _db.Residues.AnyAsync(x => x.SourceSystem == Seed && x.ResidueType == "ProductSpec", ct);
+
+        if (residuesExist && psResiduesExist && productSpecsExist)
         {
-            _log.LogInformation("  Fase 2 — skip");
+            _log.LogInformation("  Fase 2 — skip (residuos, ProductSpec-residuos y ProductSpecs ya existen)");
             return;
         }
 
-        var lerIds = await _db.LerCodes.Select(x => new { x.Id, x.Code }).ToListAsync(ct);
+        var lerIds  = await _db.LerCodes.Select(x => new { x.Id, x.Code }).ToListAsync(ct);
         var prodIds = await _db.BusinessEntities
             .Where(x => x.EntityRole == "Producer" && x.SourceSystem == Seed)
             .Select(x => x.Id).ToListAsync(ct);
 
-        var residues = BuildResidues(lerIds.ToDictionary(x => x.Code, x => x.Id), prodIds);
-        _db.Residues.AddRange(residues);
-        await _db.SaveChangesAsync(ct);
+        List<Residue> psResidues;
 
-        // Crear registros ProductSpec enlazados a los residuos con ResidueType=="ProductSpec"
-        var psResidues = residues.Where(r => r.ResidueType == "ProductSpec").ToList();
-        var productSpecs = psResidues.Select((r, i) => new ProductSpec
+        if (!residuesExist)
         {
-            Id           = SeedGuid("ps", i + 1),
-            OwnerId      = _ownerId,
-            ProductRef   = $"PROD-SPEC-{i + 1:D4}",
-            IdResidue    = r.Id,
-            IdProducer   = r.IdProducer,
-            CategoryRef  = r.ProductCategory,
-            SourceSystem = Seed,
-            Version      = 1,
-            CreatedAt    = _now,
-            UpdatedAt    = _now,
-            IdUser       = SeedUser
-        }).ToList();
-        _db.ProductSpecs.AddRange(productSpecs);
-        await _db.SaveChangesAsync(ct);
+            var residues = BuildResidues(lerIds.ToDictionary(x => x.Code, x => x.Id), prodIds);
+            _db.Residues.AddRange(residues);
+            await _db.SaveChangesAsync(ct);
+            psResidues = residues.Where(r => r.ResidueType == "ProductSpec").ToList();
+            _log.LogInformation("  Fase 2 — {N} residuos insertados en {Ms}ms", residues.Count, sw.ElapsedMilliseconds);
+        }
+        else if (!psResiduesExist)
+        {
+            // Los residuos base existen pero faltan los de tipo ProductSpec (seeder antiguo)
+            var allResidues = BuildResidues(lerIds.ToDictionary(x => x.Code, x => x.Id), prodIds);
+            psResidues = allResidues.Where(r => r.ResidueType == "ProductSpec").ToList();
+            _db.Residues.AddRange(psResidues);
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("  Fase 2 — {N} residuos ProductSpec insertados en {Ms}ms", psResidues.Count, sw.ElapsedMilliseconds);
+        }
+        else
+        {
+            psResidues = await _db.Residues
+                .Where(x => x.SourceSystem == Seed && x.ResidueType == "ProductSpec")
+                .ToListAsync(ct);
+        }
 
-        _log.LogInformation("  Fase 2 completada — {N} residuos, {PS} ProductSpecs en {Ms}ms",
-            residues.Count, productSpecs.Count, sw.ElapsedMilliseconds);
+        if (!productSpecsExist && psResidues.Count > 0)
+        {
+            var productSpecs = psResidues.Select((r, i) => new ProductSpec
+            {
+                Id           = SeedGuid("ps", i + 1),
+                OwnerId      = _ownerId,
+                ProductRef   = $"PROD-SPEC-{i + 1:D4}",
+                IdResidue    = r.Id,
+                IdProducer   = r.IdProducer,
+                CategoryRef  = r.ProductCategory,
+                SourceSystem = Seed,
+                Version      = 1,
+                CreatedAt    = _now,
+                UpdatedAt    = _now,
+                IdUser       = SeedUser
+            }).ToList();
+            _db.ProductSpecs.AddRange(productSpecs);
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("  Fase 2 — {PS} ProductSpecs insertados en {Ms}ms", productSpecs.Count, sw.ElapsedMilliseconds);
+        }
+
+        _log.LogInformation("  Fase 2 completada en {Ms}ms", sw.ElapsedMilliseconds);
     }
 
     // =========================================================================
