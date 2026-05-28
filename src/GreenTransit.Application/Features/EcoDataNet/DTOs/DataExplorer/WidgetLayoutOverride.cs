@@ -50,4 +50,11 @@ public class WidgetLayoutOverride
     /// Solo contiene las columnas que el usuario ha modificado (no todas).
     /// </summary>
     public List<TableColumnOverride>? CustomTableColumns { get; set; }
+
+    /// <summary>
+    /// Configuración personalizada de los campos del mapa (lat, lon, título, tooltip).
+    /// Solo aplica a widgets de tipo Map. Null = usar binding automático.
+    /// Se serializa dentro de LayoutConfigJson junto con el resto de overrides.
+    /// </summary>
+    public MapFieldBinding? CustomMapBinding { get; set; }
 }

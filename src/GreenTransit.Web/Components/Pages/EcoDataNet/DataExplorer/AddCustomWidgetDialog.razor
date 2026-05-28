@@ -1,0 +1,399 @@
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using Radzen
+@using Radzen.Blazor
+@inject DialogService DialogService
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="min-width:360px; padding:0.5rem">
+
+    <RadzenText TextStyle="TextStyle.Subtitle1">Nuevo widget</RadzenText>
+
+    @* ── Tipo ────────────────────────────────────────────────────────────── *@
+    <RadzenFormField Text="Tipo de widget" Variant="Variant.Text" Style="width:100%">
+        <ChildContent>
+            <RadzenDropDown @bind-Value="_widgetType"
+                            Data="@_widgetTypeOptions"
+                            TextProperty="Label" ValueProperty="Value"
+                            Style="width:100%" />
+        </ChildContent>
+    </RadzenFormField>
+
+    @* ── Título ──────────────────────────────────────────────────────────── *@
+    <RadzenFormField Text="Título" Variant="Variant.Text" Style="width:100%">
+        <ChildContent>
+            <RadzenTextBox @bind-Value="_title" Style="width:100%" MaxLength="80" />
+        </ChildContent>
+    </RadzenFormField>
+
+    @* ── Ancho ───────────────────────────────────────────────────────────── *@
+    <RadzenFormField Text="Ancho" Variant="Variant.Text" Style="width:100%">
+        <ChildContent>
+            <RadzenDropDown @bind-Value="_columnSpan"
+                            Data="@_columnSpanOptions"
+                            TextProperty="Label" ValueProperty="Value"
+                            Style="width:100%" />
+        </ChildContent>
+    </RadzenFormField>
+
+    @* ── Array fuente ────────────────────────────────────────────────────── *@
+    @if (AvailableArrayNames.Count > 0)
+    {
+        <RadzenFormField Text="Array de datos" Variant="Variant.Text" Style="width:100%">
+            <ChildContent>
+                <RadzenDropDown @bind-Value="_sourceArrayName"
+                                Data="@AvailableArrayNames"
+                                Style="width:100%"
+                                Placeholder="Selecciona el array fuente"
+                                Change="@(_ => OnSourceArrayChanged())" />
+            </ChildContent>
+        </RadzenFormField>
+    }
+
+    @* ── Opciones de Gráfico ─────────────────────────────────────────────── *@
+    @if (_widgetType == WidgetType.Chart)
+    {
+        <RadzenFormField Text="Tipo de gráfico" Variant="Variant.Text" Style="width:100%">
+            <ChildContent>
+                <RadzenDropDown @bind-Value="_chartType"
+                                Data="@_chartTypeOptions"
+                                TextProperty="Label" ValueProperty="Value"
+                                Style="width:100%" />
+            </ChildContent>
+        </RadzenFormField>
+
+        @if (_numericFields.Count > 0 && _allFields.Count > 0)
+        {
+            <RadzenFormField Text="Eje X / Categoría" Variant="Variant.Text" Style="width:100%">
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="_chartCategoryField"
+                                    Data="@_allFields"
+                                    Style="width:100%" />
+                </ChildContent>
+            </RadzenFormField>
+
+            <RadzenFormField Text="Eje Y / Valores" Variant="Variant.Text" Style="width:100%">
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="_chartValueField"
+                                    Data="@_numericFields"
+                                    Style="width:100%" />
+                </ChildContent>
+            </RadzenFormField>
+        }
+    }
+
+    @* ── Opciones de Mapa ────────────────────────────────────────────────────── *@
+    @if (_widgetType == WidgetType.Map)
+    {
+        @if (_numericFields.Count >= 2)
+        {
+            <RadzenFormField Text="Campo Latitud" Variant="Variant.Text" Style="width:100%">
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="_mapLatitudeField"
+                                    Data="@_numericFields"
+                                    Style="width:100%"
+                                    Placeholder="Campo numérico de latitud" />
+                </ChildContent>
+            </RadzenFormField>
+
+            <RadzenFormField Text="Campo Longitud" Variant="Variant.Text" Style="width:100%">
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="_mapLongitudeField"
+                                    Data="@_numericFields"
+                                    Style="width:100%"
+                                    Placeholder="Campo numérico de longitud" />
+                </ChildContent>
+            </RadzenFormField>
+
+            <RadzenFormField Text="Campo título del punto (opcional)" Variant="Variant.Text" Style="width:100%">
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="_mapTitleField"
+                                    Data="@_allFields"
+                                    Style="width:100%"
+                                    Placeholder="(ninguno)" />
+                </ChildContent>
+            </RadzenFormField>
+        }
+        else
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" AllowClose="false">
+                El array seleccionado necesita al menos dos campos numéricos (latitud y longitud) para crear un mapa.
+            </RadzenAlert>
+        }
+    }
+
+    @* ── Opciones de KPI ─────────────────────────────────────────────────── *@
+    @if (_widgetType == WidgetType.KpiCard)
+    {
+        @if (_numericFields.Count > 0)
+        {
+            <RadzenFormField Text="Operación" Variant="Variant.Text" Style="width:100%">
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="_kpiOperation"
+                                    Data="@_kpiOperationOptions"
+                                    TextProperty="Label" ValueProperty="Value"
+                                    Style="width:100%" />
+                </ChildContent>
+            </RadzenFormField>
+
+            <RadzenFormField Text="Campo principal" Variant="Variant.Text" Style="width:100%">
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="_kpiPrimaryField"
+                                    Data="@_numericFields"
+                                    Style="width:100%"
+                                    Placeholder="Campo numérico" />
+                </ChildContent>
+            </RadzenFormField>
+
+            @if (_kpiOperation == KpiOperation.Percentage)
+            {
+                <RadzenFormField Text="Campo divisor (denominador)" Variant="Variant.Text" Style="width:100%">
+                    <ChildContent>
+                        <RadzenDropDown @bind-Value="_kpiSecondaryField"
+                                        Data="@_numericFields"
+                                        Style="width:100%"
+                                        Placeholder="Campo numérico" />
+                    </ChildContent>
+                </RadzenFormField>
+            }
+
+            <RadzenFormField Text="Formato" Variant="Variant.Text" Style="width:100%">
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="_kpiDisplayFormat"
+                                    Data="@_kpiFormatOptions"
+                                    TextProperty="Label" ValueProperty="Value"
+                                    Style="width:100%" />
+                </ChildContent>
+            </RadzenFormField>
+
+            <RadzenFormField Text="Sufijo personalizado (opcional)" Variant="Variant.Text" Style="width:100%">
+                <ChildContent>
+                    <RadzenTextBox @bind-Value="_kpiSuffix" Style="width:100%" MaxLength="10"
+                                   Placeholder="ej: t, €, kg" />
+                </ChildContent>
+            </RadzenFormField>
+        }
+        else
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" AllowClose="false">
+                El array seleccionado no tiene campos numéricos para calcular KPIs.
+            </RadzenAlert>
+        }
+    }
+
+    @* ── Errores ─────────────────────────────────────────────────────────── *@
+    @if (!string.IsNullOrEmpty(_validationError))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="false">@_validationError</RadzenAlert>
+    }
+
+    @* ── Botones ─────────────────────────────────────────────────────────── *@
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem"
+                 Style="margin-top:0.5rem">
+        <RadzenButton Text="Cancelar" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                      Click="@(() => DialogService.Close(null))" />
+        <RadzenButton Text="Añadir" Icon="add" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                      Click="OnConfirm" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter] public List<string> AvailableArrayNames { get; set; } = new();
+
+    /// <summary>
+    /// Callback que recibe todos los campos del array seleccionado.
+    /// Key = nombre del array, Value = lista de campos.
+    /// </summary>
+    [Parameter] public Func<string, (List<string> All, List<string> Numeric)>? GetFieldsForArray { get; set; }
+
+    private WidgetType _widgetType = WidgetType.Chart;
+    private string _title = string.Empty;
+    private int _columnSpan = 6;
+    private string? _sourceArrayName;
+    private ChartSubType _chartType = ChartSubType.BarVertical;
+    private string? _chartCategoryField;
+    private string? _chartValueField;
+    private KpiOperation _kpiOperation = KpiOperation.Sum;
+    private string? _kpiPrimaryField;
+    private string? _kpiSecondaryField;
+    private KpiDisplayFormat _kpiDisplayFormat = KpiDisplayFormat.Number;
+    private string? _kpiSuffix;
+    private string? _validationError;
+
+    private List<string> _allFields = new();
+    private List<string> _numericFields = new();
+
+    // --- Campos para Mapa ---
+    private string? _mapLatitudeField;
+    private string? _mapLongitudeField;
+    private string? _mapTitleField;
+
+    private readonly List<DlgOption<WidgetType>> _widgetTypeOptions =
+    [
+        new("Gráfico", WidgetType.Chart),
+        new("KPI calculado", WidgetType.KpiCard),
+        new("Mapa", WidgetType.Map)
+    ];
+
+    private readonly List<DlgOption<int>> _columnSpanOptions =
+    [
+        new("1/4 ancho", 3),
+        new("1/3 ancho", 4),
+        new("1/2 ancho", 6),
+        new("2/3 ancho", 8),
+        new("3/4 ancho", 9),
+        new("Ancho completo", 12)
+    ];
+
+    private readonly List<DlgOption<ChartSubType>> _chartTypeOptions =
+    [
+        new("Barras verticales", ChartSubType.BarVertical),
+        new("Barras horizontales", ChartSubType.BarHorizontal),
+        new("Línea", ChartSubType.Line),
+        new("Área", ChartSubType.Area),
+        new("Tarta", ChartSubType.Pie),
+        new("Donut", ChartSubType.Donut)
+    ];
+
+    private readonly List<DlgOption<KpiOperation>> _kpiOperationOptions =
+    [
+        new("Suma total", KpiOperation.Sum),
+        new("Recuento", KpiOperation.Count),
+        new("Media", KpiOperation.Average),
+        new("Mínimo", KpiOperation.Min),
+        new("Máximo", KpiOperation.Max),
+        new("Porcentaje", KpiOperation.Percentage)
+    ];
+
+    private readonly List<DlgOption<KpiDisplayFormat>> _kpiFormatOptions =
+    [
+        new("Número", KpiDisplayFormat.Number),
+        new("Porcentaje", KpiDisplayFormat.Percent),
+        new("Moneda (€)", KpiDisplayFormat.Currency)
+    ];
+
+    /// <summary>Objeto con propiedades reales para RadzenDropDown (ValueTuple no funciona con reflexión Radzen).</summary>
+    private sealed class DlgOption<T>(string label, T value)
+    {
+        public string Label { get; } = label;
+        public T Value { get; } = value;
+    }
+
+    private void OnSourceArrayChanged()
+    {
+        _allFields = new();
+        _numericFields = new();
+        _chartCategoryField = null;
+        _chartValueField = null;
+        _kpiPrimaryField = null;
+        _kpiSecondaryField = null;
+        _mapLatitudeField = null;
+        _mapLongitudeField = null;
+        _mapTitleField = null;
+
+        if (!string.IsNullOrEmpty(_sourceArrayName) && GetFieldsForArray != null)
+        {
+            var (all, numeric) = GetFieldsForArray(_sourceArrayName);
+            _allFields = all;
+            _numericFields = numeric;
+        }
+    }
+
+    private void OnConfirm()
+    {
+        _validationError = null;
+
+        if (string.IsNullOrWhiteSpace(_title))
+        {
+            _validationError = "El título es obligatorio.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_sourceArrayName))
+        {
+            _validationError = "Selecciona un array de datos.";
+            return;
+        }
+
+        if (_widgetType == WidgetType.Map)
+        {
+            if (string.IsNullOrEmpty(_mapLatitudeField))
+            {
+                _validationError = "Selecciona el campo de latitud.";
+                return;
+            }
+            if (string.IsNullOrEmpty(_mapLongitudeField))
+            {
+                _validationError = "Selecciona el campo de longitud.";
+                return;
+            }
+            if (_mapLatitudeField == _mapLongitudeField)
+            {
+                _validationError = "El campo de latitud y el de longitud deben ser distintos.";
+                return;
+            }
+        }
+
+        if (_widgetType == WidgetType.Chart)
+        {
+            if (string.IsNullOrEmpty(_chartCategoryField))
+            {
+                _validationError = "Selecciona el campo de categoría (eje X).";
+                return;
+            }
+            if (string.IsNullOrEmpty(_chartValueField))
+            {
+                _validationError = "Selecciona el campo de valor (eje Y).";
+                return;
+            }
+        }
+
+        if (_widgetType == WidgetType.KpiCard)
+        {
+            if (string.IsNullOrEmpty(_kpiPrimaryField))
+            {
+                _validationError = "Selecciona el campo principal del KPI.";
+                return;
+            }
+            if (_kpiOperation == KpiOperation.Percentage && string.IsNullOrEmpty(_kpiSecondaryField))
+            {
+                _validationError = "Para porcentaje debes seleccionar el campo divisor.";
+                return;
+            }
+        }
+
+        var definition = new CustomWidgetDefinition
+        {
+            WidgetId        = "usr_" + Guid.NewGuid().ToString("N")[..8],
+            WidgetType      = _widgetType,
+            Title           = _title.Trim(),
+            ColumnSpan      = _columnSpan,
+            SourceArrayName = _sourceArrayName
+        };
+
+        if (_widgetType == WidgetType.Chart)
+        {
+            definition.ChartType           = _chartType;
+                        definition.ChartCategoryField  = _chartCategoryField;
+                        definition.ChartValueFields    = [_chartValueField!];
+        }
+        else if (_widgetType == WidgetType.KpiCard)
+        {
+            definition.KpiDefinition = new CustomKpiDefinition
+            {
+                SourceArrayName = _sourceArrayName!,
+                Operation       = _kpiOperation,
+                PrimaryField    = _kpiPrimaryField!,
+                SecondaryField  = _kpiSecondaryField,
+                DisplayFormat   = _kpiDisplayFormat,
+                CustomSuffix    = string.IsNullOrWhiteSpace(_kpiSuffix) ? null : _kpiSuffix.Trim()
+            };
+        }
+        else if (_widgetType == WidgetType.Map)
+        {
+            definition.MapLatitudeField  = _mapLatitudeField;
+            definition.MapLongitudeField = _mapLongitudeField;
+            definition.MapTitleField     = string.IsNullOrEmpty(_mapTitleField) ? null : _mapTitleField;
+        }
+
+        DialogService.Close(definition);
+    }
+}

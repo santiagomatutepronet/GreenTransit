@@ -801,6 +801,31 @@ try
         GreenTransit.Application.Features.EcoDataNet.Services.LayoutCustomizationService>();
     builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.IChartDataRebuilder,
         GreenTransit.Application.Features.EcoDataNet.Services.ChartDataRebuilder>();
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.ICustomKpiCalculator,
+        GreenTransit.Application.Features.EcoDataNet.Services.CustomKpiCalculator>();
+
+    // ── EcoDataNet Waste Publisher ────────────────────────────────────────────
+    builder.Services.Configure<GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetOptions>(
+        builder.Configuration.GetSection(
+            GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetOptions.SectionName));
+
+    builder.Services.AddHttpClient<GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetHttpClient>(
+        (sp, client) =>
+        {
+            var opts = sp.GetRequiredService<
+                Microsoft.Extensions.Options.IOptions<
+                    GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetOptions>>().Value;
+            client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
+            client.Timeout     = TimeSpan.FromSeconds(opts.TimeoutSeconds);
+            var credentials    = Convert.ToBase64String(
+                System.Text.Encoding.UTF8.GetBytes($"{opts.Username}:{opts.Password}"));
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+        });
+
+    builder.Services.AddTransient<
+        GreenTransit.Application.Common.Interfaces.IEcoDataNetPublisher,
+        GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetPublisher>();
 
     // ── Caché en memoria (catálogos geográficos y otros estáticos) ───────────
     builder.Services.AddMemoryCache();

@@ -58,6 +58,9 @@
     - [4.7.4 Reglas de Ecomodulación](#474-reglas-de-ecomodulación)
   - [4.8 Módulo de Trazabilidad y KPIs](#48-módulo-de-trazabilidad-y-kpis)
   - [4.9 Módulo de Seguridad](#49-módulo-de-seguridad)
+  - [4.10 Módulo EcoDataNet — Espacio de Datos](#410-módulo-ecodatanet--espacio-de-datos)
+    - [4.10.9 Data Explorer — Ampliaciones: Mapa, Charts, KPIs](#4109-edc-data-explorer--ampliaciones-widget-mapa-charts-adicionales-y-kpis-calculados)
+    - [4.10.10 Publicar datos a EcoDataNet](#41010-publicar-datos-de-greentransit-a-ecodatanet-waste-api)
 - [5. 🔄 Flujo Global de Operaciones](#5--flujo-global-de-operaciones)
   - [5.1 Ciclo de vida de un traslado](#51-ciclo-de-vida-de-un-traslado)
   - [5.2 Ciclo de vida de una orden de servicio](#52-ciclo-de-vida-de-una-orden-de-servicio)
@@ -1645,6 +1648,31 @@ Integración de GreenTransit con el data space EcoDataNet mediante conectores ED
 - **Multi-tenant:** Config aislada por `OwnerId` + `UserId` + `AssetId` + `ProviderParticipantId`. Filtro por OwnerId en todos los handlers.
 - **DTOs:** `WidgetLayoutOverride`, `LayoutConfigDto`, `LayoutMergeResult`.
 
+### 4.10.9 EDC Data Explorer — Ampliaciones: Widget Mapa, Charts Adicionales y KPIs Calculados
+
+- **Ruta:** Misma pantalla `/ecodatanet/data-explorer`.
+- **Propósito:** Tres ampliaciones funcionales sobre el Data Explorer y su sistema de personalización: (A) Widget Mapa con visualización geográfica automática de arrays con coordenadas lat/lon, (B) Charts adicionales creados por el usuario en modo edición, y (C) KPIs calculados configurables con operaciones SUM/COUNT/AVG/Percentage. Todo se persiste ampliando el JSON dentro de `ExplorerLayoutConfigs.LayoutConfigJson` — no se crean nuevas tablas.
+- **Prerequisitos:** Data Explorer (§4.10.7), Personalización de Layout (§4.10.8) y Personalización de Data Binding completamente implementados.
+- **Ampliación A — Widget Mapa:** `JsonSchemaAnalyzer` detecta campos lat/lon en arrays por heurística de nombre + tipo numérico. Si se detectan coordenadas (`HasGeoCoordinates`) y el array tiene ≥ 2 elementos, `DashboardLayoutBuilder` genera un widget `Map` adicional. Enum `WidgetType` ampliado con valor `Map`. Componente `DynamicMap.razor` renderiza mapa Leaflet.js vía JS interop. Configurable: campos lat/lon/título/tooltip personalizables vía `MapFieldBinding` y persistibles como override.
+- **Ampliación B — Charts Adicionales:** El usuario crea gráficos extra en modo edición eligiendo array fuente, tipo de gráfico y campos. Se almacenan como `CustomWidgetDefinition` (prefijo `usr_`) en el `LayoutConfigJson`. Formato de JSON evoluciona de array puro a objeto `{ overrides: [...], customWidgets: [...] }` con migración implícita. UI: botón "Añadir gráfico" en toolbar + `AddChartDialog.razor`.
+- **Ampliación C — KPIs Calculados:** El usuario crea KPIs con operaciones sobre campos numéricos de arrays del JSON. `ICustomKpiCalculator` / `CustomKpiCalculator` (Transient) recalcula valores en cada carga. Definición almacenada como `CustomKpiDefinition` dentro de `CustomWidgetDefinition` con tipo KpiCard. UI: botón "Añadir KPI" en toolbar + `AddKpiDialog.razor`.
+- **Retrocompatibilidad total:** JSON antiguo sin nuevos campos se deserializa sin errores. Asset sin lat/lon = sin mapa. Sin custom widgets = layout automático intacto.
+- **Roles:** Mismos permisos que "Explorar datos" (policy `CanAccessEDCDataExplorer`).
+
+### 4.10.10 Publicar datos de GreenTransit a EcoDataNet (Waste API)
+
+- **Ruta UI:** Botón integrado en la ventana seed existente del módulo Seguridad (no crea página nueva).
+- **Propósito:** Proceso de publicación masiva que consulta toda la información operativa de GreenTransit (16 endpoints), mapea los datos a DTOs de la API EcoDataNet Waste, y los envía en lotes de hasta 100 elementos con gestión de respuesta 207 Multi-Status. Permite poblar el data space EcoDataNet para que los participantes consuman datos vía flujo EDC (§4.10.2-4.10.5).
+- **Autenticación:** HTTP Basic Auth con credenciales en `EcoDataNetOptions` (User Secrets en desarrollo, Azure KeyVault en producción).
+- **Endpoints (16):** WasteMoves, EntryPlants, EntryCACs, TreatmentPlants, ProductDeclarations, ServiceOrders, Agreements, Settlements, AgreementDocuments, MarketShares, ProductSpecs, PlantEnergies, Incidents, EmissionFactorSets, EcoModulationRuleSets, DUMZones.
+- **Idempotencia:** Cada `remoteId` = `Id` (GUID) de GreenTransit, permitiendo re-ejecución (upsert).
+- **OwnerId EcoDataNet:** GUID de participante EcoDataNet (no el OwnerId multi-tenant de GreenTransit). Algunos endpoints usan asignación cíclica round-robin.
+- **Conversión de enums:** `EcoDataNetEnumMapper` con métodos `ToMeasureUnit`, `ToTypeContainer`, `ToUseProduct`, `ToCategoryProduct`, `ToTypeThirdParty`.
+- **CQRS:** `PublishToEcoDataNetCommand` + handler en `Application/Features/Security/Commands/`.
+- **Servicios:** `IEcoDataNetPublisher` (Application) → `EcoDataNetPublisher` (Infrastructure). `EcoDataNetHttpClient` registrado con HttpClientFactory + Polly retries.
+- **UI:** Botón "Publicar a EcoDataNet" con spinner + progreso (endpoint actual + paso X/16). Tabla resumen tras publicación con totales ok/error por endpoint.
+- **Roles:** Solo ADMIN (misma policy que la ventana seed).
+
 ---
 
 # 5. 🔄 Flujo Global de Operaciones
@@ -2301,6 +2329,12 @@ Todos los valores que afectan a cálculos y dashboards son **configurables en `a
 | `EcoDataNet.Edc` | `TransferPollingIntervalSeconds` | `3` | Intervalo de polling del estado de transferencia |
 | `EcoDataNet.Edc` | `NegotiationPollingMaxAttempts` | `120` | Máximo de intentos de polling de negociación (120 × 3s = 6 min) |
 | `EcoDataNet.Edc` | `TransferPollingMaxAttempts` | `60` | Máximo de intentos de polling de transferencia (60 × 3s = 3 min) |
+| `EcoDataNet` | `BaseUrl` | `""` | URL base de la API EcoDataNet Waste (ej: `https://api.ecodatanet.example.com`) |
+| `EcoDataNet` | `Username` | `""` | Usuario para HTTP Basic Auth (User Secrets / KeyVault) |
+| `EcoDataNet` | `Password` | `""` | Contraseña para HTTP Basic Auth (User Secrets / KeyVault) |
+| `EcoDataNet` | `BatchSize` | `100` | Tamaño máximo de lote por envío a cada endpoint |
+| `EcoDataNet` | `TimeoutSeconds` | `120` | Timeout del HttpClient para la API EcoDataNet |
+| `EcoDataNet` | `MaxRetries` | `3` | Reintentos con Polly en caso de fallo transitorio |
 
 ---
 

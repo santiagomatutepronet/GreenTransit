@@ -255,6 +255,7 @@ else if (_data is not null)
 
     private static readonly CultureInfo _es = new("es-ES");
     private bool _jsReady = false;
+    private bool _needsChartRender = false;
     private DotNetObjectReference<MunicipalMonitoring>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
@@ -277,9 +278,18 @@ else if (_data is not null)
         {
             _jsReady   = true;
             _dotNetRef = DotNetObjectReference.Create(this);
-            // Si los datos ya están cargados (caché rápida), renderizar ahora
+            // Si los datos ya están disponibles (carga inicial rápida), renderizar ahora
             if (_data is not null)
+            {
+                _needsChartRender = false;
                 await RenderChartsAsync();
+                return;
+            }
+        }
+        if (_jsReady && _needsChartRender)
+        {
+            _needsChartRender = false;
+            await RenderChartsAsync();
         }
     }
 
@@ -304,9 +314,12 @@ else if (_data is not null)
             _loading = false;
             StateHasChanged();
         }
-        // Si JS ya está listo (filtro cambiado después de carga inicial), renderizar directamente
+        // Si JS ya está listo (filtro cambiado después de carga inicial), marcar para renderizar tras DOM update
         if (_jsReady)
-            await RenderChartsAsync();
+        {
+            _needsChartRender = true;
+            StateHasChanged();
+        }
     }
 
     private async Task RenderChartsAsync()

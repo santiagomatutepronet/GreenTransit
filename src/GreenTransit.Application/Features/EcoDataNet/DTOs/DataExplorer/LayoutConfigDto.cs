@@ -20,6 +20,9 @@ public class LayoutConfigDto
     /// <summary>Lista de overrides por widget.</summary>
     public List<WidgetLayoutOverride> Overrides { get; set; } = new();
 
+    /// <summary>Widgets creados manualmente por el usuario (gráficos y KPIs custom).</summary>
+    public List<CustomWidgetDefinition> CustomWidgets { get; set; } = new();
+
     /// <summary>Hash del esquema cuando se guardó.</summary>
     public string? SchemaHash { get; set; }
 

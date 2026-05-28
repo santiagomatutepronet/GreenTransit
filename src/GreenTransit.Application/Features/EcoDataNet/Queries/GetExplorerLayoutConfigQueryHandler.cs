@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using GreenTransit.Application.Common.Interfaces;
 using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer;
 using MediatR;
@@ -48,13 +49,31 @@ public class GetExplorerLayoutConfigQueryHandler
         if (record is null)
             return null;
 
-        // Deserializar overrides desde JSON
+        // Deserializar overrides + custom widgets desde JSON
+        // Retrocompatibilidad: el formato antiguo era directamente un array de WidgetLayoutOverride.
+        // El nuevo formato es un objeto PersistedLayoutConfig con "overrides" y "customWidgets".
         List<WidgetLayoutOverride> overrides;
+        List<CustomWidgetDefinition> customWidgets;
         try
         {
-            overrides = JsonSerializer.Deserialize<List<WidgetLayoutOverride>>(
-                            record.LayoutConfigJson, JsonOptions)
-                        ?? new List<WidgetLayoutOverride>();
+            using var doc = JsonDocument.Parse(record.LayoutConfigJson);
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                // Formato antiguo
+                overrides     = JsonSerializer.Deserialize<List<WidgetLayoutOverride>>(
+                                    record.LayoutConfigJson, JsonOptions)
+                                ?? new();
+                customWidgets = new();
+            }
+            else
+            {
+                // Formato nuevo
+                var persisted = JsonSerializer.Deserialize<PersistedLayoutConfig>(
+                                    record.LayoutConfigJson, JsonOptions)
+                                ?? new();
+                overrides     = persisted.Overrides;
+                customWidgets = persisted.CustomWidgets;
+            }
         }
         catch (JsonException ex)
         {
@@ -66,14 +85,15 @@ public class GetExplorerLayoutConfigQueryHandler
 
         return new LayoutConfigDto
         {
-            Id                  = record.Id,
-            AssetId             = record.AssetId,
+            Id                    = record.Id,
+            AssetId               = record.AssetId,
             ProviderParticipantId = record.ProviderParticipantId,
-            DatasetName         = record.DatasetName,
-            Overrides           = overrides,
-            SchemaHash          = record.SchemaHash,
-            HasSavedConfig      = true,
-            LastUpdated         = record.UpdatedAt
+            DatasetName           = record.DatasetName,
+            Overrides             = overrides,
+            CustomWidgets         = customWidgets,
+            SchemaHash            = record.SchemaHash,
+            HasSavedConfig        = true,
+            LastUpdated           = record.UpdatedAt
         };
     }
 }

@@ -21,6 +21,9 @@
 @inject NavigationManager NavigationManager
 @inject DialogService DialogService
 @inject NotificationService NotificationService
+@inject ICustomKpiCalculator KpiCalculator
+@inject IJSRuntime JS
+@inject ILogger<EdcDataExplorer> Logger
 
 <PageTitle>Data Explorer — EcoDataNet</PageTitle>
 
@@ -174,6 +177,9 @@ else if (_result?.Success == false)
 }
 else if (_result?.Success == true)
 {
+    @* ── Contenedor captura PDF ─────────────────────────────────────── *@
+    <div id="edc-explorer-capture">
+
     @* ── Barra de metadatos ─────────────────────────────────────────── *@
     <div class="explorer-metadata-bar">
         @if (!string.IsNullOrEmpty(_result.Metadata.DatasetName))
@@ -215,6 +221,12 @@ else if (_result?.Success == true)
                           Size="ButtonSize.Small"
                           Disabled="true"
                           title="Próximamente" />
+            <RadzenButton Text="@(_exportingPdf ? "Generando…" : "Exportar PDF")"
+                          Icon="picture_as_pdf"
+                          ButtonStyle="ButtonStyle.Danger"
+                          Size="ButtonSize.Small"
+                          Disabled="@_exportingPdf"
+                          Click="@ExportPdfAsync" />
         </div>
     </div>
 
@@ -226,7 +238,8 @@ else if (_result?.Success == true)
                          ShowHiddenWidgets="_showHiddenWidgets"
                          OnSave="SaveLayout"
                          OnReset="ResetLayout"
-                         OnToggleHidden="@(() => { _showHiddenWidgets = !_showHiddenWidgets; StateHasChanged(); })" />
+                         OnToggleHidden="@(() => { _showHiddenWidgets = !_showHiddenWidgets; StateHasChanged(); })"
+                         OnAddWidget="OpenAddWidgetDialog" />
 
     @* ── Grid de widgets ────────────────────────────────────────────── *@
     <div class="explorer-grid">
@@ -297,7 +310,55 @@ else if (_result?.Success == true)
                 }
             </div>
         }
-    </div>
+
+            @* ── Widgets personalizados (custom charts, KPIs y mapas) ─────────── *@
+            @foreach (var cw in _customWidgets.Where(w => !w.IsHidden || (_isEditMode && _showHiddenWidgets)))
+            {
+                <div style="grid-column: span @cw.ColumnSpan"
+                     class="widget-wrapper @(cw.WidgetType == WidgetType.KpiCard ? "kpi-widget" : "") @(_isEditMode ? "editable" : "") @(cw.IsHidden ? "hidden-widget" : "")">
+
+                    @if (cw.WidgetType == WidgetType.Chart && cw.SourceArrayName != null)
+                    {
+                        var descriptor = BuildCustomChartDescriptor(cw);
+                        if (descriptor != null)
+                        {
+                            <DynamicChart Widget="descriptor" />
+                        }
+                    }
+                    else if (cw.WidgetType == WidgetType.KpiCard && cw.KpiDefinition != null)
+                    {
+                        var descriptor = BuildCustomKpiDescriptor(cw);
+                        if (descriptor != null)
+                        {
+                            <DynamicKpiCard Widget="descriptor" />
+                        }
+                    }
+                    else if (cw.WidgetType == WidgetType.Map && cw.SourceArrayName != null
+                             && !string.IsNullOrEmpty(cw.MapLatitudeField) && !string.IsNullOrEmpty(cw.MapLongitudeField))
+                    {
+                        var descriptor = BuildCustomMapDescriptor(cw);
+                        if (descriptor != null)
+                        {
+                            <DynamicMap Widget="descriptor" />
+                        }
+                    }
+
+                    @if (_isEditMode)
+                    {
+                        <div class="drag-handle" title="Widget personalizado">
+                            <RadzenIcon Icon="person" Style="color:var(--gt-dark-petroleum,#0A404B);font-size:1rem" />
+                        </div>
+                        <div style="position:absolute;top:6px;right:6px;z-index:20">
+                            <RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall"
+                                          ButtonStyle="ButtonStyle.Danger"
+                                          title="Eliminar widget personalizado"
+                                          Click="@(() => RemoveCustomWidget(cw.WidgetId))" />
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>@* fin edc-explorer-capture *@
 }
 
 @code {
@@ -306,6 +367,7 @@ else if (_result?.Success == true)
     private bool _hasData = false;
     private EdcDataExplorerResult? _result;
     private string? _rawJson;
+    private bool _exportingPdf = false;
 
     // ── Estado de personalización ────────────────────────────────────────────
     private bool _isEditMode;
@@ -316,6 +378,9 @@ else if (_result?.Success == true)
     private string? _currentSchemaHash;
     private List<DynamicWidgetDescriptor> _currentWidgets = new();
     private List<DynamicWidgetDescriptor> _autoGeneratedWidgets = new();
+
+    // ── Custom widgets (creados por el usuario) ─────────────────────────────
+    private List<CustomWidgetDefinition> _customWidgets = new();
 
     // ── Estado drag & drop ───────────────────────────────────────────────────
     private DynamicWidgetDescriptor? _draggedWidget;
@@ -375,6 +440,7 @@ else if (_result?.Success == true)
 
                         _currentWidgets = mergeResult.Widgets;
                         _schemaChanged  = mergeResult.SchemaChanged;
+                        _customWidgets  = savedConfig.CustomWidgets;
                     }
                     else
                     {
@@ -533,7 +599,8 @@ else if (_result?.Success == true)
             ProviderParticipantId = DataExplorerState.ProviderParticipantId!,
             DatasetName          = DataExplorerState.DatasetName,
             Overrides            = overrides,
-            SchemaHash           = _currentSchemaHash
+            SchemaHash           = _currentSchemaHash,
+            CustomWidgets        = _customWidgets
         });
 
         _hasUnsavedChanges = false;
@@ -570,6 +637,7 @@ else if (_result?.Success == true)
         }
 
         _currentWidgets    = _autoGeneratedWidgets.Select(DeepClone).ToList();
+        _customWidgets     = new();
         _hasSavedConfig    = false;
         _hasUnsavedChanges = false;
         _schemaChanged     = false;
@@ -596,6 +664,39 @@ else if (_result?.Success == true)
         if (a == null || b == null) return false;
         if (a.Count != b.Count) return false;
         return a.OrderBy(x => x).SequenceEqual(b.OrderBy(x => x));
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        _exportingPdf = true;
+        StateHasChanged();
+        try
+        {
+            var datasetSlug = string.IsNullOrWhiteSpace(_result?.Metadata.DatasetName)
+                ? "dataset"
+                : _result.Metadata.DatasetName
+                    .Replace(" ", "_")
+                    .Replace("/", "-")
+                    .Replace("\\", "-");
+            var fileName = $"DataExplorer_{datasetSlug}_{DateTime.Now:yyyyMMdd_HHmm}";
+            await JS.InvokeVoidAsync("exportPageToPdf", "edc-explorer-capture", fileName);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exportando PDF del Data Explorer EcoDataNet");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary  = "Error al exportar",
+                Detail   = "No se pudo generar el PDF. Inténtelo de nuevo.",
+                Duration = 4000
+            });
+        }
+        finally
+        {
+            _exportingPdf = false;
+            StateHasChanged();
+        }
     }
 
     private void GoToConsumeData()
@@ -637,4 +738,121 @@ else if (_result?.Success == true)
         < 1024 * 1024 => $"{bytes / 1024.0:N1} KB",
         _             => $"{bytes / (1024.0 * 1024):N2} MB"
     };
+
+    // ── Custom widgets ────────────────────────────────────────────────────────
+
+    private async Task OpenAddWidgetDialog()
+    {
+        var arrayNames = _result?.Schema?.Arrays.Select(a => a.Name).ToList() ?? new();
+
+        var result = await DialogService.OpenAsync<AddCustomWidgetDialog>(
+            "Añadir widget",
+            new Dictionary<string, object>
+            {
+                [nameof(AddCustomWidgetDialog.AvailableArrayNames)] = arrayNames,
+                [nameof(AddCustomWidgetDialog.GetFieldsForArray)]   = (Func<string, (List<string>, List<string>)>)GetFieldsForArray
+            },
+            new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = true });
+
+        if (result is CustomWidgetDefinition definition)
+        {
+            definition.SortOrder = _customWidgets.Count > 0
+                ? _customWidgets.Max(w => w.SortOrder ?? 0) + 10
+                : (_currentWidgets.Max(w => (int?)w.SortOrder) ?? 0) + 10;
+            _customWidgets.Add(definition);
+            _hasUnsavedChanges = true;
+            StateHasChanged();
+        }
+    }
+
+    private (List<string> All, List<string> Numeric) GetFieldsForArray(string arrayName)
+    {
+        var arr = _result?.Schema?.Arrays.FirstOrDefault(a => a.Name == arrayName);
+        if (arr == null) return (new(), new());
+        var all     = arr.ItemProperties.Select(p => p.Name).ToList();
+        var numeric = arr.ItemProperties.Where(p => p.PropertyType == JsonPropertyType.Number).Select(p => p.Name).ToList();
+        return (all, numeric);
+    }
+
+    private void RemoveCustomWidget(string widgetId)
+    {
+        _customWidgets.RemoveAll(w => w.WidgetId == widgetId);
+        _hasUnsavedChanges = true;
+    }
+
+    private DynamicWidgetDescriptor? BuildCustomChartDescriptor(CustomWidgetDefinition cw)
+    {
+        if (_result?.Schema == null || string.IsNullOrEmpty(cw.SourceArrayName)) return null;
+        var arr = _result.Schema.Arrays.FirstOrDefault(a => a.Name == cw.SourceArrayName);
+        if (arr == null || arr.RawData.Count == 0) return null;
+
+        var chartData = arr.RawData
+            .Select(row =>
+            {
+                var entry = new Dictionary<string, object?>();
+                if (!string.IsNullOrEmpty(cw.ChartCategoryField)
+                    && row.TryGetValue(cw.ChartCategoryField, out var cat))
+                    entry[cw.ChartCategoryField] = cat;
+                foreach (var vf in cw.ChartValueFields ?? new())
+                    if (row.TryGetValue(vf, out var v)) entry[vf] = v;
+                return entry;
+            })
+            .ToList();
+
+        return new DynamicWidgetDescriptor
+        {
+            WidgetId           = cw.WidgetId,
+            Type               = WidgetType.Chart,
+            Title              = cw.Title,
+            ColumnSpan         = cw.ColumnSpan,
+            SortOrder          = cw.SortOrder ?? 9999,
+            SourceArrayName    = cw.SourceArrayName,
+            ChartType          = cw.ChartType ?? ChartSubType.BarVertical,
+            ChartCategoryField = cw.ChartCategoryField,
+            ChartValueFields   = cw.ChartValueFields ?? new(),
+            ChartData          = chartData
+        };
+    }
+
+    private DynamicWidgetDescriptor? BuildCustomKpiDescriptor(CustomWidgetDefinition cw)
+    {
+        if (_result?.Schema == null || cw.KpiDefinition == null) return null;
+        var arr = _result.Schema.Arrays.FirstOrDefault(a => a.Name == cw.KpiDefinition.SourceArrayName);
+        if (arr == null) return null;
+
+        var (value, display) = KpiCalculator.Calculate(cw.KpiDefinition, arr.RawData);
+
+        return new DynamicWidgetDescriptor
+        {
+            WidgetId        = cw.WidgetId,
+            Type            = WidgetType.KpiCard,
+            Title           = cw.Title,
+            ColumnSpan      = cw.ColumnSpan,
+            SortOrder       = cw.SortOrder ?? 9999,
+            KpiValue        = display,
+            KpiNumericValue = value
+        };
+    }
+
+    private DynamicWidgetDescriptor? BuildCustomMapDescriptor(CustomWidgetDefinition cw)
+    {
+        if (_result?.Schema == null || string.IsNullOrEmpty(cw.SourceArrayName)) return null;
+        if (string.IsNullOrEmpty(cw.MapLatitudeField) || string.IsNullOrEmpty(cw.MapLongitudeField)) return null;
+        var arr = _result.Schema.Arrays.FirstOrDefault(a => a.Name == cw.SourceArrayName);
+        if (arr == null || arr.RawData.Count == 0) return null;
+
+        return new DynamicWidgetDescriptor
+        {
+            WidgetId          = cw.WidgetId,
+            Type              = WidgetType.Map,
+            Title             = cw.Title,
+            ColumnSpan        = cw.ColumnSpan,
+            SortOrder         = cw.SortOrder ?? 9999,
+            SourceArrayName   = cw.SourceArrayName,
+            MapLatitudeField  = cw.MapLatitudeField,
+            MapLongitudeField = cw.MapLongitudeField,
+            MapTitleField     = cw.MapTitleField,
+            MapData           = arr.RawData
+        };
+    }
 }

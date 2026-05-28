@@ -155,6 +155,74 @@
             </RadzenStack>
         }
 
+        @* Configuración del mapa (solo si es widget Map) *@
+        @if (Widget.Type == WidgetType.Map)
+        {
+            <RadzenText TextStyle="TextStyle.Overline"
+                        Style="margin-top:0.75rem; margin-bottom:0.25rem; color:var(--gt-stone-green)">
+                Configuración del mapa
+            </RadzenText>
+
+            @if (Widget.MapAvailableAllFields != null && Widget.MapAvailableAllFields.Any())
+            {
+                <RadzenFormField Text="Latitud" Variant="Variant.Text" Style="width:100%">
+                    <ChildContent>
+                        <RadzenDropDown TValue="string"
+                                        @bind-Value="Widget.MapLatitudeField"
+                                        Data="@GetMapNumericFieldOptions()"
+                                        TextProperty="Label" ValueProperty="Value"
+                                        Style="width:100%"
+                                        Change="@(_ => NotifyChange())" />
+                    </ChildContent>
+                </RadzenFormField>
+
+                <RadzenFormField Text="Longitud" Variant="Variant.Text" Style="width:100%; margin-top:0.5rem">
+                    <ChildContent>
+                        <RadzenDropDown TValue="string"
+                                        @bind-Value="Widget.MapLongitudeField"
+                                        Data="@GetMapNumericFieldOptions()"
+                                        TextProperty="Label" ValueProperty="Value"
+                                        Style="width:100%"
+                                        Change="@(_ => NotifyChange())" />
+                    </ChildContent>
+                </RadzenFormField>
+            }
+
+            @if (Widget.MapAvailableStringFields != null && Widget.MapAvailableStringFields.Any())
+            {
+                <RadzenFormField Text="Título del punto" Variant="Variant.Text" Style="width:100%; margin-top:0.5rem">
+                    <ChildContent>
+                        <RadzenDropDown TValue="string"
+                                        @bind-Value="Widget.MapTitleField"
+                                        Data="@GetMapTitleFieldOptions()"
+                                        TextProperty="Label" ValueProperty="Value"
+                                        Style="width:100%"
+                                        Change="@(_ => NotifyChange())" />
+                    </ChildContent>
+                </RadzenFormField>
+            }
+
+            @if (Widget.MapAvailableAllFields != null && Widget.MapAvailableAllFields.Any())
+            {
+                <RadzenFormField Text="Campos en tooltip" Variant="Variant.Text" Style="width:100%; margin-top:0.5rem">
+                    <ChildContent>
+                        <RadzenDropDown TValue="IEnumerable<string>"
+                                        Value="@((IEnumerable<string>?)Widget.MapTooltipFields)"
+                                        Data="@GetMapAllFieldOptions()"
+                                        TextProperty="Label" ValueProperty="Value"
+                                        Multiple="true"
+                                        Style="width:100%"
+                                        Placeholder="Todos los campos"
+                                        Change="@OnMapTooltipFieldsChanged" />
+                    </ChildContent>
+                </RadzenFormField>
+                <RadzenButton Text="Mostrar todos" Size="ButtonSize.ExtraSmall"
+                              ButtonStyle="ButtonStyle.Light" Variant="Variant.Text"
+                              Style="margin-top:0.25rem"
+                              Click="@(() => { Widget.MapTooltipFields = null; NotifyChange(); })" />
+            }
+        }
+
         @* Botón ocultar *@
         <RadzenButton Text="Ocultar widget" Icon="visibility_off"
                       ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
@@ -338,4 +406,44 @@
     private record ColumnSpanOption(string Label, int Value);
     private record ChartTypeOption(string Label, ChartSubType Value);
     private record FieldOption(string Label, string Value);
+
+    // ── Helpers para selectores de mapa ──────────────────────────────────────
+
+    private List<FieldOption> GetMapNumericFieldOptions()
+    {
+        // Campos numéricos = MapAvailableAllFields excluyendo los string puros
+        // Usamos AvailableValueFields si existen, sino todos los MapAvailableAllFields
+        var numericFields = Widget.AvailableValueFields ?? Widget.MapAvailableAllFields ?? new();
+        return numericFields
+            .Select(f => new FieldOption(Widget.FieldDisplayNames?.GetValueOrDefault(f, f) ?? f, f))
+            .ToList();
+    }
+
+    private List<FieldOption> GetMapTitleFieldOptions()
+    {
+        var fields = Widget.MapAvailableStringFields ?? new();
+        var options = fields
+            .Select(f => new FieldOption(Widget.FieldDisplayNames?.GetValueOrDefault(f, f) ?? f, f))
+            .ToList();
+        options.Insert(0, new FieldOption("(Ninguno / Índice)", string.Empty));
+        return options;
+    }
+
+    private List<FieldOption> GetMapAllFieldOptions()
+    {
+        var fields = Widget.MapAvailableAllFields ?? new();
+        return fields
+            .Select(f => new FieldOption(Widget.FieldDisplayNames?.GetValueOrDefault(f, f) ?? f, f))
+            .ToList();
+    }
+
+    private void OnMapTooltipFieldsChanged(object? value)
+    {
+        if (value is IEnumerable<string> fields)
+        {
+            var list = fields.ToList();
+            Widget.MapTooltipFields = list.Count > 0 ? list : null;
+        }
+        NotifyChange();
+    }
 }

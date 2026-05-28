@@ -138,7 +138,7 @@ else if (_data is not null)
                     var inv     = System.Globalization.CultureInfo.InvariantCulture;
 
                     var svgBars = new System.Text.StringBuilder();
-                    svgBars.Append($"<svg viewBox=\"0 0 {cW} {cH}\" style=\"width:100%;max-width:{cW}px;height:{cH}px;font-family:inherit;\">");
+                    svgBars.Append($"<svg viewBox=\"0 0 {cW} {cH}\" style=\"width:100%;height:auto;display:block;font-family:inherit;\">");
                     for (int i = 0; i <= 4; i++)
                     {
                         double yv  = maxV * i / 4;
@@ -264,7 +264,7 @@ else if (_data is not null)
                     var impropPts = string.Join(" ", trend.Select((t, i) => $"{lxPos(i).ToString("F1", linv)},{lyPos(t.ImproperRate).ToString("F1", linv)}"));
 
                     var svgLine = new System.Text.StringBuilder();
-                    svgLine.Append($"<svg viewBox=\"0 0 {lW} {lH}\" style=\"width:100%;max-width:{lW}px;height:{lH}px;font-family:inherit;\">");
+                    svgLine.Append($"<svg viewBox=\"0 0 {lW} {lH}\" style=\"width:100%;height:auto;display:block;font-family:inherit;\">");
                     for (int i = 0; i <= 4; i++)
                     {
                         double yv = 25.0 * i;

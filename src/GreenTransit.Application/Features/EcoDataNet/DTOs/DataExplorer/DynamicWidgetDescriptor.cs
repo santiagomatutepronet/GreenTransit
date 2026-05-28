@@ -96,6 +96,42 @@ public class DynamicWidgetDescriptor
     /// </summary>
     public string? SourceArrayName { get; set; }
 
+    // --- Datos para Mapa ---
+
+    /// <summary>Nombre de la propiedad del array que contiene la latitud.</summary>
+    public string? MapLatitudeField { get; set; }
+
+    /// <summary>Nombre de la propiedad del array que contiene la longitud.</summary>
+    public string? MapLongitudeField { get; set; }
+
+    /// <summary>
+    /// Nombre de la propiedad del array que se usa como título del marcador/punto en el mapa.
+    /// Null = usar el primer campo string disponible, o el índice del elemento.
+    /// </summary>
+    public string? MapTitleField { get; set; }
+
+    /// <summary>
+    /// Lista de nombres de propiedades del array que se muestran en el tooltip/popup al hacer clic en un punto.
+    /// Null o vacío = mostrar todos los campos del elemento.
+    /// </summary>
+    public List<string>? MapTooltipFields { get; set; }
+
+    /// <summary>
+    /// Datos del mapa: lista de diccionarios con al menos las propiedades MapLatitudeField y MapLongitudeField.
+    /// </summary>
+    public List<Dictionary<string, object?>>? MapData { get; set; }
+
+    /// <summary>
+    /// Lista de todos los campos string del array fuente, para que la UI muestre opciones
+    /// de "campo título" y "campos tooltip" en el panel de configuración.
+    /// </summary>
+    public List<string>? MapAvailableStringFields { get; set; }
+
+    /// <summary>
+    /// Lista de todos los campos del array fuente (string + numéricos), para opciones de tooltip.
+    /// </summary>
+    public List<string>? MapAvailableAllFields { get; set; }
+
     // --- Datos para texto/cabecera ---
 
     /// <summary>Texto libre para widgets de tipo Header o Info.</summary>
@@ -118,7 +154,9 @@ public enum WidgetType
     /// <summary>Lista de pares clave-valor (para objetos anidados simples).</summary>
     KeyValueList,
     /// <summary>Texto informativo (strings largos, descripciones).</summary>
-    InfoText
+    InfoText,
+    /// <summary>Mapa de puntos geográficos (lat/lon) extraídos del JSON.</summary>
+    Map
 }
 
 public enum ChartSubType

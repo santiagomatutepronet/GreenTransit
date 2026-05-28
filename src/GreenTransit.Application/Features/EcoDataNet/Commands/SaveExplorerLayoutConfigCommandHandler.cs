@@ -1,5 +1,6 @@
 using System.Text.Json;
 using GreenTransit.Application.Common.Interfaces;
+using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer;
 using GreenTransit.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -32,7 +33,13 @@ public class SaveExplorerLayoutConfigCommandHandler
     {
         var ownerId = _currentUser.OwnerId;
         var userId  = _currentUser.IdUser;
-        var json    = JsonSerializer.Serialize(request.Overrides, JsonOptions);
+
+        var persisted = new PersistedLayoutConfig
+        {
+            Overrides     = request.Overrides,
+            CustomWidgets = request.CustomWidgets
+        };
+        var json = JsonSerializer.Serialize(persisted, JsonOptions);
 
         // Patrón Upsert: buscar registro existente
         var existing = await _db.ExplorerLayoutConfigs
@@ -55,15 +62,15 @@ public class SaveExplorerLayoutConfigCommandHandler
             // Crear nuevo registro
             existing = new ExplorerLayoutConfig
             {
-                OwnerId              = ownerId,
-                UserId               = userId,
-                AssetId              = request.AssetId,
+                OwnerId               = ownerId,
+                UserId                = userId,
+                AssetId               = request.AssetId,
                 ProviderParticipantId = request.ProviderParticipantId,
-                DatasetName          = request.DatasetName,
-                LayoutConfigJson     = json,
-                SchemaHash           = request.SchemaHash,
-                CreatedAt            = DateTime.UtcNow,
-                UpdatedAt            = DateTime.UtcNow
+                DatasetName           = request.DatasetName,
+                LayoutConfigJson      = json,
+                SchemaHash            = request.SchemaHash,
+                CreatedAt             = DateTime.UtcNow,
+                UpdatedAt             = DateTime.UtcNow
             };
             _db.Add(existing);
         }

@@ -1515,6 +1515,14 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         CenterCode       = centerCode,
         EntityRole       = role,
         EntityType       = entityType,
+        TypeThirdParty   = role switch
+        {
+            "Producer" or "PublicEntity" => "PuntoDeRecogida",
+            "Plant"                      => "Gestor",
+            "SCRAP"                      => "SCRAP",
+            "OperatorTransfer" or "Carrier" => "OperadorTraslado",
+            _                            => "Gestor",
+        },
         CountryCode      = "ES",
         StateCode        = stateCode,
         ZipCode          = zip,
@@ -1601,21 +1609,21 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         // Tupla: (nombre, category, use, lerCode)
         var productDef = new[]
         {
-            ("Botella PET 1.5L",          "Envases",    "Beverage",    "150102"),
-            ("Lata aluminio 330ml",       "Envases",    "Beverage",    "150104"),
-            ("Caja cartón 30x20x15cm",    "Envases",    "Packaging",   "150101"),
-            ("Botella vidrio 75cl",       "Envases",    "Beverage",    "150107"),
-            ("Envase plástico 5kg",       "Envases",    "Food",        "150102"),
-            ("Ordenador portátil",        "RAEE",       "Electronics", "160213"),
-            ("Televisor LED 42\"",        "RAEE",       "Electronics", "160213"),
-            ("Frigorífico A++",           "RAEE",       "WhiteGoods",  "160213"),
-            ("Lavadora 8kg",              "RAEE",       "WhiteGoods",  "160213"),
-            ("Móvil smartphone",          "RAEE",       "Mobile",      "160214"),
-            ("Palé madera",               "Envases",    "Logistics",   "150103"),
-            ("Film estirable",            "Envases",    "Packaging",   "150102"),
-            ("Tóner impresora",           "RAEE",       "Consumable",  "160214"),
-            ("Batería Li-ion",            "RAEE",       "Battery",     "160214"),
-            ("Luminaria LED",             "RAEE",       "Lighting",    "160214"),
+            ("Botella PET 1.5L",          "Envases",    "Doméstico",   "150102"),
+            ("Lata aluminio 330ml",       "Envases",    "Doméstico",   "150104"),
+            ("Caja cartón 30x20x15cm",    "Envases",    "Profesional", "150101"),
+            ("Botella vidrio 75cl",       "Envases",    "Doméstico",   "150107"),
+            ("Envase plástico 5kg",       "Envases",    "Doméstico",   "150102"),
+            ("Ordenador portátil",        "RAEE",       "Profesional", "160213"),
+            ("Televisor LED 42\"",        "RAEE",       "Doméstico",   "160213"),
+            ("Frigorífico A++",           "RAEE",       "Doméstico",   "160213"),
+            ("Lavadora 8kg",              "RAEE",       "Doméstico",   "160213"),
+            ("Móvil smartphone",          "RAEE",       "Doméstico",   "160214"),
+            ("Palé madera",               "Envases",    "Profesional", "150103"),
+            ("Film estirable",            "Envases",    "Profesional", "150102"),
+            ("Tóner impresora",           "RAEE",       "Profesional", "160214"),
+            ("Batería Li-ion",            "RAEE",       "Doméstico",   "160214"),
+            ("Luminaria LED",             "RAEE",       "Profesional", "160214"),
         };
         for (int i = 0; i < productDef.Length; i++)
         {
@@ -1915,7 +1923,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 });
             }
 
-            var opTransfer = opTransfers.Count > 0 && i % 3 == 0 ? opTransfers[i % opTransfers.Count] : (Guid?)null;
+            var opTransfer = opTransfers.Count > 0 ? opTransfers[i % opTransfers.Count] : (Guid?)null;
             var pickupHour  = hours[(i * 2) % hours.Length];
             var pickupMin   = minutes[(i * 2) % minutes.Length];
             var actualPickup = issuedAt.AddDays(2).Date.AddHours(pickupHour).AddMinutes(pickupMin);
@@ -2048,7 +2056,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     {
         var entries  = new List<EntryCAC>();
         var residues = new List<EntryCACResidue>();
-        var containers = new[] { "Bigbag", "Contenedor", "Palé", "Granel" };
+        var containers = new[] { "Jaula", "Contenedor", "Contenedor_1100L", "Barca" };
         var methods    = new[] { "Puerta a puerta", "Punto limpio", "Contenedor vía pública" };
 
         for (int i = 0; i < Math.Min(wasteMoves.Count, 100); i++)
@@ -2213,6 +2221,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                     Id               = SeedGuid($"tpr{i+1}", l + 1),
                     IdTreatmentPlant = tp.Id,
                     IdResidue        = inputResidue,
+                    Category         = new[] { "Envases", "RAEE", "Voluminosos" }[(i + l) % 3],
                     WeightTotal      = total,
                     MeasureUnit      = "Kg",
                     Units            = 1,
@@ -2408,8 +2417,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         };
         var productUses = new[]
         {
-            "Beverage", "Electronics", "Packaging", "WhiteGoods",
-            "Food", "Logistics", "Mobile", "Consumable", "Battery", "Lighting"
+            "Doméstico", "Profesional", "Doméstico", "Profesional",
+            "Doméstico", "Profesional", "Doméstico", "Profesional", "Doméstico", "Profesional"
         };
 
         int declIdx = 0;

@@ -167,6 +167,53 @@ public class DashboardLayoutBuilder : IDashboardLayoutBuilder
                 hasChart = true;
             }
 
+            // REGLA 8b: Array con propiedad categórica pero sin numéricos → gráfico de recuento por categoría
+            if (!hasChart && array.CategoryProperty != null && array.NumericProperties.Count == 0)
+            {
+                const string CountField = "count";
+
+                var chartData = array.RawData
+                    .GroupBy(r => r.TryGetValue(array.CategoryProperty, out var v) ? v?.ToString() ?? string.Empty : string.Empty)
+                    .Select(g => new Dictionary<string, object?>
+                    {
+                        [array.CategoryProperty] = g.Key,
+                        [CountField]             = (object?)g.Count()
+                    })
+                    .OrderByDescending(r => (int)(r[CountField] ?? 0))
+                    .Take(MaxChartPoints)
+                    .ToList();
+
+                bool useDonut = chartData.Count <= 7;
+
+                widgets.Add(new DynamicWidgetDescriptor
+                {
+                    Type               = WidgetType.Chart,
+                    Title              = array.DisplayName,
+                    SortOrder          = chartOrder++,
+                    ColumnSpan         = 6,
+                    ChartType          = useDonut ? ChartSubType.Donut : ChartSubType.BarVertical,
+                    ChartCategoryField = array.CategoryProperty,
+                    ChartValueFields   = [CountField],
+                    ChartData          = chartData
+                });
+
+                // Poblar metadatos para personalización: campos candidatos a categoría
+                var countWidget = widgets[^1];
+                countWidget.SourceArrayName = array.Name;
+                countWidget.AvailableCategoryFields = array.ItemProperties
+                    .Where(p => p.PropertyType is JsonPropertyType.String or JsonPropertyType.DateTime)
+                    .Select(p => p.Name)
+                    .OrderBy(f => f == array.CategoryProperty ? 0 : 1)
+                    .ThenBy(f => f)
+                    .ToList();
+                countWidget.AvailableValueFields = [CountField];
+                countWidget.FieldDisplayNames = array.ItemProperties
+                    .ToDictionary(p => p.Name, p => p.DisplayName);
+                countWidget.FieldDisplayNames[CountField] = "Cantidad";
+
+                hasChart = true;
+            }
+
             // REGLA 8: Arrays de valores simples sin categoría numérica
             if (!hasChart && array.ItemProperties.Count == 1)
             {
@@ -252,7 +299,39 @@ public class DashboardLayoutBuilder : IDashboardLayoutBuilder
                     TableData    = array.RawData
                 });
             }
-        }
+
+            // REGLA GEO: Array con lat/lon → widget Map (además del gráfico y la tabla)
+            if (array.HasGeoCoordinates && array.ItemCount >= 2)
+            {
+                var allFields    = array.ItemProperties.Select(p => p.Name).ToList();
+                var stringFields = array.ItemProperties
+                    .Where(p => p.PropertyType is JsonPropertyType.String or JsonPropertyType.DateTime)
+                    .Select(p => p.Name)
+                    .ToList();
+
+                var titleField = array.CategoryProperty
+                    ?? stringFields.FirstOrDefault();
+
+                var mapWidget = new DynamicWidgetDescriptor
+                {
+                    Type                    = WidgetType.Map,
+                    Title                   = $"{array.DisplayName} — Mapa",
+                    SortOrder               = 35 + (chartOrder - 20), // entre charts y tablas
+                    ColumnSpan              = 12,
+                    MapLatitudeField        = array.LatitudeProperty,
+                    MapLongitudeField       = array.LongitudeProperty,
+                    MapTitleField           = titleField,
+                    MapTooltipFields        = null, // null = mostrar todos
+                    MapData                 = array.RawData,
+                    SourceArrayName         = array.Name,
+                    SourceJsonPath          = array.JsonPath,
+                    MapAvailableStringFields = stringFields,
+                    MapAvailableAllFields   = allFields,
+                    FieldDisplayNames       = array.ItemProperties.ToDictionary(p => p.Name, p => p.DisplayName)
+                };
+                widgets.Add(mapWidget);
+            }
+        } // fin foreach (var array in schema.Arrays)
 
         // ── REGLA 6: Objetos anidados → KeyValueList o DataTable ──────────
         int kvOrder = 50;

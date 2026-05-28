@@ -38,6 +38,7 @@
     <script src="js/dashboardMap.js"></script>
     <script src="js/wasteMoveMap.js"></script>
     <script src="js/dumZoneMap.js"></script>
+    <script src="js/leaflet-interop.js"></script>
     @* ── ApexCharts (debe cargarse ANTES que blazor.web.js para que ApexCharts  *@
     @*    esté definido cuando Blazor establezca el circuito SignalR e invoque   *@
     @*    JS Interop por primera vez desde OnAfterRenderAsync)                 ── *@
@@ -47,6 +48,9 @@
     <script src="js/carbonFootprintCharts.js"></script>
     <script src="js/complianceCharts.js"></script>
     <script src="js/fileDownload.js"></script>
+    @* ── html2canvas + jsPDF: exportación a PDF del explorador de datos ───── *@
+    <script src="lib/html2canvas/html2canvas.min.js"></script>
+    <script src="lib/jspdf/jspdf.umd.min.js"></script>
     @* ── Blazor (después de que todas las dependencias JS estén listas) ───── *@
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script>

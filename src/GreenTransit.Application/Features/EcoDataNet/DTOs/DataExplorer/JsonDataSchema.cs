@@ -55,6 +55,21 @@ public class JsonArrayDescriptor
 
     /// <summary>Datos crudos del array como lista de diccionarios para renderizado.</summary>
     public List<Dictionary<string, object?>> RawData { get; set; } = new();
+
+    /// <summary>
+    /// Nombre de la propiedad detectada como latitud (null si no se detecta).
+    /// Heurística: nombre contiene "lat", "latitude", "latitud" y tipo es Number.
+    /// </summary>
+    public string? LatitudeProperty { get; set; }
+
+    /// <summary>
+    /// Nombre de la propiedad detectada como longitud (null si no se detecta).
+    /// Heurística: nombre contiene "lon", "lng", "longitude", "longitud" y tipo es Number.
+    /// </summary>
+    public string? LongitudeProperty { get; set; }
+
+    /// <summary>True si se detectaron tanto LatitudeProperty como LongitudeProperty.</summary>
+    public bool HasGeoCoordinates => LatitudeProperty != null && LongitudeProperty != null;
 }
 
 /// <summary>

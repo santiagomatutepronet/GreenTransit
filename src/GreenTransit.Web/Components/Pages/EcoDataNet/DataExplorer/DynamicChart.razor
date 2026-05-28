@@ -12,27 +12,49 @@
     else
     {
         <RadzenChart Style="height:300px" @key="@_chartKey">
+            <RadzenChartTooltipOptions Visible="true" Shared="false" />
             @switch (Widget.ChartType)
             {
                 case ChartSubType.Donut:
                     <RadzenDonutSeries Data="@_chartItems"
                                        CategoryProperty="@nameof(ChartDataItem.Category)"
                                        ValueProperty="@nameof(ChartDataItem.Value)"
-                                       Title="@Widget.Title" />
+                                       Title="@Widget.Title">
+                        <TooltipTemplate Context="item">
+                            <div>
+                                <strong>@item.Category</strong><br/>
+                                @FormatValue(item.Value)
+                            </div>
+                        </TooltipTemplate>
+                    </RadzenDonutSeries>
                     break;
 
                 case ChartSubType.Pie:
                     <RadzenPieSeries Data="@_chartItems"
                                      CategoryProperty="@nameof(ChartDataItem.Category)"
                                      ValueProperty="@nameof(ChartDataItem.Value)"
-                                     Title="@Widget.Title" />
+                                     Title="@Widget.Title">
+                        <TooltipTemplate Context="item">
+                            <div>
+                                <strong>@item.Category</strong><br/>
+                                @FormatValue(item.Value)
+                            </div>
+                        </TooltipTemplate>
+                    </RadzenPieSeries>
                     break;
 
                 case ChartSubType.BarHorizontal:
                     <RadzenBarSeries Data="@_chartItems"
                                      CategoryProperty="@nameof(ChartDataItem.Category)"
                                      ValueProperty="@nameof(ChartDataItem.Value)"
-                                     Title="@_primarySeriesTitle" />
+                                     Title="@_primarySeriesTitle">
+                        <TooltipTemplate Context="item">
+                            <div>
+                                <strong>@item.Category</strong><br/>
+                                @_primarySeriesTitle: @FormatValue(item.Value)
+                            </div>
+                        </TooltipTemplate>
+                    </RadzenBarSeries>
                     <RadzenCategoryAxis />
                     <RadzenValueAxis />
                     break;
@@ -47,7 +69,14 @@
                                           ValueProperty="@nameof(ChartDataItem.Value)"
                                           Title="@seriesTitle"
                                           Stroke="@GetSeriesColor(idx)"
-                                          Fill="@GetSeriesColor(idx)" />
+                                          Fill="@GetSeriesColor(idx)">
+                            <TooltipTemplate Context="item">
+                                <div>
+                                    <strong>@item.Category</strong><br/>
+                                    @seriesTitle: @FormatValue(item.Value)
+                                </div>
+                            </TooltipTemplate>
+                        </RadzenAreaSeries>
                     }
                     <RadzenCategoryAxis />
                     <RadzenValueAxis />
@@ -62,7 +91,14 @@
                                           CategoryProperty="@nameof(ChartDataItem.Category)"
                                           ValueProperty="@nameof(ChartDataItem.Value)"
                                           Title="@seriesTitle"
-                                          Stroke="@GetSeriesColor(idx)" />
+                                          Stroke="@GetSeriesColor(idx)">
+                            <TooltipTemplate Context="item">
+                                <div>
+                                    <strong>@item.Category</strong><br/>
+                                    @seriesTitle: @FormatValue(item.Value)
+                                </div>
+                            </TooltipTemplate>
+                        </RadzenLineSeries>
                     }
                     <RadzenCategoryAxis />
                     <RadzenValueAxis />
@@ -70,11 +106,23 @@
 
                 // BarVertical es el default
                 default:
-                    <RadzenColumnSeries Data="@_chartItems"
-                                        CategoryProperty="@nameof(ChartDataItem.Category)"
-                                        ValueProperty="@nameof(ChartDataItem.Value)"
-                                        Title="@_primarySeriesTitle"
-                                        Fill="@GetSeriesColor(0)" />
+                    @foreach (var (field, idx) in _seriesFields)
+                    {
+                        var seriesData = GetSeriesData(field);
+                        var seriesTitle = JsonSchemaAnalyzerHelper.HumanizeName(field);
+                        <RadzenColumnSeries Data="@seriesData"
+                                            CategoryProperty="@nameof(ChartDataItem.Category)"
+                                            ValueProperty="@nameof(ChartDataItem.Value)"
+                                            Title="@seriesTitle"
+                                            Fill="@GetSeriesColor(idx)">
+                            <TooltipTemplate Context="item">
+                                <div>
+                                    <strong>@item.Category</strong><br/>
+                                    @seriesTitle: @FormatValue(item.Value)
+                                </div>
+                            </TooltipTemplate>
+                        </RadzenColumnSeries>
+                    }
                     <RadzenCategoryAxis />
                     <RadzenValueAxis />
                     break;
@@ -176,6 +224,16 @@
     }
 
     private static string GetSeriesColor(int index) => Palette[index % Palette.Length];
+
+    private static string FormatValue(double value)
+    {
+        // Si es entero o muy cercano a entero, mostrar sin decimales
+        if (Math.Abs(value - Math.Round(value)) < 0.001)
+            return value.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
+        
+        // Si tiene decimales, mostrar con 2 decimales
+        return value.ToString("N2", System.Globalization.CultureInfo.CurrentCulture);
+    }
 
     private class ChartDataItem
     {

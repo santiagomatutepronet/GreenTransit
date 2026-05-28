@@ -122,6 +122,38 @@ public class LayoutCustomizationService : ILayoutCustomizationService
                         col.Width = colOv.CustomWidth.Value;
                 }
             }
+
+            // Aplicar override de configuración de mapa
+            if (ov.CustomMapBinding != null && widget.Type == WidgetType.Map)
+            {
+                if (ov.CustomMapBinding.CustomLatitudeField != null
+                    && widget.MapAvailableAllFields?.Contains(ov.CustomMapBinding.CustomLatitudeField) == true)
+                {
+                    widget.MapLatitudeField = ov.CustomMapBinding.CustomLatitudeField;
+                }
+
+                if (ov.CustomMapBinding.CustomLongitudeField != null
+                    && widget.MapAvailableAllFields?.Contains(ov.CustomMapBinding.CustomLongitudeField) == true)
+                {
+                    widget.MapLongitudeField = ov.CustomMapBinding.CustomLongitudeField;
+                }
+
+                if (ov.CustomMapBinding.CustomTitleField != null
+                    && widget.MapAvailableStringFields?.Contains(ov.CustomMapBinding.CustomTitleField) == true)
+                {
+                    widget.MapTitleField = ov.CustomMapBinding.CustomTitleField;
+                }
+
+                if (ov.CustomMapBinding.CustomTooltipFields != null && ov.CustomMapBinding.CustomTooltipFields.Count > 0)
+                {
+                    var validTooltip = ov.CustomMapBinding.CustomTooltipFields
+                        .Where(f => widget.MapAvailableAllFields?.Contains(f) == true)
+                        .ToList();
+
+                    if (validTooltip.Count > 0)
+                        widget.MapTooltipFields = validTooltip;
+                }
+            }
         }
 
         return new LayoutMergeResult

@@ -1,0 +1,133 @@
+@using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer
+@using Microsoft.JSInterop
+
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div id="@_mapContainerId"
+     style="width:100%;height:420px;border-radius:8px;border:1px solid var(--rz-base-300,#ddd);">
+</div>
+
+@code {
+    [Parameter] public DynamicWidgetDescriptor Widget { get; set; } = null!;
+
+    private string _mapContainerId = string.Empty;
+    private bool _mapInitialized;
+
+    protected override void OnInitialized()
+    {
+        // ID único por instancia para soportar múltiples mapas en la misma página
+        _mapContainerId = $"map-{Widget.WidgetId}";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _mapInitialized) return;
+        if (Widget.MapData == null || Widget.MapData.Count == 0) return;
+        if (string.IsNullOrEmpty(Widget.MapLatitudeField) || string.IsNullOrEmpty(Widget.MapLongitudeField)) return;
+
+        _mapInitialized = true;
+
+        // Calcular centro
+        var lats = Widget.MapData
+            .Select(r => TryGetDouble(r, Widget.MapLatitudeField))
+            .Where(v => v.HasValue)
+            .Select(v => v!.Value)
+            .ToList();
+
+        var lons = Widget.MapData
+            .Select(r => TryGetDouble(r, Widget.MapLongitudeField))
+            .Where(v => v.HasValue)
+            .Select(v => v!.Value)
+            .ToList();
+
+        if (lats.Count == 0) return;
+
+        double centerLat = lats.Average();
+        double centerLon = lons.Average();
+
+        await JS.InvokeVoidAsync("leafletInterop.initializeMap",
+            _mapContainerId, centerLat, centerLon, 10);
+
+        // Construir datos de marcadores
+        var markers = new List<object>();
+        for (int i = 0; i < Widget.MapData.Count; i++)
+        {
+            var row = Widget.MapData[i];
+
+            var lat = TryGetDouble(row, Widget.MapLatitudeField);
+            var lon = TryGetDouble(row, Widget.MapLongitudeField);
+            if (lat == null || lon == null) continue;
+
+            // Título del marcador
+            string title = string.Empty;
+            if (!string.IsNullOrEmpty(Widget.MapTitleField) && row.TryGetValue(Widget.MapTitleField, out var titleVal))
+                title = titleVal?.ToString() ?? string.Empty;
+            else
+                title = $"#{i + 1}";
+
+            // HTML del tooltip
+            var tooltipHtml = BuildTooltipHtml(row, Widget.MapTooltipFields, title);
+
+            markers.Add(new { lat, lon, title, tooltipHtml });
+        }
+
+        await JS.InvokeVoidAsync("leafletInterop.addMarkers", _mapContainerId, markers);
+    }
+
+    private static double? TryGetDouble(Dictionary<string, object?> row, string field)
+    {
+        if (!row.TryGetValue(field, out var raw) || raw == null) return null;
+        return raw switch
+        {
+            double d   => d,
+            float f    => f,
+            int i      => i,
+            long l     => l,
+            decimal dc => (double)dc,
+            _          => double.TryParse(raw.ToString(), System.Globalization.NumberStyles.Any,
+                              System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+                              ? parsed
+                              : null
+        };
+    }
+
+    private static string BuildTooltipHtml(
+        Dictionary<string, object?> row,
+        List<string>? tooltipFields,
+        string title)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<div style=\"font-size:0.85rem;min-width:120px\">");
+        if (!string.IsNullOrEmpty(title))
+            sb.Append($"<strong>{System.Net.WebUtility.HtmlEncode(title)}</strong><br/>");
+
+        IEnumerable<KeyValuePair<string, object?>> fields = tooltipFields?.Count > 0
+            ? row.Where(kv => tooltipFields.Contains(kv.Key))
+            : row;
+
+        foreach (var kv in fields)
+        {
+            var val = kv.Value?.ToString() ?? string.Empty;
+            sb.Append($"<span><b>{System.Net.WebUtility.HtmlEncode(kv.Key)}:</b> {System.Net.WebUtility.HtmlEncode(val)}</span><br/>");
+        }
+
+        sb.Append("</div>");
+        return sb.ToString();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_mapInitialized)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("leafletInterop.destroyMap", _mapContainerId);
+            }
+            catch
+            {
+                // Ignorar errores al desmontar (JS puede no estar disponible)
+            }
+        }
+    }
+}

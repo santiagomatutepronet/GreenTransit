@@ -213,19 +213,32 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
                 SuggestedIcon = SuggestIcon(prop.Name)
             };
 
-            if (prop.Value.ValueKind == JsonValueKind.Number)
+            // Usar el primer valor no-nulo del sample para inferir el tipo real del campo
+            JsonElement firstNonNull = prop.Value;
+            foreach (var sampleItem in items.Take(sampleCount))
+            {
+                if (sampleItem.TryGetProperty(prop.Name, out var candidate)
+                    && candidate.ValueKind != JsonValueKind.Null
+                    && candidate.ValueKind != JsonValueKind.Undefined)
+                {
+                    firstNonNull = candidate;
+                    break;
+                }
+            }
+
+            if (firstNonNull.ValueKind == JsonValueKind.Number)
             {
                 itemPropDesc.PropertyType = JsonPropertyType.Number;
-                prop.Value.TryGetDouble(out var dVal);
+                firstNonNull.TryGetDouble(out var dVal);
                 itemPropDesc.IsPercentage = DetectPercentage(prop.Name, dVal);
             }
-            else if (prop.Value.ValueKind == JsonValueKind.String)
+            else if (firstNonNull.ValueKind == JsonValueKind.String)
             {
-                var sv = prop.Value.GetString() ?? string.Empty;
+                var sv = firstNonNull.GetString() ?? string.Empty;
                 itemPropDesc.IsDate = IsoDateRegex.IsMatch(sv);
                 itemPropDesc.PropertyType = itemPropDesc.IsDate ? JsonPropertyType.DateTime : JsonPropertyType.String;
             }
-            else if (prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            else if (firstNonNull.ValueKind is JsonValueKind.True or JsonValueKind.False)
             {
                 itemPropDesc.PropertyType = JsonPropertyType.Boolean;
             }
@@ -278,7 +291,81 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
             return dict;
         }).ToList();
 
+        // Detección de coordenadas geográficas (lat/lon)
+        DetectGeoCoordinates(desc, items);
+
         return desc;
+    }
+
+    // ── Detección de coordenadas geográficas ─────────────────────────────
+
+    private static void DetectGeoCoordinates(JsonArrayDescriptor desc, List<JsonElement> items)
+    {
+        string? latCandidate = null;
+        string? lonCandidate = null;
+
+        foreach (var prop in desc.ItemProperties.Where(p => p.PropertyType == JsonPropertyType.Number))
+        {
+            var lower = prop.Name.ToLowerInvariant();
+
+            if (latCandidate == null && IsLatitudeField(lower))
+            {
+                // Validar rango con muestras
+                if (ValidateGeoRange(prop.Name, items, -90, 90))
+                    latCandidate = prop.Name;
+            }
+            else if (lonCandidate == null && IsLongitudeField(lower))
+            {
+                if (ValidateGeoRange(prop.Name, items, -180, 180))
+                    lonCandidate = prop.Name;
+            }
+        }
+
+        desc.LatitudeProperty  = latCandidate;
+        desc.LongitudeProperty = lonCandidate;
+    }
+
+    private static bool IsLatitudeField(string lower)
+    {
+        // Nombres exactos
+        if (lower is "lat" or "latitude" or "latitud") return true;
+        // Empieza por "lat" seguido de "_", "i" o "u" (latitud, latitude, lat_deg…) pero no "lateral", "platform"
+        if (lower.StartsWith("lat") && lower.Length > 3)
+        {
+            char next = lower[3];
+            return next == '_' || next == 'i' || next == 'u';
+        }
+        return false;
+    }
+
+    private static bool IsLongitudeField(string lower)
+    {
+        if (lower is "lon" or "lng" or "longitude" or "longitud") return true;
+        if (lower.StartsWith("lon") && lower.Length > 3)
+        {
+            char next = lower[3];
+            return next == '_' || next == 'g'; // "lon_" o "long…" (longitude)
+        }
+        return false;
+    }
+
+    private static bool ValidateGeoRange(string propName, List<JsonElement> items, double min, double max)
+    {
+        var samples = new List<double>();
+        foreach (var item in items.Take(20))
+        {
+            if (item.TryGetProperty(propName, out var pv)
+                && pv.ValueKind == JsonValueKind.Number
+                && pv.TryGetDouble(out var d))
+            {
+                samples.Add(d);
+            }
+        }
+
+        if (samples.Count == 0) return true; // sin muestras, asumir válido
+
+        int inRange = samples.Count(v => v >= min && v <= max);
+        return (double)inRange / samples.Count >= 0.5;
     }
 
     // ── Procesamiento de objeto anidado ───────────────────────────────────

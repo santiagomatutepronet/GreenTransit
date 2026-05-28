@@ -51,17 +51,16 @@
             Arrastra los widgets para reordenar · Pulsa <strong>⚙</strong> para configurar cada uno
         </RadzenText>
 
+        @* Añadir widget personalizado *@
+        <RadzenButton Text="Añadir widget" Icon="add_chart"
+                      ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small"
+                      Click="OnAddWidget" />
+
         @* Toggle mostrar/ocultar widgets desactivados *@
         <RadzenButton Text="@(ShowHiddenWidgets ? "Ocultar desactivados" : "Ver desactivados")"
                       Icon="@(ShowHiddenWidgets ? "visibility_off" : "visibility")"
                       ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
                       Click="OnToggleHidden" />
-
-        @* Guardar *@
-        <RadzenButton Text="Guardar" Icon="save"
-                      ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
-                      Disabled="@(!HasUnsavedChanges)"
-                      Click="OnSave" />
 
         @* Resetear *@
         <RadzenButton Text="Resetear" Icon="restart_alt"
@@ -69,6 +68,14 @@
                       Disabled="@(!HasSavedConfig)"
                       Click="OnReset"
                       title="Descartar la personalización y volver al layout automático" />
+    }
+
+    @* Guardar — visible siempre que haya cambios pendientes *@
+    @if (HasUnsavedChanges)
+    {
+        <RadzenButton Text="Guardar cambios" Icon="save"
+                      ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                      Click="OnSave" />
     }
 </RadzenStack>
 
@@ -81,5 +88,6 @@
     [Parameter] public EventCallback OnSave { get; set; }
     [Parameter] public EventCallback OnReset { get; set; }
     [Parameter] public EventCallback OnToggleHidden { get; set; }
+    [Parameter] public EventCallback OnAddWidget { get; set; }
     [Parameter] public bool ShowHiddenWidgets { get; set; }
 }
