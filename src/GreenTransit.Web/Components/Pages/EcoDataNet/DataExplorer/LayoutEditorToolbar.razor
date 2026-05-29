@@ -1,0 +1,93 @@
+@using Radzen
+@using Radzen.Blazor
+
+<style>
+    .layout-editor-toolbar {
+        padding: 0.5rem 0.75rem;
+        margin-bottom: 0.75rem;
+        border-radius: 8px;
+        background: var(--rz-base-50, #fafafa);
+        border: 1px solid var(--rz-base-300, #ddd);
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .layout-editor-toolbar.is-editing {
+        background: rgba(138, 204, 195, 0.12);
+        border-color: var(--gt-secondary-1, #8ACCC3);
+        border-style: dashed;
+    }
+</style>
+
+<RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center"
+             Gap="0.5rem" class="@($"layout-editor-toolbar {(IsEditMode ? "is-editing" : "")}")"
+             Style="flex-wrap:wrap">
+
+    @* Indicador de configuración guardada *@
+    @if (HasSavedConfig)
+    {
+        <RadzenBadge Text="Layout personalizado" BadgeStyle="BadgeStyle.Info" />
+    }
+
+    @* Alerta si el esquema cambió *@
+    @if (SchemaChanged)
+    {
+        <RadzenBadge Text="⚠ Estructura del asset modificada" BadgeStyle="BadgeStyle.Warning"
+                     title="El JSON del asset tiene campos nuevos o eliminados desde la última personalización" />
+    }
+
+    @* Botón toggle modo edición *@
+    <RadzenButton Text="@(IsEditMode ? "Finalizar edición" : "Personalizar layout")"
+                  Icon="@(IsEditMode ? "check" : "dashboard_customize")"
+                  ButtonStyle="@(IsEditMode ? ButtonStyle.Success : ButtonStyle.Secondary)"
+                  Size="ButtonSize.Small"
+                  Click="@(() => IsEditModeChanged.InvokeAsync(!IsEditMode))" />
+
+    @if (IsEditMode)
+    {
+        @* Hint instructivo *@
+        <RadzenText TextStyle="TextStyle.Caption" style="color:var(--rz-text-secondary-color);margin-left:0.25rem">
+            <i class="bi bi-info-circle me-1"></i>
+            Arrastra los widgets para reordenar · Pulsa <strong>⚙</strong> para configurar cada uno
+        </RadzenText>
+
+        @* Añadir widget personalizado *@
+        <RadzenButton Text="Añadir widget" Icon="add_chart"
+                      ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small"
+                      Click="OnAddWidget" />
+
+        @* Toggle mostrar/ocultar widgets desactivados *@
+        <RadzenButton Text="@(ShowHiddenWidgets ? "Ocultar desactivados" : "Ver desactivados")"
+                      Icon="@(ShowHiddenWidgets ? "visibility_off" : "visibility")"
+                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                      Click="OnToggleHidden" />
+
+        @* Resetear *@
+        <RadzenButton Text="Resetear" Icon="restart_alt"
+                      ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                      Disabled="@(!HasSavedConfig)"
+                      Click="OnReset"
+                      title="Descartar la personalización y volver al layout automático" />
+    }
+
+    @* Guardar — visible siempre que haya cambios pendientes *@
+    @if (HasUnsavedChanges)
+    {
+        <RadzenButton Text="Guardar cambios" Icon="save"
+                      ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                      Click="OnSave" />
+    }
+</RadzenStack>
+
+@code {
+    [Parameter] public bool IsEditMode { get; set; }
+    [Parameter] public EventCallback<bool> IsEditModeChanged { get; set; }
+    [Parameter] public bool HasSavedConfig { get; set; }
+    [Parameter] public bool HasUnsavedChanges { get; set; }
+    [Parameter] public bool SchemaChanged { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnReset { get; set; }
+    [Parameter] public EventCallback OnToggleHidden { get; set; }
+    [Parameter] public EventCallback OnAddWidget { get; set; }
+    [Parameter] public bool ShowHiddenWidgets { get; set; }
+}

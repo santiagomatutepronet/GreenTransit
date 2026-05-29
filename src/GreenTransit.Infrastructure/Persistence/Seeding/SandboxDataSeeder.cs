@@ -64,6 +64,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
             await Phase6_EconomicsAsync(ct);
             await Phase7_DeclarationsAsync(ct);
             await Phase8_UsersAsync(ct);
+            await Phase8b_SandboxUsersUcAsync(ct);
             await Phase9_DumAndEcoAsync(ct);
             await Phase10_RegulatoryTargetsAsync(ct);
             await Phase11_PlantEnergiesAsync(ct);
@@ -512,42 +513,70 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     private async Task Phase2_ResiduesAsync(CancellationToken ct)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        if (await _db.Residues.AnyAsync(x => x.SourceSystem == Seed, ct))
+
+        var residuesExist        = await _db.Residues.AnyAsync(x => x.SourceSystem == Seed, ct);
+        var productSpecsExist    = await _db.ProductSpecs.AnyAsync(x => x.SourceSystem == Seed, ct);
+        var psResiduesExist      = await _db.Residues.AnyAsync(x => x.SourceSystem == Seed && x.ResidueType == "ProductSpec", ct);
+
+        if (residuesExist && psResiduesExist && productSpecsExist)
         {
-            _log.LogInformation("  Fase 2 — skip");
+            _log.LogInformation("  Fase 2 — skip (residuos, ProductSpec-residuos y ProductSpecs ya existen)");
             return;
         }
 
-        var lerIds = await _db.LerCodes.Select(x => new { x.Id, x.Code }).ToListAsync(ct);
+        var lerIds  = await _db.LerCodes.Select(x => new { x.Id, x.Code }).ToListAsync(ct);
         var prodIds = await _db.BusinessEntities
             .Where(x => x.EntityRole == "Producer" && x.SourceSystem == Seed)
             .Select(x => x.Id).ToListAsync(ct);
 
-        var residues = BuildResidues(lerIds.ToDictionary(x => x.Code, x => x.Id), prodIds);
-        _db.Residues.AddRange(residues);
-        await _db.SaveChangesAsync(ct);
+        List<Residue> psResidues;
 
-        // Crear registros ProductSpec enlazados a los residuos con ResidueType=="ProductSpec"
-        var psResidues = residues.Where(r => r.ResidueType == "ProductSpec").ToList();
-        var productSpecs = psResidues.Select((r, i) => new ProductSpec
+        if (!residuesExist)
         {
-            Id           = SeedGuid("ps", i + 1),
-            OwnerId      = _ownerId,
-            ProductRef   = $"PROD-SPEC-{i + 1:D4}",
-            IdResidue    = r.Id,
-            IdProducer   = r.IdProducer,
-            CategoryRef  = r.ProductCategory,
-            SourceSystem = Seed,
-            Version      = 1,
-            CreatedAt    = _now,
-            UpdatedAt    = _now,
-            IdUser       = SeedUser
-        }).ToList();
-        _db.ProductSpecs.AddRange(productSpecs);
-        await _db.SaveChangesAsync(ct);
+            var residues = BuildResidues(lerIds.ToDictionary(x => x.Code, x => x.Id), prodIds);
+            _db.Residues.AddRange(residues);
+            await _db.SaveChangesAsync(ct);
+            psResidues = residues.Where(r => r.ResidueType == "ProductSpec").ToList();
+            _log.LogInformation("  Fase 2 — {N} residuos insertados en {Ms}ms", residues.Count, sw.ElapsedMilliseconds);
+        }
+        else if (!psResiduesExist)
+        {
+            // Los residuos base existen pero faltan los de tipo ProductSpec (seeder antiguo)
+            var allResidues = BuildResidues(lerIds.ToDictionary(x => x.Code, x => x.Id), prodIds);
+            psResidues = allResidues.Where(r => r.ResidueType == "ProductSpec").ToList();
+            _db.Residues.AddRange(psResidues);
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("  Fase 2 — {N} residuos ProductSpec insertados en {Ms}ms", psResidues.Count, sw.ElapsedMilliseconds);
+        }
+        else
+        {
+            psResidues = await _db.Residues
+                .Where(x => x.SourceSystem == Seed && x.ResidueType == "ProductSpec")
+                .ToListAsync(ct);
+        }
 
-        _log.LogInformation("  Fase 2 completada — {N} residuos, {PS} ProductSpecs en {Ms}ms",
-            residues.Count, productSpecs.Count, sw.ElapsedMilliseconds);
+        if (!productSpecsExist && psResidues.Count > 0)
+        {
+            var productSpecs = psResidues.Select((r, i) => new ProductSpec
+            {
+                Id           = SeedGuid("ps", i + 1),
+                OwnerId      = _ownerId,
+                ProductRef   = $"PROD-SPEC-{i + 1:D4}",
+                IdResidue    = r.Id,
+                IdProducer   = r.IdProducer,
+                CategoryRef  = r.ProductCategory,
+                SourceSystem = Seed,
+                Version      = 1,
+                CreatedAt    = _now,
+                UpdatedAt    = _now,
+                IdUser       = SeedUser
+            }).ToList();
+            _db.ProductSpecs.AddRange(productSpecs);
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("  Fase 2 — {PS} ProductSpecs insertados en {Ms}ms", productSpecs.Count, sw.ElapsedMilliseconds);
+        }
+
+        _log.LogInformation("  Fase 2 completada en {Ms}ms", sw.ElapsedMilliseconds);
     }
 
     // =========================================================================
@@ -914,6 +943,100 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         if (sb.Length > 0 && sb[^1] == '.')
             sb.Remove(sb.Length - 1, 1);
         return sb.ToString();
+    }
+
+    // =========================================================================
+    // FASE 8b — Usuarios sandbox _uc con conectores EDC
+    // =========================================================================
+    /// <summary>
+    /// Crea los 11 usuarios sandbox con sufijo _uc para cada perfil del ecosistema,
+    /// junto con su registro en UserEDCConnector. Idempotente: salta si ya existen.
+    /// </summary>
+    private async Task Phase8b_SandboxUsersUcAsync(CancellationToken ct)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // Definición de usuarios sandbox _uc
+        var sandboxUsers = new[]
+        {
+            (Login: "ayuntamiento_uc",      Profile: "PUBLIC_ENT",      Name: "Ayuntamiento UC (Sandbox)",        EDCServer: "ecoucayuntamiento.ecodatanetconn3.dataspace.wastenode.com",        EDCId: "eco_uc_ayuntamiento"),
+            (Login: "ofiasignacion_uc",     Profile: "DISPATCH_OFFICE", Name: "Oficina de Asignación UC",         EDCServer: "ecoucofiasignacion.ecodatanetconn3.dataspace.wastenode.com",        EDCId: "eco_uc_ofiasignacion"),
+            (Login: "scrapa_uc",            Profile: "SCRAP",           Name: "SCRAP A UC",                       EDCServer: "ecoucscrapa.ecodatanetconn3.dataspace.wastenode.com",               EDCId: "eco_uc_scrapa"),
+            (Login: "scrapb_uc",            Profile: "SCRAP",           Name: "SCRAP B UC",                       EDCServer: "ecoucscrapb.ecodatanetconn3.dataspace.wastenode.com",               EDCId: "eco_uc_scrapb"),
+            (Login: "transportista_uc",     Profile: "CARRIER",         Name: "Transportista UC",                 EDCServer: "ecouctransportista.ecodatanetconn3.dataspace.wastenode.com",        EDCId: "eco_uc_transportista"),
+            (Login: "clusterlogistico_uc",  Profile: "COORDINATOR",     Name: "Clúster Logístico UC",             EDCServer: "ecoucclusterlogistico.ecodatanetconn3.dataspace.wastenode.com",     EDCId: "eco_uc_clusterlogistico"),
+            (Login: "puntorecogida_uc",     Profile: "CAC_OP",          Name: "Punto de Recogida UC",             EDCServer: "ecoucpuntorecogida.ecodatanetconn3.dataspace.wastenode.com",        EDCId: "eco_uc_puntorecogida"),
+            (Login: "certificador_uc",      Profile: "CERTIFIER",       Name: "Certificador UC (AENOR Sandbox)",  EDCServer: "ecouccertificador.ecodatanetconn3.dataspace.wastenode.com",         EDCId: "eco_uc_certificador"),
+            (Login: "productor_uc",         Profile: "PRODUCER",        Name: "Productor UC",                     EDCServer: "ecoucproductor.ecodatanetconn3.dataspace.wastenode.com",            EDCId: "eco_uc_productor"),
+            (Login: "regulador_uc",         Profile: "REGULATOR",       Name: "Regulador UC (Sandbox)",           EDCServer: "ecoucregulador.ecodatanetconn3.dataspace.wastenode.com",            EDCId: "eco_uc_regulador"),
+            (Login: "plantatratamiento_uc", Profile: "PLANT_OP",        Name: "Planta de Tratamiento UC",         EDCServer: "ecoucplantatratamiento.ecodatanetconn3.dataspace.wastenode.com",    EDCId: "eco_uc_plantatratamiento"),
+        };
+
+        // Cargar perfiles disponibles
+        var profiles = await _db.UserProfiles
+            .IgnoreQueryFilters()
+            .ToDictionaryAsync(p => p.Reference, p => p.Id, StringComparer.OrdinalIgnoreCase, ct);
+
+        // Cargar logins existentes para idempotencia
+        var existingLogins = await _db.AppUsers
+            .IgnoreQueryFilters()
+            .Where(u => u.OwnerId == _ownerId)
+            .Select(u => u.Login)
+            .ToHashSetAsync(ct);
+
+        var newUsers = new List<AppUser>();
+        foreach (var def in sandboxUsers)
+        {
+            if (existingLogins.Contains(def.Login)) continue;
+            if (!profiles.TryGetValue(def.Profile, out var profileId)) continue;
+
+            newUsers.Add(new AppUser
+            {
+                Login        = def.Login,
+                Email        = $"{def.Login}@sandbox.greentransit.es",
+                CompleteName = def.Name,
+                IdProfile    = profileId,
+                OwnerId      = _ownerId,
+                IsActive     = true,
+                CreateDate   = _now,
+            });
+        }
+
+        if (newUsers.Count > 0)
+        {
+            _db.AppUsers.AddRange(newUsers);
+            await _db.SaveChangesAsync(ct);
+        }
+
+        // Insertar conectores EDC para los usuarios _uc que no tengan uno
+        int edcAdded = 0;
+        foreach (var def in sandboxUsers)
+        {
+            var user = await _db.AppUsers
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.OwnerId == _ownerId && u.Login == def.Login, ct);
+            if (user is null) continue;
+
+            var alreadyHasConnector = await _db.UserEDCConnectors
+                .AnyAsync(c => c.UserId == user.Id, ct);
+            if (alreadyHasConnector) continue;
+
+            _db.UserEDCConnectors.Add(new UserEDCConnector
+            {
+                UserId         = user.Id,
+                EDCServerName  = def.EDCServer,
+                EDCConnectorId = def.EDCId,
+                ApiKey         = "ecodatanet",
+            });
+            edcAdded++;
+        }
+
+        if (edcAdded > 0)
+            await _db.SaveChangesAsync(ct);
+
+        _log.LogInformation(
+            "  Fase 8b completada — {U} usuarios _uc, {E} conectores EDC en {Ms}ms",
+            newUsers.Count, edcAdded, sw.ElapsedMilliseconds);
     }
 
     // =========================================================================
@@ -1392,6 +1515,14 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         CenterCode       = centerCode,
         EntityRole       = role,
         EntityType       = entityType,
+        TypeThirdParty   = role switch
+        {
+            "Producer" or "PublicEntity" => "PuntoDeRecogida",
+            "Plant"                      => "Gestor",
+            "SCRAP"                      => "SCRAP",
+            "OperatorTransfer" or "Carrier" => "OperadorTraslado",
+            _                            => "Gestor",
+        },
         CountryCode      = "ES",
         StateCode        = stateCode,
         ZipCode          = zip,
@@ -1478,21 +1609,21 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         // Tupla: (nombre, category, use, lerCode)
         var productDef = new[]
         {
-            ("Botella PET 1.5L",          "Envases",    "Beverage",    "150102"),
-            ("Lata aluminio 330ml",       "Envases",    "Beverage",    "150104"),
-            ("Caja cartón 30x20x15cm",    "Envases",    "Packaging",   "150101"),
-            ("Botella vidrio 75cl",       "Envases",    "Beverage",    "150107"),
-            ("Envase plástico 5kg",       "Envases",    "Food",        "150102"),
-            ("Ordenador portátil",        "RAEE",       "Electronics", "160213"),
-            ("Televisor LED 42\"",        "RAEE",       "Electronics", "160213"),
-            ("Frigorífico A++",           "RAEE",       "WhiteGoods",  "160213"),
-            ("Lavadora 8kg",              "RAEE",       "WhiteGoods",  "160213"),
-            ("Móvil smartphone",          "RAEE",       "Mobile",      "160214"),
-            ("Palé madera",               "Envases",    "Logistics",   "150103"),
-            ("Film estirable",            "Envases",    "Packaging",   "150102"),
-            ("Tóner impresora",           "RAEE",       "Consumable",  "160214"),
-            ("Batería Li-ion",            "RAEE",       "Battery",     "160214"),
-            ("Luminaria LED",             "RAEE",       "Lighting",    "160214"),
+            ("Botella PET 1.5L",          "Envases",    "Doméstico",   "150102"),
+            ("Lata aluminio 330ml",       "Envases",    "Doméstico",   "150104"),
+            ("Caja cartón 30x20x15cm",    "Envases",    "Profesional", "150101"),
+            ("Botella vidrio 75cl",       "Envases",    "Doméstico",   "150107"),
+            ("Envase plástico 5kg",       "Envases",    "Doméstico",   "150102"),
+            ("Ordenador portátil",        "RAEE",       "Profesional", "160213"),
+            ("Televisor LED 42\"",        "RAEE",       "Doméstico",   "160213"),
+            ("Frigorífico A++",           "RAEE",       "Doméstico",   "160213"),
+            ("Lavadora 8kg",              "RAEE",       "Doméstico",   "160213"),
+            ("Móvil smartphone",          "RAEE",       "Doméstico",   "160214"),
+            ("Palé madera",               "Envases",    "Profesional", "150103"),
+            ("Film estirable",            "Envases",    "Profesional", "150102"),
+            ("Tóner impresora",           "RAEE",       "Profesional", "160214"),
+            ("Batería Li-ion",            "RAEE",       "Doméstico",   "160214"),
+            ("Luminaria LED",             "RAEE",       "Profesional", "160214"),
         };
         for (int i = 0; i < productDef.Length; i++)
         {
@@ -1792,7 +1923,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                 });
             }
 
-            var opTransfer = opTransfers.Count > 0 && i % 3 == 0 ? opTransfers[i % opTransfers.Count] : (Guid?)null;
+            var opTransfer = opTransfers.Count > 0 ? opTransfers[i % opTransfers.Count] : (Guid?)null;
             var pickupHour  = hours[(i * 2) % hours.Length];
             var pickupMin   = minutes[(i * 2) % minutes.Length];
             var actualPickup = issuedAt.AddDays(2).Date.AddHours(pickupHour).AddMinutes(pickupMin);
@@ -1925,7 +2056,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
     {
         var entries  = new List<EntryCAC>();
         var residues = new List<EntryCACResidue>();
-        var containers = new[] { "Bigbag", "Contenedor", "Palé", "Granel" };
+        var containers = new[] { "Jaula", "Contenedor", "Contenedor_1100L", "Barca" };
         var methods    = new[] { "Puerta a puerta", "Punto limpio", "Contenedor vía pública" };
 
         for (int i = 0; i < Math.Min(wasteMoves.Count, 100); i++)
@@ -2090,6 +2221,7 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
                     Id               = SeedGuid($"tpr{i+1}", l + 1),
                     IdTreatmentPlant = tp.Id,
                     IdResidue        = inputResidue,
+                    Category         = new[] { "Envases", "RAEE", "Voluminosos" }[(i + l) % 3],
                     WeightTotal      = total,
                     MeasureUnit      = "Kg",
                     Units            = 1,
@@ -2285,8 +2417,8 @@ public sealed class SandboxDataSeeder : ISandboxDataSeeder
         };
         var productUses = new[]
         {
-            "Beverage", "Electronics", "Packaging", "WhiteGoods",
-            "Food", "Logistics", "Mobile", "Consumable", "Battery", "Lighting"
+            "Doméstico", "Profesional", "Doméstico", "Profesional",
+            "Doméstico", "Profesional", "Doméstico", "Profesional", "Doméstico", "Profesional"
         };
 
         int declIdx = 0;

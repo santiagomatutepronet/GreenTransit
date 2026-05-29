@@ -409,7 +409,7 @@ try
 
         // ── REPORTING ─────────────────────────────────────────────────────────
 
-        // Lectura de KPIs regulatorios: perfiles con responsabilidad de supervisión.
+        // Lectura de KPIs regulatorios: perfiles con responsabilidad de supervisión, regulador y certificador.
         options.AddPolicy(PolicyConstants.CanViewKPIs, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Scrap,
@@ -417,6 +417,8 @@ try
                 ProfileConstants.PlantOp,
                 ProfileConstants.Coordinator,
                 ProfileConstants.DispatchOffice,
+                ProfileConstants.Regulator,
+                ProfileConstants.Certifier,
                 ProfileConstants.Admin)));
 
         // Acceso al módulo de reporting y trazabilidad: todos los autenticados.
@@ -578,23 +580,24 @@ try
 
         // ── HUELLA DE CARBONO (HC) ────────────────────────────────────────────
 
-        // Dashboard HC-A — Visión Consolidada: SCRAP, COORDINATOR, DISPATCH_OFFICE, ADMIN.
+        // Dashboard HC-A — Visión Consolidada: SCRAP, COORDINATOR, DISPATCH_OFFICE, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewCarbonFootprintOverview, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Scrap, ProfileConstants.Coordinator,
-                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.DispatchOffice, ProfileConstants.Certifier, ProfileConstants.Admin)));
 
-        // Dashboard HC-B — Análisis de Emisiones del Transporte: SCRAP, COORDINATOR, DISPATCH_OFFICE, CARRIER, ADMIN.
+        // Dashboard HC-B — Análisis de Emisiones del Transporte: SCRAP, COORDINATOR, DISPATCH_OFFICE, CARRIER, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewCarbonTransportAnalysis, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Scrap, ProfileConstants.Coordinator,
-                ProfileConstants.DispatchOffice, ProfileConstants.Carrier, ProfileConstants.Admin)));
+                ProfileConstants.DispatchOffice, ProfileConstants.Carrier,
+                ProfileConstants.Certifier, ProfileConstants.Admin)));
 
-        // Dashboard HC-C — Huella Energética de Plantas: PLANT_OP, SCRAP, DISPATCH_OFFICE, ADMIN.
+        // Dashboard HC-C — Huella Energética de Plantas: PLANT_OP, SCRAP, DISPATCH_OFFICE, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewCarbonPlantEnergy, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.PlantOp, ProfileConstants.Scrap,
-                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.DispatchOffice, ProfileConstants.Certifier, ProfileConstants.Admin)));
 
         // Dashboard HC-D — Reporte Huella Productores: PRODUCER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewCarbonProducerReport, policy =>
@@ -610,30 +613,34 @@ try
 
         // ── CUMPLIMIENTO NORMATIVO (CN) ─────────────────────────────────────────
 
-        // Dashboard CN-A — Panel de Cumplimiento Normativo — Visión SCRAP: SCRAP, ADMIN.
+        // Dashboard CN-A — Panel de Cumplimiento Normativo — Visión SCRAP: SCRAP, REGULATOR, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewScrapComplianceOverview, policy =>
             policy.AddRequirements(new ProfileRequirement(
-                ProfileConstants.Scrap, ProfileConstants.Admin)));
+                ProfileConstants.Scrap, ProfileConstants.Regulator,
+                ProfileConstants.Certifier, ProfileConstants.Admin)));
 
-        // Dashboard CN-B — Auditoría de Cuotas de Mercado: COORDINATOR, DISPATCH_OFFICE, ADMIN.
+        // Dashboard CN-B — Auditoría de Cuotas de Mercado: COORDINATOR, DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewMarketShareAudit, policy =>
             policy.AddRequirements(new ProfileRequirement(
-                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice,
+                ProfileConstants.Regulator, ProfileConstants.Certifier, ProfileConstants.Admin)));
 
-        // Dashboard CN-C — Monitorización de Convenios — Coordinador: COORDINATOR, DISPATCH_OFFICE, ADMIN.
+        // Dashboard CN-C — Monitorización de Convenios — Coordinador: COORDINATOR, DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewAgreementComplianceMonitoring, policy =>
             policy.AddRequirements(new ProfileRequirement(
-                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.Coordinator, ProfileConstants.DispatchOffice,
+                ProfileConstants.Regulator, ProfileConstants.Certifier, ProfileConstants.Admin)));
 
         // Dashboard CN-D — Cumplimiento Normativo — Entidad Pública: PUBLIC_ENT, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewPublicEntityComplianceView, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.PublicEnt, ProfileConstants.Admin)));
 
-        // Dashboard CN-E — Datos de Cumplimiento — Oficina de Asignación: DISPATCH_OFFICE, ADMIN.
+        // Dashboard CN-E — Datos de Cumplimiento — Oficina de Asignación: DISPATCH_OFFICE, REGULATOR, CERTIFIER, ADMIN.
         options.AddPolicy(PolicyConstants.CanViewDispatchOfficeComplianceData, policy =>
             policy.AddRequirements(new ProfileRequirement(
-                ProfileConstants.DispatchOffice, ProfileConstants.Admin)));
+                ProfileConstants.DispatchOffice, ProfileConstants.Regulator,
+                ProfileConstants.Certifier, ProfileConstants.Admin)));
 
         // Dashboard HM-A — Mapa de Calor de Densidad de Residuos: SCRAP, DISPATCH_OFFICE y ADMIN.
         options.AddPolicy(PolicyConstants.CanViewHeatMapWasteDensity, policy =>
@@ -655,10 +662,32 @@ try
         options.AddPolicy(PolicyConstants.CanAccessEcoDataNet, policy =>
             policy.RequireAuthenticatedUser());
 
+        // EcoDataNet — Configuración conector EDC: todos los perfiles autenticados.
+        options.AddPolicy(PolicyConstants.CanAccessEDCConnectorConfig, policy =>
+            policy.RequireAuthenticatedUser());
+
+        // EcoDataNet — Consumir datos: todos los perfiles autenticados.
+        options.AddPolicy(PolicyConstants.CanAccessEDCConsumeData, policy =>
+            policy.RequireAuthenticatedUser());
+
+        // EcoDataNet — Data Explorer: todos los perfiles autenticados (control fino en PagePermissions).
+        options.AddPolicy(PolicyConstants.CanAccessEDCDataExplorer, policy =>
+            policy.RequireAuthenticatedUser());
+
         // Operaciones exclusivas de administración del sistema.
         options.AddPolicy(PolicyConstants.AdminOnly, policy =>
             policy.AddRequirements(new ProfileRequirement(
                 ProfileConstants.Admin)));
+
+        // Dashboard de cumplimiento normativo para REGULATOR: REGULATOR, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewRegulatoryDashboard, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Regulator, ProfileConstants.Admin)));
+
+        // Dashboard de certificación/auditoría para CERTIFIER: CERTIFIER, ADMIN.
+        options.AddPolicy(PolicyConstants.CanViewCertificationDashboard, policy =>
+            policy.AddRequirements(new ProfileRequirement(
+                ProfileConstants.Certifier, ProfileConstants.Admin)));
     });
 
     // ClaimsTransformation: enriquece el principal con IdUser, OwnerId y Profile desde la BD
@@ -746,6 +775,57 @@ try
     builder.Services.Configure<GreenTransit.Application.Features.PlantEnergies.Queries.PlantEnergyOptions>(
         builder.Configuration.GetSection(
             GreenTransit.Application.Features.PlantEnergies.Queries.PlantEnergyOptions.Section));
+
+    builder.Services.Configure<GreenTransit.Application.Common.Options.EdcOptions>(
+        builder.Configuration.GetSection(GreenTransit.Application.Common.Options.EdcOptions.SectionName));
+
+    // ── HttpClient EDC Management API ────────────────────────────────────────
+    builder.Services.AddHttpClient<GreenTransit.Application.Common.Interfaces.IEdcManagementClient,
+        GreenTransit.Infrastructure.Services.EdcManagementClient>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(60);
+        client.DefaultRequestHeaders.Accept.Add(
+            new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+    });
+
+    builder.Services.AddSingleton<GreenTransit.Application.Common.Interfaces.IEdcCatalogParser,
+        GreenTransit.Infrastructure.Services.EdcCatalogParser>();
+
+    // ── EDC Data Explorer (análisis dinámico de JSON) ─────────────────────────
+    builder.Services.AddScoped<GreenTransit.Application.Features.EcoDataNet.Services.EdcDataExplorerStateService>();
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.IJsonSchemaAnalyzer,
+        GreenTransit.Application.Features.EcoDataNet.Services.JsonSchemaAnalyzer>();
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.IDashboardLayoutBuilder,
+        GreenTransit.Application.Features.EcoDataNet.Services.DashboardLayoutBuilder>();
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.ILayoutCustomizationService,
+        GreenTransit.Application.Features.EcoDataNet.Services.LayoutCustomizationService>();
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.IChartDataRebuilder,
+        GreenTransit.Application.Features.EcoDataNet.Services.ChartDataRebuilder>();
+    builder.Services.AddTransient<GreenTransit.Application.Features.EcoDataNet.Services.ICustomKpiCalculator,
+        GreenTransit.Application.Features.EcoDataNet.Services.CustomKpiCalculator>();
+
+    // ── EcoDataNet Waste Publisher ────────────────────────────────────────────
+    builder.Services.Configure<GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetOptions>(
+        builder.Configuration.GetSection(
+            GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetOptions.SectionName));
+
+    builder.Services.AddHttpClient<GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetHttpClient>(
+        (sp, client) =>
+        {
+            var opts = sp.GetRequiredService<
+                Microsoft.Extensions.Options.IOptions<
+                    GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetOptions>>().Value;
+            client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
+            client.Timeout     = TimeSpan.FromSeconds(opts.TimeoutSeconds);
+            var credentials    = Convert.ToBase64String(
+                System.Text.Encoding.UTF8.GetBytes($"{opts.Username}:{opts.Password}"));
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+        });
+
+    builder.Services.AddTransient<
+        GreenTransit.Application.Common.Interfaces.IEcoDataNetPublisher,
+        GreenTransit.Infrastructure.ExternalApis.EcoDataNet.EcoDataNetPublisher>();
 
     // ── Caché en memoria (catálogos geográficos y otros estáticos) ───────────
     builder.Services.AddMemoryCache();
@@ -862,5 +942,6 @@ finally
     // Garantiza que todos los logs pendientes se escriben antes de cerrar
     await Log.CloseAndFlushAsync();
 }
+
 
 

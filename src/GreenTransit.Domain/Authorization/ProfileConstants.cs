@@ -15,11 +15,14 @@ public static class ProfileConstants
     public const string PublicEnt       = "PUBLIC_ENT";
     public const string Coordinator     = "COORDINATOR";
     public const string DispatchOffice  = "DISPATCH_OFFICE";
+    public const string Regulator       = "REGULATOR";
+    public const string Certifier       = "CERTIFIER";
 
     /// <summary>Todos los perfiles del sistema.</summary>
     public static readonly IReadOnlyList<string> All =
     [
         Admin, Scrap, Producer, Carrier,
-        PlantOp, CacOp, PublicEnt, Coordinator, DispatchOffice
+        PlantOp, CacOp, PublicEnt, Coordinator, DispatchOffice,
+        Regulator, Certifier
     ];
 }

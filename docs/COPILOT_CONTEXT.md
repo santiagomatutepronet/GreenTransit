@@ -115,12 +115,28 @@ Paso 8 — Seguridad completa (Partes 1-4) ✅ COMPLETADO
 Parte 1 — OIDC (Program.cs, AccountController, AddCascadingAuthenticationState)
 Parte 2 — ClaimsTransformation (gt_* claims, gt_user_found, gt_entity_id), CurrentUserService, AccesoDenegado.razor
 Parte 3 — EntityUserProvisioningService, EntityRoles (DISPATCH_OFFICE), EntityForm mensajes
-Parte 4 — DbInitializer (seed idempotente de 9 Profiles en startup)
+Parte 4 — DbInitializer (seed idempotente de 11 Profiles en startup)
 
 Paso 9 — Dashboards Logísticos ✅ COMPLETADO
 Dashboard 1 — Optimización Logística SCRAP (/logistics/optimization) — Policy: CanViewLogisticsOptimization
 Dashboard 2 — Monitorización Pública (/logistics/public-monitoring) — Policy: CanViewPublicMonitoring
 Dashboard 3 — Panel Operativo (/logistics/operations) — Policy: CanViewOperationalDashboard
+
+
+📌 Integración REGULATOR y CERTIFIER ✅ COMPLETADO
+El sistema tiene 11 perfiles:
+ADMIN, SCRAP, PRODUCER, CARRIER, PLANT_OP, CAC_OP, PUBLIC_ENT,
+COORDINATOR, DISPATCH_OFFICE, REGULATOR, CERTIFIER
+
+Mapeo EntityRole → Profile actualizado:
+| EntityRole       | Profiles.Reference | Crea usuario? |
+|------------------|--------------------|---------------|
+| "Regulator"      | "REGULATOR"        | ✅ Sí         |
+| "Certifier"      | "CERTIFIER"        | ✅ Sí         |
+
+REGULATOR: accede a todos los dashboards de cumplimiento normativo, KPIs e indicadores. Solo lectura.
+CERTIFIER: accede a dashboards de cumplimiento, huella de carbono, KPIs y evidencias. Solo lectura.
+Ambos perfiles tienen visión completa del tenant (solo filtro OwnerId, sin LinkedEntityId).
 
 
 📌 ESTADO FINAL

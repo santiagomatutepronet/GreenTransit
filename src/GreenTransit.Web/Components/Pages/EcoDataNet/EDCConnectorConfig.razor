@@ -1,0 +1,305 @@
+@using Radzen
+@using Radzen.Blazor
+@using GreenTransit.Application.Features.EcoDataNet.DTOs
+@using GreenTransit.Application.Features.EcoDataNet.Queries
+@using GreenTransit.Application.Features.EcoDataNet.Commands
+@using GreenTransit.Application.Common.Interfaces
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+
+@page "/ecodatanet/connector-config"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEDCConnectorConfig)]
+@rendermode InteractiveServer
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject NavigationManager   Nav
+@inject NotificationService NotificationService
+
+<PageTitle>Configuración conector EDC</PageTitle>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-gear-fill me-2 text-primary"></i>Configuración conector EDC
+        </h1>
+        <p class="page-subtitle text-muted">Configure los parámetros del conector EcoDataNet.</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+    </div>
+}
+else if (_isAdmin && _selectedUser is null)
+{
+    @* ── Vista ADMIN: listado de usuarios ──────────────────────────────── *@
+    <RadzenCard class="mb-3">
+        <RadzenRow Gap="0.5rem" AlignItems="AlignItems.End">
+            <RadzenColumn SizeMD="6">
+                <RadzenFormField Text="Buscar usuario" Style="width:100%">
+                    <RadzenTextBox @bind-Value="_searchTerm" Placeholder="Nombre o login..."
+                                   Change="@(_ => SearchAsync())" Style="width:100%" />
+                </RadzenFormField>
+            </RadzenColumn>
+            <RadzenColumn SizeMD="2">
+                <RadzenButton Text="Buscar" Icon="search" ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small" Click="@SearchAsync" />
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenCard>
+
+    <RadzenDataGrid Data="@_users" TItem="UserForEDCListDto" AllowSorting="true"
+                    PageSize="@_pageSize" AllowPaging="false" Density="Density.Compact"
+                    class="rz-shadow-2">
+        <Columns>
+            <RadzenDataGridColumn TItem="UserForEDCListDto" Property="CompleteName" Title="Nombre completo" />
+            <RadzenDataGridColumn TItem="UserForEDCListDto" Property="Login" Title="Login" Width="160px" />
+            <RadzenDataGridColumn TItem="UserForEDCListDto" Property="ProfileReference" Title="Perfil" Width="140px" />
+            <RadzenDataGridColumn TItem="UserForEDCListDto" Title="Conector EDC" Width="130px">
+                <Template Context="row">
+                    @if (row.HasEDCConnector)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Configurado" Shade="Shade.Lighter" />
+                    }
+                    else
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Sin configurar" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="UserForEDCListDto" Title="" Width="110px" Sortable="false">
+                <Template Context="row">
+                    <RadzenButton Text="Configurar" Icon="edit" ButtonStyle="ButtonStyle.Primary"
+                                  Size="ButtonSize.ExtraSmall" Click="@(_ => SelectUser(row))" />
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+
+    @* Paginación *@
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <span class="text-muted small">Total: @_totalCount usuarios</span>
+        <div>
+            <RadzenButton Icon="chevron_left" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                          Disabled="@(_pageNumber <= 1)"
+                          Click="@(() => GoToPageAsync(_pageNumber - 1))" />
+            <span class="mx-2 small">Página @_pageNumber de @TotalPages</span>
+            <RadzenButton Icon="chevron_right" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                          Disabled="@(_pageNumber >= TotalPages)"
+                          Click="@(() => GoToPageAsync(_pageNumber + 1))" />
+        </div>
+    </div>
+}
+else
+{
+    @* ── Formulario de configuración del conector ──────────────────────── *@
+    <RadzenCard>
+        <RadzenStack Gap="0.75rem">
+            @if (_isAdmin)
+            {
+                <RadzenButton Text="← Volver a la lista" ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small" Click="@BackToList" class="mb-2" />
+            }
+
+            <RadzenText TextStyle="TextStyle.H6">
+                Conector EDC — @_form.UserName
+            </RadzenText>
+
+            <RadzenTemplateForm TItem="ConnectorFormModel" Data="@_form" Submit="@SaveAsync">
+                <RadzenRow Gap="1rem">
+                    <RadzenColumn SizeMD="6">
+                        <RadzenFormField Text="Usuario" Style="width:100%">
+                            <RadzenTextBox Value="@_form.UserName" Disabled="true" Style="width:100%" />
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="6">
+                        <RadzenFormField Text="Nombre del servidor EDC *" Style="width:100%">
+                            <ChildContent>
+                                <RadzenTextBox @bind-Value="@_form.EDCServerName"
+                                               Placeholder="ej. https://edc.myorg.com"
+                                               Style="width:100%" Name="EDCServerName" />
+                            </ChildContent>
+                            <Helper>
+                                <RadzenRequiredValidator Component="EDCServerName"
+                                                         Text="El nombre del servidor es obligatorio." />
+                            </Helper>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="6">
+                        <RadzenFormField Text="Identificador del conector *" Style="width:100%">
+                            <ChildContent>
+                                <RadzenTextBox @bind-Value="@_form.EDCConnectorId"
+                                               Placeholder="ej. connector-scrap-01"
+                                               Style="width:100%" Name="EDCConnectorId" />
+                            </ChildContent>
+                            <Helper>
+                                <RadzenRequiredValidator Component="EDCConnectorId"
+                                                         Text="El identificador del conector es obligatorio." />
+                            </Helper>
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    <RadzenColumn SizeMD="6">
+                        <RadzenFormField Text="API Key (X-Api-Key)" Style="width:100%">
+                            <RadzenPassword @bind-Value="@_form.ApiKey"
+                                            Placeholder="Clave de autenticación del conector EDC"
+                                            Style="width:100%" />
+                        </RadzenFormField>
+                    </RadzenColumn>
+                </RadzenRow>
+
+                @if (!string.IsNullOrWhiteSpace(_errorMessage))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" class="mt-3">@_errorMessage</RadzenAlert>
+                }
+
+                <div class="mt-4 d-flex gap-2">
+                    <RadzenButton ButtonType="ButtonType.Submit" Text="Guardar"
+                                  Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                  IsBusy="@_saving" />
+                    @if (_isAdmin)
+                    {
+                        <RadzenButton Text="Cancelar" ButtonStyle="ButtonStyle.Light"
+                                      Click="@BackToList" />
+                    }
+                </div>
+            </RadzenTemplateForm>
+        </RadzenStack>
+    </RadzenCard>
+}
+
+@code {
+    private bool   _loading    = true;
+    private bool   _saving     = false;
+    private bool   _isAdmin    = false;
+    private string _searchTerm = string.Empty;
+    private string? _errorMessage;
+
+    // Lista ADMIN
+    private List<UserForEDCListDto> _users      = [];
+    private int                     _totalCount = 0;
+    private int                     _pageNumber = 1;
+    private const int               _pageSize   = 15;
+    private int TotalPages => _pageSize > 0 ? (int)Math.Ceiling(_totalCount / (double)_pageSize) : 1;
+
+    // Usuario seleccionado (ADMIN) o actual (no-ADMIN)
+    private UserForEDCListDto? _selectedUser;
+
+    // Modelo del formulario
+    private ConnectorFormModel _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAdmin = CurrentUser.IsInProfile(ProfileConstants.Admin);
+
+        if (_isAdmin)
+        {
+            await LoadUsersAsync();
+        }
+        else
+        {
+            await LoadCurrentUserFormAsync();
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        var result = await Mediator.Send(new GetUsersForEDCListQuery(_searchTerm, _pageNumber, _pageSize));
+        _users      = result.Items.ToList();
+        _totalCount = result.TotalCount;
+    }
+
+    private async Task LoadCurrentUserFormAsync()
+    {
+        var dto = await Mediator.Send(new GetUserEDCConnectorQuery(CurrentUser.IdUser));
+        _form = ConnectorFormModel.FromDto(dto, CurrentUser.UserName);
+    }
+
+    private async Task SearchAsync()
+    {
+        _pageNumber = 1;
+        await LoadUsersAsync();
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _pageNumber = page;
+        await LoadUsersAsync();
+    }
+
+    private async Task SelectUser(UserForEDCListDto user)
+    {
+        _selectedUser = user;
+        var dto = await Mediator.Send(new GetUserEDCConnectorQuery(user.Id));
+        _form = ConnectorFormModel.FromDto(dto, user.CompleteName);
+    }
+
+    private void BackToList()
+    {
+        _selectedUser = null;
+        _form = new();
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _errorMessage = null;
+        try
+        {
+            var userId = _isAdmin ? _selectedUser!.Id : CurrentUser.IdUser;
+            await Mediator.Send(new UpsertUserEDCConnectorCommand
+            {
+                UserId         = userId,
+                EDCServerName  = _form.EDCServerName,
+                EDCConnectorId = _form.EDCConnectorId,
+                ApiKey         = string.IsNullOrWhiteSpace(_form.ApiKey) ? null : _form.ApiKey
+            });
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary  = "Configuración guardada",
+                Detail   = "El conector EDC se ha guardado correctamente.",
+                Duration = 4000
+            });
+
+            if (_isAdmin)
+            {
+                BackToList();
+                await LoadUsersAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Modelo local del formulario ─────────────────────────────────────────
+
+    private class ConnectorFormModel
+    {
+        public string  UserName       { get; set; } = string.Empty;
+        public string  EDCServerName  { get; set; } = string.Empty;
+        public string  EDCConnectorId { get; set; } = string.Empty;
+        public string? ApiKey         { get; set; }
+
+        public static ConnectorFormModel FromDto(UserEDCConnectorDto? dto, string fallbackName) =>
+            new()
+            {
+                UserName       = dto?.UserName      ?? fallbackName,
+                EDCServerName  = dto?.EDCServerName  ?? string.Empty,
+                EDCConnectorId = dto?.EDCConnectorId ?? string.Empty,
+                ApiKey         = dto?.ApiKey
+            };
+    }
+}

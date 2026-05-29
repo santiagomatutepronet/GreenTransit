@@ -37,6 +37,11 @@ public sealed class GetDPPPreparationQueryHandler
         var ownerId       = _currentUser.OwnerId;
         var activeProfile = _currentUser.ProfileReference ?? string.Empty;
 
+        // Admin sin tenant o con Guid.Empty: debe ver todos los datos del sandbox.
+        // IgnoreTenantFilter bypasea el global query filter de EF Core.
+        if (ownerId == Guid.Empty || _currentUser.IsInProfile(ProfileConstants.Admin))
+            _context.IgnoreTenantFilter();
+
         // ── Ámbito de residuos ProductSpec según perfil ───────────────────────
         var residuesQuery = _context.Residues.AsNoTracking()
             .Where(r => r.ResidueType == "ProductSpec");

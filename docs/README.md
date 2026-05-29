@@ -99,6 +99,25 @@ Proveedor externo OpenID Connect:
   - `Users`
   - `Profiles`
 
+### Sistema de perfiles (11 roles)
+
+| Perfil | Descripción |
+|--------|-------------|
+| `ADMIN` | Administrador del sistema |
+| `SCRAP` | Sistema Colectivo de Responsabilidad Ampliada |
+| `PRODUCER` | Productor / Generador de residuos |
+| `CARRIER` | Transportista |
+| `PLANT_OP` | Operador de Planta de Tratamiento |
+| `CAC_OP` | Operador de Centro de Acopio |
+| `PUBLIC_ENT` | Entidad Pública / Ayuntamiento |
+| `COORDINATOR` | Coordinador del acuerdo |
+| `DISPATCH_OFFICE` | Oficina de Asignación — Gestor logístico |
+| `REGULATOR` | Regulador — Autoridad de supervisión normativa (solo lectura) |
+| `CERTIFIER` | Certificador / Auditor — Validación y coherencia (solo lectura) |
+
+`REGULATOR` y `CERTIFIER` tienen acceso de lectura a KPIs, cumplimiento normativo,
+evidencias de tratamiento y huella de carbono. No realizan operaciones de escritura.
+
 ---
 
 ## ⚙️ Reglas transversales

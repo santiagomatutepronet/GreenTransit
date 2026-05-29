@@ -1,0 +1,40 @@
+.kpi-card-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.kpi-icon {
+    flex-shrink: 0;
+}
+
+.kpi-data {
+    min-width: 0;
+}
+
+.kpi-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--gt-graphite-black, #262626);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.kpi-unit {
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--gt-stone-green, #6E7D78);
+}
+
+.kpi-title {
+    font-size: 0.8rem;
+    color: var(--gt-stone-green, #6E7D78);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

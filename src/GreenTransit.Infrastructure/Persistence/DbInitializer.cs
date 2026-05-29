@@ -74,6 +74,8 @@ public sealed class DbInitializer : IDbInitializer
             new { Reference = "PUBLIC_ENT",      Description = "Entidad Pública / Ayuntamiento" },
             new { Reference = "COORDINATOR",     Description = "Coordinador del acuerdo" },
             new { Reference = "DISPATCH_OFFICE", Description = "Oficina de Asignación — Gestor logístico" },
+            new { Reference = "REGULATOR",       Description = "Regulador — Autoridad de supervisión normativa" },
+            new { Reference = "CERTIFIER",       Description = "Certificador / Auditor — Validación y coherencia" },
         };
 
         // Leer las referencias que ya existen en la BD

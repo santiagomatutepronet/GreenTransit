@@ -58,6 +58,9 @@
     - [4.7.4 Reglas de Ecomodulación](#474-reglas-de-ecomodulación)
   - [4.8 Módulo de Trazabilidad y KPIs](#48-módulo-de-trazabilidad-y-kpis)
   - [4.9 Módulo de Seguridad](#49-módulo-de-seguridad)
+  - [4.10 Módulo EcoDataNet — Espacio de Datos](#410-módulo-ecodatanet--espacio-de-datos)
+    - [4.10.9 Data Explorer — Ampliaciones: Mapa, Charts, KPIs](#4109-edc-data-explorer--ampliaciones-widget-mapa-charts-adicionales-y-kpis-calculados)
+    - [4.10.10 Publicar datos a EcoDataNet](#41010-publicar-datos-de-greentransit-a-ecodatanet-waste-api)
 - [5. 🔄 Flujo Global de Operaciones](#5--flujo-global-de-operaciones)
   - [5.1 Ciclo de vida de un traslado](#51-ciclo-de-vida-de-un-traslado)
   - [5.2 Ciclo de vida de una orden de servicio](#52-ciclo-de-vida-de-una-orden-de-servicio)
@@ -1032,6 +1035,36 @@ Tablas de catálogo inmutables con estructura común `(Id int, Ref varchar, desc
 
 ---
 
+## 2.29 UserEDCConnector
+
+**Propósito:** Almacena la configuración del conector EDC (Eclipse Dataspace Components) asociado a cada usuario. Relación 1:1 con `Users`.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `ID` | `INT IDENTITY` | PK |
+| `UserId` | `INT NOT NULL` | FK → `Users.ID` (índice único — un usuario tiene máx. un conector) |
+| `EDCServerName` | `NVARCHAR(255)` | Nombre/URL base del servidor EDC (ej: `ecoucofiasignacion.ecodatanetconn3.dataspace.wastenode.com`) |
+| `EDCConnectorId` | `NVARCHAR(255)` | Identificador único del conector dentro del servidor EDC |
+| `ApiKey` | `NVARCHAR(255)` | API Key para la Management API (header `X-Api-Key`) |
+
+**Relaciones:** `Users.ID` (1:1, cascade delete).
+
+**Construcción de URLs:** Management API = `https://mgmt.{EDCServerName}/management`; Protocol API = `https://proto.{EDCServerName}/protocol`.
+
+## 2.30 ProfileEDCConsumer
+
+**Propósito:** Define qué perfiles pueden consumir datos de qué otros perfiles en el espacio de datos EcoDataNet. Relación N:M entre `Profiles`.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `ID` | `INT IDENTITY` | PK |
+| `ProfileId` | `INT NOT NULL` | FK → `Profiles.ID` — perfil que consume |
+| `ConsumedProfileId` | `INT NOT NULL` | FK → `Profiles.ID` — perfil cuyos datos se consumen |
+
+**Relaciones:** `Profiles.ID` × 2 (cascade en `ProfileId`, restrict en `ConsumedProfileId` para evitar ciclo). Índice único compuesto (`ProfileId`, `ConsumedProfileId`). Sin `OwnerId` (perfiles son globales).
+
+---
+
 # 3. 🔗 Relaciones entre Entidades
 
 ## 3.1 Diagrama conceptual de relaciones
@@ -1137,6 +1170,9 @@ Tablas de catálogo inmutables con estructura común `(Id int, Ref varchar, desc
 | `Users` | `MunicipalityId` | `Municipality` | Municipio del usuario |
 | `PagePermissions` | `PageDefinitionId` | `PageDefinitions` | Pantalla |
 | `PagePermissions` | `ProfileId` | `Profiles` | Perfil con acceso |
+| `UserEDCConnector` | `UserId` | `Users` | Usuario propietario del conector (1:1, unique) |
+| `ProfileEDCConsumer` | `ProfileId` | `Profiles` | Perfil que consume |
+| `ProfileEDCConsumer` | `ConsumedProfileId` | `Profiles` | Perfil cuyos datos se consumen |
 | `Municipality` | `Id_Province` | `Province` | Provincia |
 | `Province` | `idState` | `TerritoryState` | CCAA |
 | `TerritoryState` | `idCountry` | `Country` | País |
@@ -1512,6 +1548,130 @@ Los criterios se evalúan en la capa Application al calcular la liquidación. La
 - **Funcionamiento:** `PageDiscoveryService` descubre automáticamente páginas en startup vía reflexión; el admin asigna permisos visualmente
 - **Páginas sin permisos:** Aparecen destacadas en amarillo como recordatorio de configuración pendiente
 - **Roles:** `ADMIN`
+
+---
+
+## 4.10 Módulo EcoDataNet — Espacio de Datos
+
+**Ruta base:** `/ecodatanet`
+**Módulo:** EcoDataNet
+
+Integración de GreenTransit con el data space EcoDataNet mediante conectores EDC (Eclipse Dataspace Components v3). Permite descubrimiento de catálogos DCAT/ODRL, negociación de contratos, transferencia y descarga de datos entre conectores del ecosistema.
+
+### 4.10.1 Configuración conector EDC
+
+- **Ruta:** `/ecodatanet/connector-config`
+- **Propósito:** Permite a cada usuario configurar los datos de conexión de su conector EDC (servidor, ID del conector). ADMIN puede configurar cualquier usuario del tenant; el resto solo su propio conector.
+- **Entidades:** `UserEDCConnector`, `Users`
+- **Comportamiento ADMIN:** Tabla paginada de usuarios del tenant con búsqueda y badge "Tiene conector". Al seleccionar un usuario, formulario de configuración.
+- **Comportamiento NO ADMIN:** Formulario directo con datos del usuario logueado.
+- **Campos:** Nombre de usuario (solo lectura), Nombre del servidor EDC, Identificador del conector.
+- **CQRS:** `GetUsersForEDCListQuery`, `GetUserEDCConnectorQuery`, `UpsertUserEDCConnectorCommand`
+- **Roles:** Todos los perfiles autenticados (policy `CanAccessEDCConnectorConfig`)
+
+### 4.10.2 Consumir datos — Descubrimiento de catálogo
+
+- **Ruta:** `/ecodatanet/consume-data`
+- **Propósito:** El usuario selecciona un perfil cuyos datos quiere consumir (regulado por `ProfileEDCConsumer`). El sistema identifica proveedores del tenant con ese perfil, lee sus conectores y ejecuta `POST /v3/catalog/request` contra la Management API del conector consumidor para cada proveedor.
+- **Entidades:** `ProfileEDCConsumer`, `UserEDCConnector`, `Users`, `Profiles`
+- **Flujo:** Selección de perfil → desplegable de perfiles consumibles → botón "Consumir catálogo" → solicitudes paralelas (SemaphoreSlim, máx. 5 concurrentes) → resumen por proveedor (OK/Error/Sin conector/Timeout)
+- **Servicio HTTP:** `IEdcManagementClient` → `EdcManagementClient` (Infrastructure). Body JSON-LD: `CatalogRequest` con `counterPartyAddress` y `protocol: dataspace-protocol-http`.
+- **CQRS:** `RequestEdcCatalogCommand`, `GetConsumableProfilesQuery`, `GetProfilesForConsumptionListQuery`
+- **Roles:** Todos los perfiles autenticados (policy `CanAccessEDCConsumeData`), acceso real regulado por `ProfileEDCConsumer`
+
+### 4.10.3 Visualización del catálogo DCAT/ODRL
+
+- **Propósito:** Parseo de los JSON DCAT/ODRL a DTOs tipados y presentación en vista marketplace: datasets por proveedor con nombre, versión, tipo y badge de oferta. Detalle de cada dataset con oferta ODRL humanizada (permisos, prohibiciones, obligaciones sin prefijos técnicos). Selección de oferta para negociación.
+- **Servicio de parsing:** `IEdcCatalogParser` → `EdcCatalogParser` (Infrastructure). Soporta JSON-LD con prefijos compactos e IRIs completas, normalización de arrays/objetos únicos.
+- **DTOs:** `EdcCatalogDto`, `EdcDatasetDto`, `EdcOfferDto`, `EdcPermissionDto`, `EdcConstraintDto`, `EdcProhibitionDto`, `EdcObligationDto`, `EdcDistributionDto`, `EdcProviderParsedCatalogDto`, `EdcNegotiationSelection`
+- **CQRS:** `ParseEdcCatalogsQuery`
+
+### 4.10.4 Negociación de contrato EDC v3
+
+- **Propósito:** Ejecuta `POST /v3/contractnegotiations/` con la offer ODRL original del catálogo. Polling de estado via `GET /v3/contractnegotiations/{id}` hasta `FINALIZED` (extrae `contractAgreementId`). Stepper visual de 6 pasos.
+- **Máquina de estados:** INITIAL → REQUESTING → REQUESTED → OFFERED → ACCEPTING → ACCEPTED → AGREEING → AGREED → VERIFYING → VERIFIED → FINALIZING → FINALIZED (o TERMINATED)
+- **CQRS:** `StartContractNegotiationCommand`, `GetNegotiationStateQuery`
+- **DTOs:** `EdcNegotiationResponse`, `EdcNegotiationStateResponse`
+
+### 4.10.5 Transferencia de datos y descarga
+
+- **Propósito:** Tras negociación finalizada, `POST /v3/transferprocesses` (TransferRequestDto: contractId, assetId, HttpData-PULL). Polling hasta STARTED/COMPLETED. Obtención de EDR (`GET /v3/edrs/{id}/dataaddress`) con endpoint y token temporal. Descarga desde data plane con `Authorization: Bearer {token}`. Exportación a fichero.
+- **Máquina de estados:** INITIAL → PROVISIONING → PROVISIONED → REQUESTING → REQUESTED → STARTING → STARTED → COMPLETING → COMPLETED (o TERMINATED)
+- **CQRS:** `StartTransferProcessCommand`, `GetTransferStateQuery`, `GetEndpointDataReferenceQuery`, `DownloadTransferDataCommand`
+- **DTOs:** `EdcTransferResponse`, `EdcTransferStateResponse`, `EdcEndpointDataReferenceResponse`, `EdcDataDownloadResponse`
+- **UI:** Stepper visual reutilizable (`EdcProcessStepper.razor`), botón "Descargar datos", "Exportar a fichero", botones "Reintentar" en caso de error.
+
+### 4.10.6 Configuración (`appsettings.json`)
+
+```json
+"EcoDataNet": {
+  "Edc": {
+    "MaxConcurrentRequests": 5,
+    "RequestTimeoutSeconds": 30,
+    "ManagementApiKey": "",
+    "NegotiationPollingIntervalSeconds": 3,
+    "TransferPollingIntervalSeconds": 3,
+    "NegotiationPollingMaxAttempts": 120,
+    "TransferPollingMaxAttempts": 60
+  }
+}
+```
+
+### 4.10.7 EDC Data Explorer — Dashboard Dinámico
+
+- **Ruta:** `/ecodatanet/data-explorer`
+- **Propósito:** Visualizador dinámico que recibe cualquier JSON descargado de una transferencia EDC, analiza su estructura en runtime y genera automáticamente un dashboard con KPI cards, tablas y gráficos, sin necesidad de programar un componente específico para cada tipo de asset.
+- **Entidades:** No se crean nuevas entidades de dominio ni tablas. Todo es procesamiento en memoria.
+- **Acceso desde:** Botón "Explorar datos" en `/ecodatanet/consume-data`, visible tras una descarga exitosa.
+- **Análisis de estructura:** `IJsonSchemaAnalyzer` / `JsonSchemaAnalyzer` (Application) usa `System.Text.Json` para detectar propiedades escalares (string, número, booleano, fecha), arrays de objetos homogéneos, objetos anidados. Incluye detección de porcentajes (por nombre o valor), fechas ISO 8601, categorías y propiedades temporales.
+- **Generación de layout:** `IDashboardLayoutBuilder` / `DashboardLayoutBuilder` (Application) aplica heurísticas automáticas: propiedades numéricas raíz → KPI cards; arrays con temporal + numérico → Line/Area chart; arrays con categoría + numérico → Donut/Bar chart; todos los arrays homogéneos → DataTable paginada; objetos anidados → KeyValueList; strings largas → InfoText.
+- **Widgets disponibles:** `KpiCard` (valor grande + icono + unidad), `DataTable` (Radzen paginada/filtrable/sorteable), `Chart` (Radzen: Bar, Line, Area, Donut, Pie), `SectionHeader`, `KeyValueList`, `InfoText`.
+- **Grid CSS:** `display:grid; grid-template-columns: repeat(12, 1fr)`. Cada widget ocupa un `ColumnSpan` determinado por las heurísticas. Responsive: <768px = full width; 768-1024px = KPIs a 6 columnas.
+- **Formato:** Cultura `es-ES` (separador miles = punto, decimal = coma). Porcentaje 0-1 se multiplica ×100. Paleta KPI: rotar entre 8 colores corporativos.
+- **Estado compartido:** `EdcDataExplorerStateService` (Scoped) transporta JSON + metadatos entre ConsumeData y DataExplorer.
+- **CQRS:** `AnalyzeEdcDataQuery` → orquesta `IJsonSchemaAnalyzer` + `IDashboardLayoutBuilder` vía MediatR.
+- **DTOs principales:** `JsonPropertyDescriptor`, `JsonDataSchema`, `JsonArrayDescriptor`, `DynamicWidgetDescriptor`, `EdcDataExplorerResult`, `DataExplorerMetadata`, `TableColumnDescriptor`.
+- **Límites:** JSON máximo 50 MB; arrays procesados hasta 1.000 elementos.
+- **Roles:** Todos los perfiles autenticados (policy `CanAccessEDCDataExplorer`), mismos permisos que "Consumir datos".
+
+### 4.10.8 EDC Data Explorer — Personalización de Layout con Persistencia
+
+- **Ruta:** Misma pantalla `/ecodatanet/data-explorer` (modo edición activable).
+- **Propósito:** Permite al usuario personalizar el layout generado automáticamente (reordenar, ocultar, cambiar tipo de gráfico, ajustar anchos, renombrar) y guardar esa personalización vinculada al AssetId del catálogo EDC, para que al descargar el mismo asset nuevamente, el layout ya esté personalizado.
+- **Entidad nueva:** `ExplorerLayoutConfig` — única excepción a la regla de "no nuevas entidades", justificada por necesidad de persistencia. Campos: `Id`, `OwnerId`, `UserId`, `AssetId`, `ProviderParticipantId`, `DatasetName`, `LayoutConfigJson` (nvarchar(max) con JSON de overrides), `SchemaHash` (MD5), `CreatedAt`, `UpdatedAt`. Índice único sobre `(OwnerId, UserId, AssetId, ProviderParticipantId)`.
+- **Funcionalidades:** Reordenar (drag & drop HTML5), ocultar widgets, cambiar tipo de gráfico, cambiar ancho (3/4/6/12 columnas), renombrar, guardar/cargar config, resetear a automático.
+- **WidgetId determinístico:** Generado a partir del tipo + nombre (`kpi_total_tons_processed`, `chart_waste_by_category_donut`, `table_waste_by_category`) para vincular overrides entre ejecuciones.
+- **Detección de cambios de esquema:** `ComputeSchemaHash()` genera MD5 de la estructura (nombres + tipos sin datos). Si el hash cambia, se muestra badge de advertencia y los widgets nuevos aparecen al final.
+- **Merge de configuración:** `ILayoutCustomizationService` / `LayoutCustomizationService` combina overrides guardados con widgets generados, manteniendo overrides válidos, mostrando widgets nuevos, ignorando obsoletos.
+- **CQRS:** `GetExplorerLayoutConfigQuery` (lectura), `SaveExplorerLayoutConfigCommand` (upsert), `DeleteExplorerLayoutConfigCommand` (reset).
+- **UI de edición:** `LayoutEditorToolbar.razor` (barra toggle modo edición, guardar, resetear), `WidgetConfigPanel.razor` (panel por widget: título, ancho, tipo gráfico, ocultar).
+- **Multi-tenant:** Config aislada por `OwnerId` + `UserId` + `AssetId` + `ProviderParticipantId`. Filtro por OwnerId en todos los handlers.
+- **DTOs:** `WidgetLayoutOverride`, `LayoutConfigDto`, `LayoutMergeResult`.
+
+### 4.10.9 EDC Data Explorer — Ampliaciones: Widget Mapa, Charts Adicionales y KPIs Calculados
+
+- **Ruta:** Misma pantalla `/ecodatanet/data-explorer`.
+- **Propósito:** Tres ampliaciones funcionales sobre el Data Explorer y su sistema de personalización: (A) Widget Mapa con visualización geográfica automática de arrays con coordenadas lat/lon, (B) Charts adicionales creados por el usuario en modo edición, y (C) KPIs calculados configurables con operaciones SUM/COUNT/AVG/Percentage. Todo se persiste ampliando el JSON dentro de `ExplorerLayoutConfigs.LayoutConfigJson` — no se crean nuevas tablas.
+- **Prerequisitos:** Data Explorer (§4.10.7), Personalización de Layout (§4.10.8) y Personalización de Data Binding completamente implementados.
+- **Ampliación A — Widget Mapa:** `JsonSchemaAnalyzer` detecta campos lat/lon en arrays por heurística de nombre + tipo numérico. Si se detectan coordenadas (`HasGeoCoordinates`) y el array tiene ≥ 2 elementos, `DashboardLayoutBuilder` genera un widget `Map` adicional. Enum `WidgetType` ampliado con valor `Map`. Componente `DynamicMap.razor` renderiza mapa Leaflet.js vía JS interop. Configurable: campos lat/lon/título/tooltip personalizables vía `MapFieldBinding` y persistibles como override.
+- **Ampliación B — Charts Adicionales:** El usuario crea gráficos extra en modo edición eligiendo array fuente, tipo de gráfico y campos. Se almacenan como `CustomWidgetDefinition` (prefijo `usr_`) en el `LayoutConfigJson`. Formato de JSON evoluciona de array puro a objeto `{ overrides: [...], customWidgets: [...] }` con migración implícita. UI: botón "Añadir gráfico" en toolbar + `AddChartDialog.razor`.
+- **Ampliación C — KPIs Calculados:** El usuario crea KPIs con operaciones sobre campos numéricos de arrays del JSON. `ICustomKpiCalculator` / `CustomKpiCalculator` (Transient) recalcula valores en cada carga. Definición almacenada como `CustomKpiDefinition` dentro de `CustomWidgetDefinition` con tipo KpiCard. UI: botón "Añadir KPI" en toolbar + `AddKpiDialog.razor`.
+- **Retrocompatibilidad total:** JSON antiguo sin nuevos campos se deserializa sin errores. Asset sin lat/lon = sin mapa. Sin custom widgets = layout automático intacto.
+- **Roles:** Mismos permisos que "Explorar datos" (policy `CanAccessEDCDataExplorer`).
+
+### 4.10.10 Publicar datos de GreenTransit a EcoDataNet (Waste API)
+
+- **Ruta UI:** Botón integrado en la ventana seed existente del módulo Seguridad (no crea página nueva).
+- **Propósito:** Proceso de publicación masiva que consulta toda la información operativa de GreenTransit (16 endpoints), mapea los datos a DTOs de la API EcoDataNet Waste, y los envía en lotes de hasta 100 elementos con gestión de respuesta 207 Multi-Status. Permite poblar el data space EcoDataNet para que los participantes consuman datos vía flujo EDC (§4.10.2-4.10.5).
+- **Autenticación:** HTTP Basic Auth con credenciales en `EcoDataNetOptions` (User Secrets en desarrollo, Azure KeyVault en producción).
+- **Endpoints (16):** WasteMoves, EntryPlants, EntryCACs, TreatmentPlants, ProductDeclarations, ServiceOrders, Agreements, Settlements, AgreementDocuments, MarketShares, ProductSpecs, PlantEnergies, Incidents, EmissionFactorSets, EcoModulationRuleSets, DUMZones.
+- **Idempotencia:** Cada `remoteId` = `Id` (GUID) de GreenTransit, permitiendo re-ejecución (upsert).
+- **OwnerId EcoDataNet:** GUID de participante EcoDataNet (no el OwnerId multi-tenant de GreenTransit). Algunos endpoints usan asignación cíclica round-robin.
+- **Conversión de enums:** `EcoDataNetEnumMapper` con métodos `ToMeasureUnit`, `ToTypeContainer`, `ToUseProduct`, `ToCategoryProduct`, `ToTypeThirdParty`.
+- **CQRS:** `PublishToEcoDataNetCommand` + handler en `Application/Features/Security/Commands/`.
+- **Servicios:** `IEcoDataNetPublisher` (Application) → `EcoDataNetPublisher` (Infrastructure). `EcoDataNetHttpClient` registrado con HttpClientFactory + Polly retries.
+- **UI:** Botón "Publicar a EcoDataNet" con spinner + progreso (endpoint actual + paso X/16). Tabla resumen tras publicación con totales ok/error por endpoint.
+- **Roles:** Solo ADMIN (misma policy que la ventana seed).
 
 ---
 
@@ -1989,6 +2149,8 @@ Vista transversal de todo el tenant:
 | `PLANT_OP` | Operador de Planta de Tratamiento | `Plant` | Registrar entradas, pesaje, tratamiento, declarar energía |
 | `COORDINATOR` | Coordinador del acuerdo | `Coordinator` | Lectura transversal del ámbito de sus acuerdos |
 | `DISPATCH_OFFICE` | Oficina de Asignación / Gestor logístico | *(funcional, sin EntityRole directo)* | Crear traslados, planificar logística, gestionar maestros operativos |
+| `REGULATOR` | Regulador — Autoridad de supervisión normativa | `Regulator` | Lectura transversal de KPIs, cumplimiento normativo e indicadores. Solo lectura |
+| `CERTIFIER` | Certificador / Auditor — Validación y coherencia | `Certifier` | Lectura de evidencias, huella de carbono, reporting y KPIs. Solo lectura (ej. AENOR) |
 | `ADMIN` | Administrador del sistema | *(superusuario del tenant)* | CRUD total, seguridad, configuración |
 
 ## 8.2 Reglas de filtrado por perfil
@@ -2003,6 +2165,8 @@ Vista transversal de todo el tenant:
 | `PUBLIC_ENT` | Solo traslados de su municipio o sus SOs | `Entities.MunicipalityCode OR ServiceOrders.IdIssuedBy = LinkedEntityId` |
 | `COORDINATOR` | Solo acuerdos de su ámbito | `Agreements.IdCoordinator = LinkedEntityId` |
 | `DISPATCH_OFFICE` | Todo el tenant | Solo `OwnerId` |
+| `REGULATOR` | Todo el tenant | Solo `OwnerId` — lectura de KPIs e indicadores |
+| `CERTIFIER` | Todo el tenant | Solo `OwnerId` — lectura de evidencias y reporting |
 | `ADMIN` | Todo el tenant | Solo `OwnerId` |
 
 **Implementación:** `ICurrentUserService.LinkedEntityId` + `ICurrentUserService.IsInAnyProfile(...)` + `IDataScopeService.ApplyScope()`
@@ -2053,6 +2217,7 @@ RouteAccessGuard                            ← Capa 3: protección de acceso di
 | `/product-declarations` | Declaraciones de Producto |
 | `/reporting/carbon-footprint/` | Reporting (Huella de Carbono) |
 | `/reporting/regulatory-compliance/` | Reporting (Cumplimiento Normativo) |
+| `/ecodatanet/` | EcoDataNet |
 
 **Checklist al crear una nueva página:**
 
@@ -2117,6 +2282,18 @@ Todos los valores que afectan a cálculos y dashboards son **configurables en `a
 
   "WeightDeviation": {
     "AutoIncidentThresholdPercent": 10
+  },
+
+  "EcoDataNet": {
+    "Edc": {
+      "MaxConcurrentRequests": 5,
+      "RequestTimeoutSeconds": 30,
+      "ManagementApiKey": "",
+      "NegotiationPollingIntervalSeconds": 3,
+      "TransferPollingIntervalSeconds": 3,
+      "NegotiationPollingMaxAttempts": 120,
+      "TransferPollingMaxAttempts": 60
+    }
   }
 }
 ```
@@ -2145,6 +2322,19 @@ Todos los valores que afectan a cálculos y dashboards son **configurables en `a
 | `HeatMaps` | `WeightKgPerMunicipality` | `50000` | Umbral de peso (kg) para alerta de acumulación por municipio |
 | `HeatMaps` | `PickupsPerMonth` | `100` | Umbral de recogidas/mes para alerta de acumulación |
 | `WeightDeviation` | `AutoIncidentThresholdPercent` | `10` | % de desviación de peso que genera incidencia automática |
+| `EcoDataNet.Edc` | `MaxConcurrentRequests` | `5` | Máximo de solicitudes de catálogo simultáneas por consumo |
+| `EcoDataNet.Edc` | `RequestTimeoutSeconds` | `30` | Timeout por solicitud individual al conector EDC |
+| `EcoDataNet.Edc` | `ManagementApiKey` | `""` | API Key para Management API (header X-Api-Key). Vacío = no se envía |
+| `EcoDataNet.Edc` | `NegotiationPollingIntervalSeconds` | `3` | Intervalo de polling del estado de negociación |
+| `EcoDataNet.Edc` | `TransferPollingIntervalSeconds` | `3` | Intervalo de polling del estado de transferencia |
+| `EcoDataNet.Edc` | `NegotiationPollingMaxAttempts` | `120` | Máximo de intentos de polling de negociación (120 × 3s = 6 min) |
+| `EcoDataNet.Edc` | `TransferPollingMaxAttempts` | `60` | Máximo de intentos de polling de transferencia (60 × 3s = 3 min) |
+| `EcoDataNet` | `BaseUrl` | `""` | URL base de la API EcoDataNet Waste (ej: `https://api.ecodatanet.example.com`) |
+| `EcoDataNet` | `Username` | `""` | Usuario para HTTP Basic Auth (User Secrets / KeyVault) |
+| `EcoDataNet` | `Password` | `""` | Contraseña para HTTP Basic Auth (User Secrets / KeyVault) |
+| `EcoDataNet` | `BatchSize` | `100` | Tamaño máximo de lote por envío a cada endpoint |
+| `EcoDataNet` | `TimeoutSeconds` | `120` | Timeout del HttpClient para la API EcoDataNet |
+| `EcoDataNet` | `MaxRetries` | `3` | Reintentos con Polly en caso de fallo transitorio |
 
 ---
 

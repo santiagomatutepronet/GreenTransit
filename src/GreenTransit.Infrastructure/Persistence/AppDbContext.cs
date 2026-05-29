@@ -122,6 +122,10 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<PageDefinition> PageDefinitions => Set<PageDefinition>();
     public DbSet<PagePermission> PagePermissions => Set<PagePermission>();
 
+    // ── EcoDataNet ────────────────────────────────────────────────────────────
+    public DbSet<UserEDCConnector> UserEDCConnectors => Set<UserEDCConnector>();
+    public DbSet<ProfileEDCConsumer> ProfileEDCConsumers => Set<ProfileEDCConsumer>();
+
     // ── Implementación explícita de IApplicationDbContext (IQueryable<T>) ─────
     // Los IQueryable<T> son satisfechos explícitamente; las propiedades públicas
     // siguen siendo DbSet<T> para uso interno de Infrastructure.
@@ -166,6 +170,9 @@ public class AppDbContext : DbContext, IApplicationDbContext
     IQueryable<UserProfile>      IApplicationDbContext.UserProfiles       => Set<UserProfile>();
     IQueryable<PageDefinition>   IApplicationDbContext.PageDefinitions    => Set<PageDefinition>();
     IQueryable<PagePermission>   IApplicationDbContext.PagePermissions    => Set<PagePermission>();
+    IQueryable<UserEDCConnector>  IApplicationDbContext.UserEDCConnectors  => Set<UserEDCConnector>();
+    IQueryable<ProfileEDCConsumer> IApplicationDbContext.ProfileEDCConsumers => Set<ProfileEDCConsumer>();
+    IQueryable<ExplorerLayoutConfig> IApplicationDbContext.ExplorerLayoutConfigs => Set<ExplorerLayoutConfig>();
     IQueryable<DicProductDeclarationCategory> IApplicationDbContext.DicProductDeclarationCategories => Set<DicProductDeclarationCategory>();
     IQueryable<DicProductDeclarationPeriod>   IApplicationDbContext.DicProductDeclarationPeriods    => Set<DicProductDeclarationPeriod>();
     IQueryable<DicProductDeclarationProduct>  IApplicationDbContext.DicProductDeclarationProducts   => Set<DicProductDeclarationProduct>();
@@ -210,10 +217,12 @@ public class AppDbContext : DbContext, IApplicationDbContext
     {
         // _ignoreTenantFilter: bypass para consultas de administración.
         // !IsAuthenticated: sin sesión activa no se aplica filtro (seeds, migraciones).
-        // OwnerId: filtro estricto de tenant para usuarios autenticados.
+        // OwnerId == Guid.Empty: admin/sistema sin tenant asignado → ve todos los registros.
+        // OwnerId: filtro estricto de tenant para usuarios autenticados con tenant asignado.
         modelBuilder.Entity<T>().HasQueryFilter(
             e => _ignoreTenantFilter
                  || !_currentUserService.IsAuthenticated
+                 || _currentUserService.OwnerId == Guid.Empty
                  || e.OwnerId == _currentUserService.OwnerId);
     }
 

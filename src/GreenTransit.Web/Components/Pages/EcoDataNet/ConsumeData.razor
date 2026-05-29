@@ -1,0 +1,1483 @@
+@using Radzen
+@using Radzen.Blazor
+@using GreenTransit.Application.Features.EcoDataNet.DTOs
+@using GreenTransit.Application.Features.EcoDataNet.Queries
+@using GreenTransit.Application.Features.EcoDataNet.Commands
+@using GreenTransit.Application.Common.Interfaces
+@using MediatR
+@using Microsoft.AspNetCore.Authorization
+@using GreenTransit.Domain.Authorization
+@using System.Text.Json
+@using GreenTransit.Application.Features.EcoDataNet.Services
+
+@page "/ecodatanet/consume-data"
+@attribute [Authorize(Policy = PolicyConstants.CanAccessEDCConsumeData)]
+@rendermode InteractiveServer
+
+@inject IMediator           Mediator
+@inject ICurrentUserService CurrentUser
+@inject IJSRuntime          JS
+@inject EdcDataExplorerStateService DataExplorerState
+@inject NavigationManager   NavigationManager
+
+@implements IDisposable
+
+<PageTitle>Consumir datos — EcoDataNet</PageTitle>
+
+<style>
+    .edc-asset-card {
+        border: 1px solid var(--border, #D1D5D4);
+        border-radius: 10px;
+        padding: .875rem;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: .5rem;
+        background: var(--surface, #fff);
+        transition: box-shadow .18s, transform .18s;
+        cursor: default;
+    }
+    .edc-asset-card:hover { box-shadow: 0 4px 18px rgba(10,64,75,.12); transform: translateY(-2px); }
+    .edc-asset-card.has-offer { border-top: 3px solid var(--primary, #0A404B); }
+    .edc-asset-card.no-offer  { border-top: 3px solid var(--warning, #FFA800); opacity: .75; }
+    .edc-asset-card-icon {
+        font-size: 1.6rem;
+        color: var(--primary, #0A404B);
+        line-height: 1;
+    }
+    .edc-asset-card-body { flex: 1; }
+    .edc-asset-name {
+        font-weight: 600;
+        font-size: .875rem;
+        line-height: 1.35;
+        color: var(--text-primary, #262626);
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .edc-asset-type {
+        font-size: .7rem;
+        color: var(--text-muted, #6E7D78);
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+    .edc-asset-card-footer { margin-top: auto; }
+    .edc-btn-offer {
+        display: inline-flex;
+        align-items: center;
+        font-size: .78rem;
+        font-weight: 500;
+        padding: .3rem .75rem;
+        border-radius: 6px;
+        border: 1.5px solid var(--primary, #0A404B);
+        color: var(--primary, #0A404B);
+        background: transparent;
+        cursor: pointer;
+        transition: background .15s, color .15s;
+        white-space: nowrap;
+    }
+    .edc-btn-offer:hover { background: var(--primary, #0A404B); color: #fff; }
+    .edc-no-offer { font-size: .78rem; color: var(--text-muted, #6E7D78); }
+    /* Chips */
+    .edc-chip {
+        display: inline-flex;
+        align-items: baseline;
+        font-size: .75rem;
+        padding: .2rem .55rem;
+        border-radius: 6px;
+        line-height: 1.5;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        max-width: 100%;
+    }
+    .edc-chip-success { background: var(--success-bg, #DEF2E6);  color: var(--text-primary, #262626); }
+    .edc-chip-info    { background: var(--primary-light, #BEE2E4); color: var(--primary, #0A404B); }
+    .edc-chip-danger  { background: var(--danger-bg, #FFEFF0);    color: var(--danger, #DC2B2B); }
+    .edc-chip-warning { background: var(--warning-bg, #FFF6E4);   color: var(--text-primary, #262626); }
+    .edc-chip-neutral { background: var(--surface-alt, #F0F2F1);  color: var(--text-secondary, #4F5E5A); }
+    /* Acordeón de proveedores colapsado */
+    details.edc-more-info > summary::-webkit-details-marker { display: none; }
+    .edc-chevron { transition: transform .2s; }
+    details[open] .edc-chevron { transform: rotate(90deg); }
+</style>
+
+<div class="page-header">
+    <div class="page-header-info">
+        <h1 class="page-title">
+            <i class="bi bi-cloud-download-fill me-2 text-success"></i>Consumir datos EcoDataNet
+        </h1>
+        <p class="page-subtitle text-muted">Accede a los datasets compartidos en el dataspace EDC.</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+    </div>
+}
+else if (_isAdmin && _selectedConsumerUser is null)
+{
+    @* ── Vista ADMIN: lista de usuarios con conector EDC configurado ─────── *@
+    <RadzenCard>
+        <RadzenText TextStyle="TextStyle.H6" class="mb-1">Seleccione el usuario consumidor</RadzenText>
+        <RadzenText TextStyle="TextStyle.Caption" class="text-muted mb-3">
+            Sólo se muestran usuarios con conector EDC configurado. La petición al catálogo se realizará desde ese conector.
+        </RadzenText>
+
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" class="mb-3" AlignItems="AlignItems.Center">
+            <RadzenTextBox Placeholder="Buscar por nombre o login…"
+                           @bind-Value="_searchTerm"
+                           @oninput="@(e => OnSearchChanged(e.Value?.ToString()))"
+                           Style="width:280px" />
+            @if (_isLoadingUsers)
+            {
+                <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+            }
+        </RadzenStack>
+
+        <RadzenDataGrid Data="@_users" TItem="UserForEDCListDto"
+                        AllowSorting="true" Density="Density.Compact" class="rz-shadow-2"
+                        AllowPaging="true" PageSize="15" Count="@_usersTotal"
+                        LoadData="@LoadUsersAsync" IsLoading="@_isLoadingUsers">
+            <Columns>
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="CompleteName" Title="Nombre" Width="200px" />
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="Login" Title="Login" Width="280px" />
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Property="ProfileReference" Title="Perfil" Width="140px" />
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Title="Conector" Width="130px" Sortable="false">
+                    <Template Context="row">
+                        @if (row.HasEDCConnector)
+                        {
+                            <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#198754;color:#fff;letter-spacing:.03em">
+                                Configurado
+                            </span>
+                        }
+                        else
+                        {
+                            <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#6c757d;color:#fff;letter-spacing:.03em">
+                                Sin conector
+                            </span>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="UserForEDCListDto" Title="" Width="130px" Sortable="false">
+                    <Template Context="row">
+                        <RadzenButton Text="Consumir datos" Icon="cloud_download"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Size="ButtonSize.ExtraSmall"
+                                      Disabled="@(!row.HasEDCConnector)"
+                                      Click="@(_ => SelectConsumerUser(row))" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+}
+else
+{
+    @* ── Vista de consumo: usuario consumidor ya seleccionado ────────────── *@
+    <RadzenCard>
+        <RadzenStack Gap="0.75rem">
+            @if (_isAdmin)
+            {
+                <RadzenButton Text="← Volver a la lista de usuarios" ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small" Click="@BackToList" class="mb-2" />
+            }
+
+            <RadzenText TextStyle="TextStyle.H6">
+                Consumo de datos — Usuario consumidor: <strong>@_activeConsumerName</strong>
+            </RadzenText>
+            <RadzenText TextStyle="TextStyle.Caption" class="text-muted">
+                Las peticiones al catálogo se realizarán desde el conector EDC de este usuario.
+            </RadzenText>
+
+            @if (_consumableProfiles.Count == 0)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" class="mt-2">
+                    No hay perfiles de datos configurados para consumir. Contacte al administrador.
+                </RadzenAlert>
+            }
+            else
+            {
+                <RadzenRow Gap="1rem" AlignItems="AlignItems.End">
+                    <RadzenColumn SizeMD="5">
+                        <RadzenFormField Text="Perfil a consumir" Style="width:100%">
+                            <RadzenDropDown @bind-Value="_selectedConsumedProfileId"
+                                            Data="@_consumableProfiles"
+                                            TextProperty="ProfileDescription"
+                                            ValueProperty="ProfileId"
+                                            Placeholder="— Seleccione un perfil —"
+                                            Style="width:100%" />
+                        </RadzenFormField>
+                    </RadzenColumn>
+                    @if (_selectedConsumedProfileId > 0)
+                    {
+                        <RadzenColumn SizeMD="3">
+                            <RadzenButton Text="@(_isLoadingCatalog ? "Consultando..." : "Consumir catálogo")"
+                                          Icon="cloud_download"
+                                          ButtonStyle="ButtonStyle.Primary"
+                                          IsBusy="@_isLoadingCatalog"
+                                          Disabled="@_isLoadingCatalog"
+                                          Click="@OnConsumeCatalogAsync" />
+                        </RadzenColumn>
+                    }
+                </RadzenRow>
+
+                @if (!string.IsNullOrEmpty(_catalogError))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" class="mt-3">
+                        <RadzenIcon Icon="error" class="me-2" />@_catalogError
+                    </RadzenAlert>
+                }
+
+                @if (_catalogResponse != null)
+                {
+                    @* ── CATÁLOGO DE DATOS DISPONIBLES (tarjetas) ── *@
+                    @if (_parsedCatalogs != null && _parsedCatalogs.Any(c => c.ParseSuccess))
+                    {
+                        <div class="mt-4">
+                            <RadzenText TextStyle="TextStyle.H5" class="mb-3">
+                                <i class="bi bi-database-fill-check me-2 text-success"></i>Catálogo de datos disponibles
+                            </RadzenText>
+
+                            @{ var successProviders = _parsedCatalogs.Where(c => c.ParseSuccess && c.Catalog != null).ToList(); }
+                            @foreach (var provCatalog in successProviders)
+                            {
+                                <details class="mb-4" @(successProviders.Count == 1 ? "open" : "")>
+                                    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:.6rem;padding:.6rem .75rem;border-radius:8px;background:var(--surface-alt,#F0F2F1);border:1px solid var(--border,#D1D5D4);margin-bottom:.75rem;user-select:none">
+                                        <i class="bi bi-chevron-right edc-chevron" style="font-size:.75rem;color:var(--primary,#0A404B)"></i>
+                                        <i class="bi bi-building fs-5" style="color:var(--primary,#0A404B)"></i>
+                                        <span class="fw-semibold" style="color:var(--text-primary,#262626)">@provCatalog.ProviderUserName</span>
+                                        <span style="font-size:.82rem;color:var(--text-muted,#6E7D78)">@provCatalog.ProviderUserLogin</span>
+                                        <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:var(--primary,#0A404B);color:#fff;letter-spacing:.03em">
+                                            @provCatalog.Catalog!.Datasets.Count ASSETS
+                                        </span>
+                                    </summary>
+
+                                    <div class="row g-3">
+                                        @foreach (var ds in provCatalog.Catalog!.Datasets)
+                                        {
+                                            <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
+                                                <div class="edc-asset-card @(ds.Offer != null ? "has-offer" : "no-offer")">
+                                                    <div class="edc-asset-card-icon">
+                                                        <i class="bi bi-file-earmark-bar-graph"></i>
+                                                    </div>
+                                                    <div class="edc-asset-card-body">
+                                                        <div class="edc-asset-name" title="@(string.IsNullOrEmpty(ds.Name) ? ds.DatasetId : ds.Name)">
+                                                            @(string.IsNullOrEmpty(ds.Name) ? ds.DatasetId : ds.Name)
+                                                        </div>
+                                                        @if (!string.IsNullOrEmpty(ds.ContentType))
+                                                        {
+                                                            <span class="edc-asset-type">@ds.ContentType</span>
+                                                        }
+                                                    </div>
+                                                    <div class="edc-asset-card-footer">
+                                                        @if (ds.Offer != null)
+                                                        {
+                                                            <div class="d-flex gap-1 flex-wrap">
+                                                                <button class="edc-btn-offer" @onclick="() => ShowDatasetDetail(provCatalog, ds)">
+                                                                    <i class="bi bi-eye me-1"></i>Ver oferta
+                                                                </button>
+                                                                <button class="edc-btn-offer" style="background:var(--primary,#0A404B);color:#fff" @onclick="() => SelectOfferAndStartNegotiation(provCatalog, ds)">
+                                                                    <i class="bi bi-play-fill me-1"></i>Iniciar negociación
+                                                                </button>
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="edc-no-offer"><i class="bi bi-slash-circle me-1"></i>Sin oferta</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </details>
+                            }
+
+                            @foreach (var provError in _parsedCatalogs.Where(c => !c.ParseSuccess))
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Warning" class="mb-2">
+                                    Error al parsear catálogo de <strong>@provError.ProviderUserName</strong>: @provError.ParseError
+                                </RadzenAlert>
+                            }
+                        </div>
+                    }
+
+
+
+                    @* ── PROVEEDORES CONSULTADOS (contraído al final) ── *@
+                    <div class="mt-4">
+                        <details>
+                            <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem;padding:0.6rem 0.75rem;background:var(--surface-alt,#F0F2F1);border:1px solid var(--border,#D1D5D4);border-radius:6px;user-select:none">
+                                <i class="bi bi-chevron-right edc-chevron me-1"></i>
+                                <span class="fw-semibold text-muted small">Detalle de proveedores consultados</span>
+                                <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#0d6efd;color:#fff;letter-spacing:.03em;margin-left:.5rem">
+                                    @_catalogResponse.TotalProviders PROVEEDORES
+                                </span>
+                                <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#198754;color:#fff;letter-spacing:.03em">
+                                    @_catalogResponse.SuccessCount OK
+                                </span>
+                                @if (_catalogResponse.ErrorCount > 0)
+                                {
+                                    <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#dc3545;color:#fff;letter-spacing:.03em">
+                                        @_catalogResponse.ErrorCount ERRORES
+                                    </span>
+                                }
+                                @if (_catalogResponse.NoConnectorCount > 0)
+                                {
+                                    <span style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;background:#6c757d;color:#fff;letter-spacing:.03em">
+                                        @_catalogResponse.NoConnectorCount SIN CONECTOR
+                                    </span>
+                                }
+                            </summary>
+                            <div style="border:1px solid var(--border,#D1D5D4);border-top:none;border-radius:0 0 6px 6px;padding:0.75rem">
+                                <RadzenAccordion>
+                                    <Items>
+                                        @foreach (var result in _catalogResponse.Results)
+                                        {
+                                            <RadzenAccordionItem>
+                                                <Template>
+                                                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                                        @switch (result.Status)
+                                                        {
+                                                            case EdcProviderStatus.Ok:
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="OK" />
+                                                                break;
+                                                            case EdcProviderStatus.Error:
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="ERROR" />
+                                                                break;
+                                                            case EdcProviderStatus.Timeout:
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="TIMEOUT" />
+                                                                break;
+                                                            case EdcProviderStatus.NoConnector:
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="SIN CONECTOR" />
+                                                                break;
+                                                        }
+                                                        <RadzenText>@result.UserName</RadzenText>
+                                                        <RadzenText TextStyle="TextStyle.Caption" class="text-muted">(@result.UserLogin)</RadzenText>
+                                                        @if (result.Status == EdcProviderStatus.Ok && result.CatalogResult != null)
+                                                        {
+                                                            <RadzenText TextStyle="TextStyle.Caption">— @result.CatalogResult.DatasetCount datasets</RadzenText>
+                                                        }
+                                                    </RadzenStack>
+                                                </Template>
+                                                <ChildContent>
+                                                    @if (result.EDCServerName != null)
+                                                    {
+                                                        <p class="small mb-1"><strong>Servidor:</strong> @result.EDCServerName</p>
+                                                        <p class="small mb-1"><strong>Conector ID:</strong> @result.EDCConnectorId</p>
+                                                    }
+                                                    @if (result.CatalogResult != null)
+                                                    {
+                                                        @if (!string.IsNullOrEmpty(result.CatalogResult.ErrorMessage))
+                                                        {
+                                                            <RadzenAlert AlertStyle="AlertStyle.Warning">@result.CatalogResult.ErrorMessage</RadzenAlert>
+                                                        }
+                                                        @if (!string.IsNullOrEmpty(result.CatalogResult.RawJson))
+                                                        {
+                                                            <details class="mt-2">
+                                                                <summary style="cursor:pointer">Ver JSON completo del catálogo</summary>
+                                                                <pre style="max-height:400px;overflow-y:auto;font-size:12px;background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:4px;margin-top:0.5rem">@FormatJson(result.CatalogResult.RawJson)</pre>
+                                                            </details>
+                                                        }
+                                                    }
+                                                    @if (result.Status == EdcProviderStatus.NoConnector)
+                                                    {
+                                                        <RadzenText TextStyle="TextStyle.Caption" class="text-muted">
+                                                            Este usuario no tiene un conector EDC configurado.
+                                                        </RadzenText>
+                                                    }
+                                                </ChildContent>
+                                            </RadzenAccordionItem>
+                                        }
+                                    </Items>
+                                </RadzenAccordion>
+                            </div>
+                        </details>
+                    </div>
+                }
+            }
+        </RadzenStack>
+    </RadzenCard>
+}
+
+@* ── MODAL DETALLE DATASET / OFERTA ODRL ── *@
+@if (_showDatasetDetail && _selectedDataset != null && _selectedProvider != null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1050;display:flex;align-items:center;justify-content:center;padding:1rem">
+        <div style="width:min(95vw,640px);max-height:90vh;overflow-y:auto;border-radius:12px;background:var(--surface,#fff);box-shadow:0 20px 60px rgba(10,64,75,.25)">
+
+            @* Cabecera *@
+            <div style="background:linear-gradient(135deg,var(--primary,#0A404B) 0%,var(--primary-hover,#083338) 100%);padding:1.25rem 1.5rem;border-radius:12px 12px 0 0;color:#fff">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div style="font-size:1.1rem;font-weight:700;line-height:1.3">
+                            @(string.IsNullOrEmpty(_selectedDataset.Name) ? _selectedDataset.DatasetId : _selectedDataset.Name)
+                        </div>
+                        <div style="opacity:.85;font-size:.85rem;margin-top:.25rem">
+                            <i class="bi bi-building me-1"></i>@_selectedProvider.ProviderUserName
+                            <span style="opacity:.7;margin-left:.5rem">@_selectedProvider.ProviderUserLogin</span>
+                        </div>
+                    </div>
+                    <button style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:32px;height:32px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center"
+                            @onclick="CloseDatasetDetail">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div style="padding:1.5rem">
+
+                @* Permisos como chips visuales *@
+                @if (_selectedDataset.Offer?.Permissions.Any() == true)
+                {
+                    <div class="mb-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-shield-fill-check text-success fs-5"></i>
+                            <span style="font-weight:600;font-size:.95rem">Permisos</span>
+                        </div>
+                        @foreach (var perm in _selectedDataset.Offer.Permissions)
+                        {
+                            <div class="mb-2">
+                                <span class="edc-chip edc-chip-success">
+                                    <i class="bi bi-check2 me-1"></i>@HumanizeOdrl(perm.Action)
+                                </span>
+                                @if (perm.Constraints.Any())
+                                {
+                                    <div class="d-flex flex-wrap gap-1 mt-1 ms-2" style="max-width:100%;overflow:hidden">
+                                        @foreach (var c in perm.Constraints)
+                                        {
+                                            <span class="edc-chip edc-chip-info">
+                                                <strong>@HumanizeOdrl(c.LeftOperand)</strong>
+                                                <span style="opacity:.7;margin:0 .25rem">@HumanizeOdrl(c.Operator)</span>
+                                                <em>@c.RightOperand</em>
+                                            </span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* Más información (colapsable) *@
+                <details class="edc-more-info">
+                    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;border-radius:8px;background:var(--surface-alt,#F0F2F1);border:1px solid var(--border,#D1D5D4);margin-bottom:.75rem">
+                        <i class="bi bi-info-circle-fill text-primary"></i>
+                        <span style="font-size:.875rem;font-weight:500">Más información</span>
+                        <i class="bi bi-chevron-down ms-auto text-muted edc-chevron" style="font-size:.75rem"></i>
+                    </summary>
+
+                    @* Datos del asset *@
+                    <div class="mb-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-file-earmark-text text-secondary"></i>
+                            <span style="font-weight:600;font-size:.875rem">Datos del asset</span>
+                        </div>
+                        <dl class="row small mb-0" style="font-size:.8rem">
+                            <dt class="col-sm-5 text-muted">ID</dt>
+                            <dd class="col-sm-7"><code style="font-size:.75rem">@_selectedDataset.DatasetId</code></dd>
+                            @if (!string.IsNullOrEmpty(_selectedDataset.Version))
+                            {
+                                <dt class="col-sm-5 text-muted">Versión</dt>
+                                <dd class="col-sm-7">@_selectedDataset.Version</dd>
+                            }
+                            @if (!string.IsNullOrEmpty(_selectedDataset.ContentType))
+                            {
+                                <dt class="col-sm-5 text-muted">Tipo de contenido</dt>
+                                <dd class="col-sm-7"><span class="edc-chip edc-chip-neutral">@_selectedDataset.ContentType</span></dd>
+                            }
+                            <dt class="col-sm-5 text-muted">Participant ID</dt>
+                            <dd class="col-sm-7"><code style="font-size:.75rem">@_selectedProvider.ProviderParticipantId</code></dd>
+                        </dl>
+                    </div>
+
+                    @* Prohibiciones *@
+                    @if (_selectedDataset.Offer?.Prohibitions.Any() == true)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-shield-fill-x text-danger"></i>
+                                <span style="font-weight:600;font-size:.875rem">Prohibiciones</span>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var p in _selectedDataset.Offer.Prohibitions)
+                                {
+                                    <span class="edc-chip edc-chip-danger">
+                                        <i class="bi bi-x me-1"></i>@HumanizeOdrl(p.Action)
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* Obligaciones *@
+                    @if (_selectedDataset.Offer?.Obligations.Any() == true)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                                <span style="font-weight:600;font-size:.875rem">Obligaciones</span>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var o in _selectedDataset.Offer.Obligations)
+                                {
+                                    <span class="edc-chip edc-chip-warning">
+                                        <i class="bi bi-exclamation me-1"></i>@HumanizeOdrl(o.Action)
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* Distribuciones *@
+                    @if (_selectedDataset.Distributions.Any())
+                    {
+                        <div class="mb-1">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-cloud-download text-secondary"></i>
+                                <span style="font-weight:600;font-size:.875rem">Distribuciones</span>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var dist in _selectedDataset.Distributions)
+                                {
+                                    <span class="edc-chip edc-chip-neutral">
+                                        @dist.Format
+                                        @if (!string.IsNullOrEmpty(dist.EndpointUrl))
+                                        {
+                                            <span style="opacity:.65;margin-left:.25rem;font-size:.7rem">@dist.EndpointUrl</span>
+                                        }
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* ID de oferta *@
+                    @if (_selectedDataset.Offer != null)
+                    {
+                        <div class="mt-2" style="font-size:.75rem;color:var(--text-muted,#6E7D78)">
+                            Offer ID: <code style="font-size:.7rem">@_selectedDataset.Offer.OfferId</code>
+                        </div>
+                    }
+                </details>
+
+                @* Botones de acción *@
+                <div class="d-flex justify-content-end gap-2 mt-1">
+                    <RadzenButton Text="Cerrar" ButtonStyle="ButtonStyle.Light"
+                                  Click="@CloseDatasetDetail" />
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── MODAL NEGOCIACIÓN Y TRANSFERENCIA ── *@
+@if (_negotiationSelection != null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1060;display:flex;align-items:center;justify-content:center;padding:1rem">
+        <div style="width:min(95vw,680px);max-height:92vh;overflow-y:auto;border-radius:14px;background:var(--surface,#fff);box-shadow:0 24px 64px rgba(10,64,75,.3)">
+
+            @* Cabecera *@
+            <div style="background:linear-gradient(135deg,var(--primary,#0A404B) 0%,var(--primary-hover,#083338) 100%);padding:1.25rem 1.5rem;border-radius:14px 14px 0 0;color:#fff">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div style="font-size:1.1rem;font-weight:700;line-height:1.3">
+                            <i class="bi bi-handshake me-2"></i>Negociación y Transferencia
+                        </div>
+                        <div style="opacity:.85;font-size:.85rem;margin-top:.3rem">
+                            <i class="bi bi-file-earmark-bar-graph me-1"></i>@_negotiationSelection.DatasetName
+                            <span style="opacity:.7;margin-left:.75rem">
+                                <i class="bi bi-building me-1"></i>@_negotiationSelection.ProviderUserName
+                            </span>
+                        </div>
+                    </div>
+                    <button style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:34px;height:34px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"
+                            @onclick="ClearNegotiationSelection" title="Cerrar">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            @* Cuerpo *@
+            <div style="padding:1.5rem">
+
+                @* ── Fase 1: Negociación de contrato ── *@
+                <div class="mb-4">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;flex-shrink:0;
+                                    background:@(_contractAgreementId != null ? "#198754" : _negotiationError ? "#dc3545" : _isNegotiating ? "var(--primary,#0A404B)" : "#dee2e6");
+                                    color:@(_contractAgreementId != null || _negotiationError || _isNegotiating ? "#fff" : "#6c757d")">
+                            @if (_contractAgreementId != null)
+                            { <i class="bi bi-check-lg"></i> }
+                            else if (_negotiationError)
+                            { <i class="bi bi-x-lg"></i> }
+                            else
+                            { <span>1</span> }
+                        </div>
+                        <span style="font-weight:600;font-size:.95rem">Negociación de contrato</span>
+                        @if (_isNegotiating)
+                        {
+                            <span class="spinner-border spinner-border-sm text-primary ms-1" role="status"></span>
+                        }
+                        @if (_contractAgreementId != null)
+                        {
+                            <span class="badge bg-success ms-1">Finalizada</span>
+                        }
+                    </div>
+
+                    @if (_negotiationId != null || _isNegotiating || _negotiationError)
+                    {
+                        <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6)">
+                            <EdcProcessStepper Steps="_negotiationSteps"
+                                               CurrentStepIndex="_negotiationStepIndex"
+                                               IsError="_negotiationError" />
+                            @if (_negotiationId != null)
+                            {
+                                <div class="text-muted" style="font-size:.75rem;margin-top:.25rem">
+                                    ID: <code style="font-size:.72rem">@_negotiationId</code>
+                                </div>
+                            }
+                            @if (_negotiationError && !string.IsNullOrEmpty(_negotiationErrorMessage))
+                            {
+                                <div class="alert alert-danger py-2 mt-2" style="word-break:break-word;overflow-wrap:anywhere;">
+                                    <div class="mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>@_negotiationErrorMessage</div>
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="RetryNegotiation">
+                                        <i class="bi bi-arrow-clockwise me-1"></i>Reintentar
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6);color:var(--text-muted,#6E7D78);font-size:.85rem">
+                            Pendiente de iniciar…
+                        </div>
+                    }
+                </div>
+
+                @* Conector visual entre fases *@
+                <div style="width:2px;height:20px;background:@(_contractAgreementId != null ? "#198754" : "var(--border,#dee2e6)");margin:0 auto -12px 13px"></div>
+
+                @* ── Fase 2: Transferencia de datos ── *@
+                <div class="mb-4">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;flex-shrink:0;
+                                    background:@(_edrResponse?.Success == true ? "#198754" : _transferError ? "#dc3545" : _isTransferring ? "var(--primary,#0A404B)" : "#dee2e6");
+                                    color:@(_edrResponse?.Success == true || _transferError || _isTransferring ? "#fff" : "#6c757d")">
+                            @if (_edrResponse?.Success == true)
+                            { <i class="bi bi-check-lg"></i> }
+                            else if (_transferError)
+                            { <i class="bi bi-x-lg"></i> }
+                            else
+                            { <span>2</span> }
+                        </div>
+                        <span style="font-weight:600;font-size:.95rem">Transferencia de datos</span>
+                        @if (_isTransferring)
+                        {
+                            <span class="spinner-border spinner-border-sm text-primary ms-1" role="status"></span>
+                        }
+                        @if (_edrResponse?.Success == true)
+                        {
+                            <span class="badge bg-success ms-1">Lista</span>
+                        }
+                    </div>
+
+                    @if (_transferProcessId != null || _isTransferring)
+                    {
+                        <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6)">
+                            <EdcProcessStepper Steps="_transferSteps"
+                                               CurrentStepIndex="_transferStepIndex"
+                                               IsError="_transferError" />
+                            @if (_transferProcessId != null)
+                            {
+                                <div class="text-muted" style="font-size:.75rem;margin-top:.25rem">
+                                    ID: <code style="font-size:.72rem">@_transferProcessId</code>
+                                </div>
+                            }
+                            @if (_transferError && !string.IsNullOrEmpty(_transferErrorMessage))
+                            {
+                                <div class="alert alert-danger py-2 mt-2 d-flex align-items-center gap-3">
+                                    <div><i class="bi bi-exclamation-triangle-fill me-1"></i>@_transferErrorMessage</div>
+                                    <button class="btn btn-outline-danger btn-sm ms-auto" @onclick="RetryTransfer">
+                                        <i class="bi bi-arrow-clockwise me-1"></i>Reintentar
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6);color:var(--text-muted,#6E7D78);font-size:.85rem">
+                            Se iniciará automáticamente al finalizar la negociación.
+                        </div>
+                    }
+                </div>
+
+                @* Conector visual entre fases *@
+                <div style="width:2px;height:20px;background:@(_edrResponse?.Success == true ? "#198754" : "var(--border,#dee2e6)");margin:0 auto -12px 13px"></div>
+
+                @* ── Fase 3: Descarga de datos ── *@
+                <div class="mb-2">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;flex-shrink:0;
+                                    background:@(_downloadResponse?.Success == true ? "#198754" : _downloadResponse?.Success == false ? "#dc3545" : _isDownloading ? "var(--primary,#0A404B)" : "#dee2e6");
+                                    color:@(_downloadResponse != null || _isDownloading ? "#fff" : "#6c757d")">
+                            @if (_downloadResponse?.Success == true)
+                            { <i class="bi bi-check-lg"></i> }
+                            else if (_downloadResponse?.Success == false)
+                            { <i class="bi bi-x-lg"></i> }
+                            else if (_isDownloading)
+                            { <span class="spinner-border spinner-border-sm" role="status"></span> }
+                            else
+                            { <span>3</span> }
+                        </div>
+                        <span style="font-weight:600;font-size:.95rem">Descarga de datos</span>
+                        @if (_downloadResponse?.Success == true)
+                        {
+                            <span class="badge bg-success ms-1">Completada</span>
+                        }
+                    </div>
+
+                    <div style="margin-left:14px;padding-left:22px;border-left:2px solid var(--border,#dee2e6)">
+                        @if (_edrResponse?.Success == true && _downloadResponse == null && !_isDownloading)
+                        {
+                            <button class="btn btn-success" @onclick="DownloadData">
+                                <i class="bi bi-cloud-download me-2"></i>Descargar datos
+                            </button>
+                        }
+                        else if (_isDownloading)
+                        {
+                            <span class="text-muted" style="font-size:.85rem">
+                                <span class="spinner-border spinner-border-sm me-2"></span>Descargando…
+                            </span>
+                        }
+                        else if (_downloadResponse?.Success == true)
+                        {
+                            <div class="alert alert-success py-2">
+                                <i class="bi bi-check-circle-fill me-2"></i>Datos recibidos correctamente.
+                                @if (!string.IsNullOrEmpty(_downloadResponse.ContentType))
+                                {
+                                    <span class="badge bg-info ms-2">@_downloadResponse.ContentType</span>
+                                }
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm mb-2" @onclick="ExportDownloadToFile">
+                                <i class="bi bi-file-earmark-arrow-down me-1"></i>Exportar a fichero
+                            </button>
+                            <button class="btn btn-outline-success btn-sm mb-2 ms-2" @onclick="NavigateToDataExplorer"
+                                    disabled="@(_isNavigatingToExplorer || string.IsNullOrEmpty(_downloadResponse?.Data))">
+                                @if (_isNavigatingToExplorer)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    <span>Cargando explorador…</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-graph-up-arrow me-1"></i>
+                                    <span>Explorar datos</span>
+                                }
+                            </button>
+                        }
+                        else if (_downloadResponse?.Success == false)
+                        {
+                            <div class="alert alert-danger py-2">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i>@_downloadResponse.ErrorMessage
+                            </div>
+                        }
+                        else
+                        {
+                            <span style="color:var(--text-muted,#6E7D78);font-size:.85rem">Se habilitará al completar la transferencia.</span>
+                        }
+                    </div>
+                </div>
+
+            </div>
+
+            @* Pie del modal *@
+            @if (_downloadResponse?.Success == true)
+            {
+                <div style="padding:.75rem 1.5rem 1.25rem;display:flex;justify-content:flex-end">
+                    <button class="btn btn-primary" @onclick="ClearNegotiationSelection">
+                        <i class="bi bi-check-lg me-1"></i>Cerrar
+                    </button>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading   = true;
+    private bool _isAdmin   = false;
+
+    // ── ADMIN: lista de usuarios consumidores ──────────────────────────────
+    private List<UserForEDCListDto> _users        = [];
+    private int                     _usersTotal   = 0;
+    private bool                    _isLoadingUsers = false;
+    private string?                 _searchTerm;
+    private int                     _currentPage  = 1;
+
+    // ── Usuario consumidor activo ──────────────────────────────────────────
+    private UserForEDCListDto? _selectedConsumerUser;
+    private int                _activeConsumerUserId   = 0;
+    private string             _activeConsumerName     = string.Empty;
+
+    // ── Vista de consumo ───────────────────────────────────────────────────
+    private List<ProfileEDCConsumerDto> _consumableProfiles     = [];
+    private int                         _selectedConsumedProfileId;
+
+    // ── Estado del catálogo ────────────────────────────────────────────────
+    private bool                       _isLoadingCatalog = false;
+    private RequestEdcCatalogResponse? _catalogResponse  = null;
+    private string?                    _catalogError     = null;
+
+    // ── Catálogos parseados (DCAT/ODRL) ───────────────────────────────────
+    private List<EdcProviderParsedCatalogDto>? _parsedCatalogs   = null;
+    private EdcNegotiationSelection?           _negotiationSelection = null;
+    private EdcDatasetDto?                     _selectedDataset  = null;
+    private EdcProviderParsedCatalogDto?       _selectedProvider = null;
+    private bool                               _showDatasetDetail = false;
+    private bool                               _showNegotiationConfirmation = false;
+
+    // ── Estado del proceso de negociación + transferencia ──────────────────
+    private bool _isNegotiating  = false;
+    private bool _isTransferring = false;
+    private bool _isDownloading  = false;
+
+    private string? _negotiationId;
+    private int     _negotiationStepIndex  = 0;
+    private bool    _negotiationError      = false;
+    private string? _negotiationErrorMessage;
+    private string? _contractAgreementId;
+
+    private string? _transferProcessId;
+    private int     _transferStepIndex = 0;
+    private bool    _transferError     = false;
+    private string? _transferErrorMessage;
+
+    private EdcEndpointDataReferenceResponse? _edrResponse;
+    private EdcDataDownloadResponse?          _downloadResponse;
+    private CancellationTokenSource?          _pollingCts;
+
+    private readonly List<string> _negotiationSteps = new()
+        { "Solicitada", "Oferta recibida", "Aceptada", "Acordada", "Verificada", "Finalizada" };
+
+    private readonly List<string> _transferSteps = new()
+        { "Iniciada", "Solicitada", "En curso", "Completada" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAdmin = CurrentUser.IsInProfile(ProfileConstants.Admin);
+
+        if (_isAdmin)
+        {
+            await LoadUsersPageAsync(1, null);
+        }
+        else
+        {
+            // No-ADMIN: va directo a la vista de consumo con su propio usuario
+            _activeConsumerUserId = CurrentUser.IdUser;
+            _activeConsumerName   = CurrentUser.UserName;
+            _consumableProfiles   = await Mediator.Send(new GetConsumableProfilesQuery(CurrentUser.ProfileId));
+        }
+
+        _loading = false;
+    }
+
+    // ── Carga de usuarios (ADMIN) ──────────────────────────────────────────
+
+    private async Task LoadUsersAsync(LoadDataArgs args)
+    {
+        _currentPage = (int)(args.Skip / args.Top ?? 15) + 1;
+        await LoadUsersPageAsync(_currentPage, _searchTerm);
+    }
+
+    private async Task OnSearchChanged(string? term)
+    {
+        _searchTerm = term;
+        await LoadUsersPageAsync(1, term);
+    }
+
+    private async Task LoadUsersPageAsync(int page, string? term)
+    {
+        _isLoadingUsers = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Mediator.Send(new GetUsersForEDCListQuery(term, page, 15, OnlyWithConnector: true));
+            _users      = result.Items.ToList();
+            _usersTotal = result.TotalCount;
+        }
+        finally
+        {
+            _isLoadingUsers = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectConsumerUser(UserForEDCListDto user)
+    {
+        _selectedConsumerUser      = user;
+        _activeConsumerUserId      = user.Id;
+        _activeConsumerName        = user.CompleteName;
+        _selectedConsumedProfileId = 0;
+        _catalogResponse           = null;
+        _catalogError              = null;
+        _consumableProfiles        = await Mediator.Send(new GetConsumableProfilesForUserQuery(_activeConsumerUserId));
+    }
+
+    private void BackToList()
+    {
+        _selectedConsumerUser      = null;
+        _activeConsumerUserId      = 0;
+        _activeConsumerName        = string.Empty;
+        _consumableProfiles        = [];
+        _selectedConsumedProfileId = 0;
+        _catalogResponse           = null;
+        _catalogError              = null;
+    }
+
+    // ── Consumo del catálogo ───────────────────────────────────────────────
+
+    private async Task OnConsumeCatalogAsync()
+    {
+        _isLoadingCatalog = true;
+        _catalogResponse  = null;
+        _catalogError     = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await Mediator.Send(new RequestEdcCatalogCommand
+            {
+                ConsumerUserId    = _activeConsumerUserId,
+                ConsumedProfileId = _selectedConsumedProfileId
+            });
+
+            _catalogResponse  = response;
+            _parsedCatalogs  = null;
+            _negotiationSelection = null;
+
+            if (_catalogResponse != null && _catalogResponse.SuccessCount > 0)
+            {
+                _parsedCatalogs = await Mediator.Send(
+                    new ParseEdcCatalogsQuery(_catalogResponse));
+            }
+        }
+        catch (FluentValidation.ValidationException ex)
+        {
+            _catalogError = ex.Errors.Any()
+                ? string.Join(" ", ex.Errors.Select(e => e.ErrorMessage))
+                : ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _catalogError = $"Error inesperado: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingCatalog = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string FormatJson(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+
+    private void ShowDatasetDetail(EdcProviderParsedCatalogDto provider, EdcDatasetDto dataset)
+    {
+        _selectedProvider  = provider;
+        _selectedDataset   = dataset;
+        _showDatasetDetail = true;
+        StateHasChanged();
+    }
+
+    private void CloseDatasetDetail()
+    {
+        _showDatasetDetail = false;
+        _selectedDataset   = null;
+        _selectedProvider  = null;
+        StateHasChanged();
+    }
+
+    private async Task SelectOfferAndStartNegotiation(EdcProviderParsedCatalogDto provider, EdcDatasetDto dataset)
+    {
+        _selectedProvider = provider;
+        _selectedDataset  = dataset;
+        OnSelectOfferForNegotiation();
+        await InvokeAsync(StateHasChanged);
+        await StartNegotiation();
+    }
+
+    private void OnSelectOfferForNegotiation()
+    {
+        if (_selectedDataset?.Offer == null || _selectedProvider == null)
+            return;
+
+        _negotiationSelection = new EdcNegotiationSelection
+        {
+            SelectedDatasetId        = _selectedDataset.DatasetId,
+            SelectedOfferId          = _selectedDataset.Offer.OfferId,
+            ProviderParticipantId    = _selectedProvider.ProviderParticipantId,
+            ProviderProtocolEndpoint = _selectedProvider.ProviderProtocolEndpoint,
+            DatasetName              = _selectedDataset.Name,
+            ProviderUserName         = _selectedProvider.ProviderUserName,
+            RawOfferJson             = _selectedDataset.Offer.RawOfferJson,
+            Offer                    = _selectedDataset.Offer
+        };
+
+        // Resetear estado de negociación anterior
+        _negotiationId          = null;
+        _negotiationStepIndex   = 0;
+        _negotiationError       = false;
+        _negotiationErrorMessage = null;
+        _contractAgreementId    = null;
+        _transferProcessId      = null;
+        _transferStepIndex      = 0;
+        _transferError          = false;
+        _transferErrorMessage   = null;
+        _edrResponse            = null;
+        _downloadResponse       = null;
+
+        CloseDatasetDetail();
+        _showNegotiationConfirmation = true;
+        StateHasChanged();
+    }
+
+    private void ClearNegotiationSelection()
+    {
+        _pollingCts?.Cancel();
+        _negotiationSelection        = null;
+        _showNegotiationConfirmation = false;
+        StateHasChanged();
+    }
+
+    // ── Lógica de negociación + transferencia ──────────────────────────────
+
+    private async Task StartNegotiation()
+    {
+        if (_negotiationSelection == null) return;
+
+        _isNegotiating        = true;
+        _negotiationError     = false;
+        _negotiationErrorMessage = null;
+        _negotiationStepIndex = 0;
+        StateHasChanged();
+
+        try
+        {
+            var response = await Mediator.Send(new StartContractNegotiationCommand
+            {
+                ConsumerUserId           = _activeConsumerUserId,
+                DatasetId                = _negotiationSelection.SelectedDatasetId,
+                OfferId                  = _negotiationSelection.SelectedOfferId,
+                ProviderParticipantId    = _negotiationSelection.ProviderParticipantId,
+                ProviderProtocolEndpoint = _negotiationSelection.ProviderProtocolEndpoint,
+                RawOfferJson             = _negotiationSelection.RawOfferJson,
+                Offer                    = _negotiationSelection.Offer
+            });
+
+            if (!response.Success)
+            {
+                _negotiationError        = true;
+                _negotiationErrorMessage = response.ErrorMessage;
+                _isNegotiating           = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            _negotiationId = response.NegotiationId;
+            await InvokeAsync(StateHasChanged);
+
+            await PollNegotiationState();
+        }
+        catch (Exception ex)
+        {
+            _negotiationError        = true;
+            _negotiationErrorMessage = ex.Message;
+            _isNegotiating           = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollNegotiationState()
+    {
+        _pollingCts?.Cancel();
+        _pollingCts = new CancellationTokenSource();
+        var ct = _pollingCts.Token;
+
+        using var timer    = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        var maxAttempts    = 120;
+        var attempt        = 0;
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct) && attempt++ < maxAttempts)
+            {
+                var state = await Mediator.Send(new GetNegotiationStateQuery
+                {
+                    ConsumerUserId = _activeConsumerUserId,
+                    NegotiationId  = _negotiationId!
+                }, ct);
+
+                if (!state.Success)
+                {
+                    _negotiationError        = true;
+                    _negotiationErrorMessage = state.ErrorMessage;
+                    _isNegotiating           = false;
+                    StateHasChanged();
+                    return;
+                }
+
+                _negotiationStepIndex = MapNegotiationStateToStep(state.State);
+                await InvokeAsync(StateHasChanged);
+
+                if (state.State is "FINALIZED")
+                {
+                    _contractAgreementId = state.ContractAgreementId;
+                    _isNegotiating       = false;
+                    await InvokeAsync(StateHasChanged);
+                    await StartTransferProcess();
+                    return;
+                }
+
+                if (state.State is "TERMINATED" or "TERMINATING")
+                {
+                    _negotiationError        = true;
+                    _negotiationErrorMessage = !string.IsNullOrWhiteSpace(state.ErrorDetail)
+                        ? state.ErrorDetail
+                        : !string.IsNullOrWhiteSpace(state.RawJson)
+                            ? $"Negociación terminada ({state.State}). Detalle: {state.RawJson}"
+                            : $"Negociación terminada con estado: {state.State}";
+                    _isNegotiating           = false;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+
+            if (attempt >= maxAttempts)
+            {
+                _negotiationError        = true;
+                _negotiationErrorMessage = "Timeout: la negociación no se completó en el tiempo esperado.";
+                _isNegotiating           = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _negotiationError        = true;
+            _negotiationErrorMessage = ex.Message;
+            _isNegotiating           = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task StartTransferProcess()
+    {
+        if (_contractAgreementId == null || _negotiationSelection == null) return;
+
+        _isTransferring      = true;
+        _transferError       = false;
+        _transferErrorMessage = null;
+        _transferStepIndex   = 0;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var response = await Mediator.Send(new StartTransferProcessCommand
+            {
+                ConsumerUserId           = _activeConsumerUserId,
+                ContractAgreementId      = _contractAgreementId,
+                AssetId                  = _negotiationSelection.SelectedDatasetId,
+                ProviderProtocolEndpoint = _negotiationSelection.ProviderProtocolEndpoint,
+                TransferType             = "HttpData-PULL"
+            });
+
+            if (!response.Success)
+            {
+                _transferError        = true;
+                _transferErrorMessage = response.ErrorMessage;
+                _isTransferring       = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            _transferProcessId = response.TransferProcessId;
+            await InvokeAsync(StateHasChanged);
+
+            await PollTransferState();
+        }
+        catch (Exception ex)
+        {
+            _transferError        = true;
+            _transferErrorMessage = ex.Message;
+            _isTransferring       = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollTransferState()
+    {
+        _pollingCts?.Cancel();
+        _pollingCts = new CancellationTokenSource();
+        var ct = _pollingCts.Token;
+
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        var maxAttempts = 60;
+        var attempt     = 0;
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct) && attempt++ < maxAttempts)
+            {
+                var state = await Mediator.Send(new GetTransferStateQuery
+                {
+                    ConsumerUserId    = _activeConsumerUserId,
+                    TransferProcessId = _transferProcessId!
+                }, ct);
+
+                if (!state.Success)
+                {
+                    _transferError        = true;
+                    _transferErrorMessage = state.ErrorMessage;
+                    _isTransferring       = false;
+                    StateHasChanged();
+                    return;
+                }
+
+                _transferStepIndex = MapTransferStateToStep(state.State);
+                await InvokeAsync(StateHasChanged);
+
+                if (state.State is "STARTED" or "COMPLETED")
+                {
+                    _isTransferring = false;
+                    await InvokeAsync(StateHasChanged);
+                    await ObtainEndpointDataReference();
+                    return;
+                }
+
+                if (state.State is "TERMINATED" or "TERMINATING")
+                {
+                    _transferError        = true;
+                    _transferErrorMessage = !string.IsNullOrWhiteSpace(state.ErrorDetail)
+                        ? state.ErrorDetail
+                        : !string.IsNullOrWhiteSpace(state.RawJson)
+                            ? $"Transferencia terminada ({state.State}). Detalle: {state.RawJson}"
+                            : $"Transferencia terminada con estado: {state.State}";
+                    _isTransferring       = false;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+
+            if (attempt >= maxAttempts)
+            {
+                _transferError        = true;
+                _transferErrorMessage = "Timeout: la transferencia no se completó en el tiempo esperado.";
+                _isTransferring       = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _transferError        = true;
+            _transferErrorMessage = ex.Message;
+            _isTransferring       = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ObtainEndpointDataReference()
+    {
+        try
+        {
+            _edrResponse = await Mediator.Send(new GetEndpointDataReferenceQuery
+            {
+                ConsumerUserId    = _activeConsumerUserId,
+                TransferProcessId = _transferProcessId!
+            });
+
+            if (!_edrResponse.Success)
+            {
+                _transferError        = true;
+                _transferErrorMessage = $"No se pudo obtener referencia de descarga: {_edrResponse.ErrorMessage}";
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _transferError        = true;
+            _transferErrorMessage = $"Error obteniendo referencia de descarga: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadData()
+    {
+        if (_transferProcessId is null) return;
+
+        _isDownloading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Refrescar el EDR justo antes de descargar para evitar token caducado
+            await ObtainEndpointDataReference();
+
+            if (_edrResponse is null || !_edrResponse.Success)
+            {
+                _downloadResponse = new EdcDataDownloadResponse
+                {
+                    Success      = false,
+                    ErrorMessage = _transferErrorMessage ?? "No se pudo obtener referencia de descarga."
+                };
+                return;
+            }
+
+            _downloadResponse = await Mediator.Send(new DownloadTransferDataCommand
+            {
+                DataPlaneEndpoint = _edrResponse.Endpoint!,
+                AuthType          = _edrResponse.AuthType ?? "Bearer",
+                AuthCode          = _edrResponse.AuthCode!
+            });
+        }
+        catch (Exception ex)
+        {
+            _downloadResponse = new EdcDataDownloadResponse { Success = false, ErrorMessage = ex.Message };
+        }
+        finally
+        {
+            _isDownloading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportDownloadToFile()
+    {
+        if (_downloadResponse?.Data == null) return;
+
+        var fileName    = $"ecodatanet-{_negotiationSelection?.DatasetName ?? "data"}.json";
+        var mimeType    = _downloadResponse.ContentType ?? "application/json";
+        await JS.InvokeVoidAsync("saveAsTextFile", fileName, _downloadResponse.Data, mimeType);
+    }
+
+    private bool _isNavigatingToExplorer;
+
+    private async Task NavigateToDataExplorer()
+    {
+        if (string.IsNullOrEmpty(_downloadResponse?.Data)) return;
+
+        _isNavigatingToExplorer = true;
+        StateHasChanged();
+
+        // Pequeño delay para que el spinner se renderice antes de la navegación
+        await Task.Delay(80);
+
+        DataExplorerState.JsonContent          = _downloadResponse.Data;
+        DataExplorerState.ProviderName         = _negotiationSelection?.ProviderUserName;
+        DataExplorerState.DatasetName          = _negotiationSelection?.DatasetName;
+        DataExplorerState.AssetId              = _negotiationSelection?.SelectedDatasetId;
+        DataExplorerState.ProviderParticipantId = _negotiationSelection?.ProviderParticipantId;
+
+        NavigationManager.NavigateTo("/ecodatanet/data-explorer");
+    }
+
+    private void RetryNegotiation()
+    {
+        _negotiationId           = null;
+        _negotiationError        = false;
+        _negotiationErrorMessage = null;
+        _negotiationStepIndex    = 0;
+        _contractAgreementId     = null;
+        _transferProcessId       = null;
+        _transferError           = false;
+        _edrResponse             = null;
+        _downloadResponse        = null;
+        StateHasChanged();
+        _ = StartNegotiation();
+    }
+
+    private void RetryTransfer()
+    {
+        _transferProcessId    = null;
+        _transferError        = false;
+        _transferErrorMessage = null;
+        _transferStepIndex    = 0;
+        _edrResponse          = null;
+        _downloadResponse     = null;
+        StateHasChanged();
+        _ = StartTransferProcess();
+    }
+
+    // CurrentStepIndex > último índice → todos los pasos muestran checkmark (isCompleted = idx < CurrentStepIndex)
+    private static int MapNegotiationStateToStep(string? state) => state switch
+    {
+        "INITIAL" or "REQUESTING" or "REQUESTED" => 0,
+        "OFFERED"                                 => 1,
+        "ACCEPTING" or "ACCEPTED"                 => 2,
+        "AGREEING"  or "AGREED"                   => 3,
+        "VERIFYING" or "VERIFIED"                 => 4,
+        "FINALIZING"                              => 5,
+        "FINALIZED"                               => 6,  // > último índice → todos completados
+        _                                         => 0
+    };
+
+    // En HttpData-PULL el estado final del consumer es STARTED (no pasa a COMPLETED)
+    // CurrentStepIndex > último índice → todos los pasos muestran checkmark
+    private static int MapTransferStateToStep(string? state) => state switch
+    {
+        "INITIAL" or "PROVISIONING" or "PROVISIONED" => 0,
+        "REQUESTING" or "REQUESTED"                  => 1,
+        "STARTING"                                   => 2,
+        "STARTED"                                    => 4,  // > último índice 3 → todos completados
+        "COMPLETING"                                 => 3,
+        "COMPLETED"                                  => 4,  // > último índice 3 → todos completados
+        _                                            => 0
+    };
+
+    public void Dispose()
+    {
+        _pollingCts?.Cancel();
+        _pollingCts?.Dispose();
+    }
+
+    private static string HumanizeOdrl(string term)
+    {
+        if (string.IsNullOrEmpty(term)) return "—";
+
+        var prefixes = new[]
+        {
+            "odrl:", "edc:",
+            "http://www.w3.org/ns/odrl/2/",
+            "https://w3id.org/edc/v0.0.1/ns/"
+        };
+        foreach (var prefix in prefixes)
+        {
+            if (term.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                term = term[prefix.Length..];
+                break;
+            }
+        }
+
+        return char.ToUpper(term[0]) + term[1..];
+    }
+}

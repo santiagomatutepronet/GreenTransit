@@ -3,11 +3,15 @@
 @rendermode InteractiveServer
 
 @using GreenTransit.Application.Common.Interfaces
+@using GreenTransit.Application.Common.Models
+@using GreenTransit.Application.Features.EcoDataNet.Commands
 @using GreenTransit.Domain.Authorization
+@using MediatR
 @using Microsoft.AspNetCore.Authorization
 
 @inject ISandboxDataSeeder Seeder
 @inject ILogger<SandboxManager> Logger
+@inject IMediator Mediator
 
 <PageTitle>Gestión Datos Sandbox</PageTitle>
 
@@ -23,7 +27,7 @@
 <div class="row g-4 mt-2">
 
     @* ── Tarjeta: Insertar datos ─────────────────────────────────────────────── *@
-    <div class="col-md-6">
+    <div class="col-md-4">
         <div class="card h-100 border-success">
             <div class="card-header bg-success text-white">
                 <i class="bi bi-play-circle-fill me-2"></i>Insertar datos demo
@@ -62,8 +66,105 @@
         </div>
     </div>
 
+    @* ── Tarjeta: Publicar a EcoDataNet ─────────────────────────────────────── *@
+    <div class="col-md-4">
+        <div class="card h-100 border-primary">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-cloud-upload-fill me-2"></i>Publicar datos a EcoDataNet Waste
+            </div>
+            <div class="card-body">
+                <p class="card-text">
+                    Publica los 16 endpoints operativos de GreenTransit a la API EcoDataNet Waste
+                    en lotes de hasta 100 elementos con manejo de respuestas parciales (207).
+                </p>
+
+                @if (_publishSummary is not null)
+                {
+                    bool _hasErr = _publishSummary.TotalErrors > 0 ||
+                                   _publishSummary.Results.Any(r => r.ErrorMessage is not null);
+                    bool _noData = _publishSummary.TotalItemsSent == 0;
+                    string _acss = _hasErr ? "alert-danger" : _noData ? "alert-warning" : "alert-success";
+
+                    <div class="alert @_acss py-2 small mb-2">
+                        @if (_noData)
+                        {
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                            <strong>Sin datos.</strong>
+                            <text> Ejecuta primero el Seed y vuelve a publicar.</text>
+                        }
+                        else
+                        {
+                            <strong>@_publishSummary.TotalEndpoints endpoints</strong>
+                            <span class="mx-1 text-muted">|</span>
+                            <strong>@_publishSummary.TotalItemsSent enviados</strong>
+                            <span class="mx-1 text-muted">|</span>
+                            <span class="text-success fw-bold">@_publishSummary.TotalSuccess OK</span>
+                            <span class="mx-1 text-muted">|</span>
+                            <span class="text-danger fw-bold">@_publishSummary.TotalErrors err</span>
+                            <span class="mx-1 text-muted">|</span>
+                            <span>@(_publishSummary.Duration.TotalSeconds.ToString("F1"))s</span>
+                        }
+                    </div>
+
+                    @* Tabla detalle por endpoint *@
+                    <div style="max-height:220px;overflow-y:auto;">
+                        <table class="table table-sm table-bordered table-hover mb-0" style="font-size:0.72rem;">
+                            <thead class="table-dark sticky-top">
+                                <tr>
+                                    <th>Endpoint</th>
+                                    <th class="text-center">Env.</th>
+                                    <th class="text-center">OK</th>
+                                    <th class="text-center">Err</th>
+                                    <th>Detalle</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var r in _publishSummary.Results)
+                                {
+                                    string rowCss;
+                                    if (r.ErrorMessage is not null || r.ErrorCount > 0)
+                                        rowCss = "table-danger";
+                                    else if (r.TotalSent == 0)
+                                        rowCss = "table-secondary";
+                                    else
+                                        rowCss = "table-success";
+
+                                    <tr class="@rowCss">
+                                        <td class="fw-semibold">@r.Endpoint</td>
+                                        <td class="text-center">@r.TotalSent</td>
+                                        <td class="text-center">@r.SuccessCount</td>
+                                        <td class="text-center">@r.ErrorCount</td>
+                                        <td class="text-truncate" style="max-width:120px;"
+                                            title="@(r.ErrorDetail ?? r.ErrorMessage)">
+                                            @(r.ErrorMessage ?? (r.TotalSent == 0 ? "sin datos" : "✓"))
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                <button class="btn btn-primary w-100"
+                        @onclick="PublishToEcoDataNetAsync"
+                        disabled="@_busy">
+                    @if (_busy && _action == "publish")
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        <span>Publicando a EcoDataNet…&nbsp;@_publishProgress</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-send-fill me-2"></i>
+                        <span>Publicar a EcoDataNet</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+
     @* ── Tarjeta: Limpiar datos ──────────────────────────────────────────────── *@
-    <div class="col-md-6">
+    <div class="col-md-4">
         <div class="card h-100 border-danger">
             <div class="card-header bg-danger text-white">
                 <i class="bi bi-trash3-fill me-2"></i>Limpiar datos demo
@@ -158,10 +259,12 @@
 }
 
 @code {
-    private bool   _busy         = false;
-    private bool   _confirmClean = false;
-    private bool   _cleanAll     = false;
-    private string _action       = string.Empty;
+    private bool          _busy           = false;
+    private bool          _confirmClean   = false;
+    private bool          _cleanAll       = false;
+    private string        _action         = string.Empty;
+    private string        _publishProgress = string.Empty;
+    private PublishSummary? _publishSummary;
 
     private sealed record LogMessage(string Text, string Level);
     private readonly List<LogMessage> _messages = [];
@@ -229,6 +332,55 @@
             _busy     = false;
             _action   = string.Empty;
             _cleanAll = false;
+        }
+    }
+
+    private async Task PublishToEcoDataNetAsync()
+    {
+        _busy            = true;
+        _action          = "publish";
+        _publishProgress = string.Empty;
+        _publishSummary  = null;
+        _messages.Clear();
+        StateHasChanged();
+
+        try
+        {
+            Log("Iniciando publicación a EcoDataNet Waste…", "info");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            _publishSummary = await Mediator.Send(new PublishToEcoDataNetCommand(
+                OnProgress: (endpoint, current, total) =>
+                {
+                    _publishProgress = $"({current}/{total}) {endpoint}";
+                    Log($"Publicando endpoint {current}/{total}: {endpoint}", "info");
+                    InvokeAsync(StateHasChanged);
+                }));
+
+            sw.Stop();
+            Log($"✅ Publicación completada en {sw.Elapsed.TotalSeconds:F1}s — " +
+                $"{_publishSummary.TotalSuccess} ok / {_publishSummary.TotalErrors} errores", "success");
+
+            foreach (var r in _publishSummary.Results)
+            {
+                if (r.ErrorMessage is not null || r.ErrorCount > 0)
+                    Log($"  ❌ {r.Endpoint}: {r.TotalSent} enviados, {r.ErrorCount} errores — {r.ErrorMessage} {r.ErrorDetail}", "danger");
+                else if (r.TotalSent == 0)
+                    Log($"  ⚪ {r.Endpoint}: sin datos (0 registros)", "info");
+                else
+                    Log($"  ✅ {r.Endpoint}: {r.TotalSent} enviados, {r.SuccessCount} correctos", "success");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error en SandboxManager.PublishToEcoDataNetAsync");
+            Log($"❌ Error inesperado: {ex.Message}", "danger");
+        }
+        finally
+        {
+            _busy            = false;
+            _action          = string.Empty;
+            _publishProgress = string.Empty;
         }
     }
 

@@ -40,11 +40,17 @@
         <button class="btn btn-success btn-sm" @onclick="ExportXlsxAsync" disabled="@(_loading || _exporting)">
             <i class="bi bi-file-earmark-excel me-1"></i>Exportar XLSX
         </button>
+        <button class="btn btn-danger btn-sm" @onclick="ExportPdfAsync" disabled="@(_loading || _exportingPdf)">
+            <i class="bi bi-file-earmark-pdf me-1"></i>Exportar PDF
+        </button>
         <button class="btn btn-outline-neutral btn-sm" @onclick="RefreshAsync" disabled="@_loading">
             <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
         </button>
     </div>
 </div>
+
+@* ── Contenedor captura PDF ───────────────────────────────────────────────── *@
+<div id="dispatch-data-capture">
 
 @* ── Filtros ──────────────────────────────────────────────────────────────── *@
 <div class="filter-bar mb-4">
@@ -243,10 +249,13 @@ else if (_data is not null)
     </div>
 }
 
+</div>@* fin dispatch-data-capture *@
+
 @code {
     private MobilityDispatchDataDto? _data;
     private bool   _loading              = true;
     private bool   _exporting            = false;
+    private bool   _exportingPdf         = false;
     private int    _filterYear           = DateTime.Now.Year;
     private int?   _filterMonth          = DateTime.Now.Month;
     private Guid?  _filterScrapId;
@@ -373,6 +382,29 @@ else if (_data is not null)
         finally
         {
             _exporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        _exportingPdf = true;
+        StateHasChanged();
+        try
+        {
+            var periodo = _filterMonth.HasValue
+                ? new DateTime(_filterYear, _filterMonth.Value, 1).ToString("yyyy-MM", _es)
+                : _filterYear.ToString();
+            var fileName = $"DataExplorer_Movilidad_{periodo}";
+            await JS.InvokeVoidAsync("exportPageToPdf", "dispatch-data-capture", fileName);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exportando PDF del Data Explorer de movilidad");
+        }
+        finally
+        {
+            _exportingPdf = false;
             StateHasChanged();
         }
     }

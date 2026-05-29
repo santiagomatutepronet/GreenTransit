@@ -1,0 +1,18 @@
+.section-header {
+    padding: 0.75rem 1rem;
+    background: var(--surface-alt, #F0F2F1);
+    border-left: 4px solid var(--gt-dark-petroleum, #0A404B);
+    border-radius: 0 8px 8px 0;
+}
+
+.section-metadata {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    margin-top: 0.5rem;
+}
+
+.metadata-item {
+    font-size: 0.875rem;
+    color: var(--text-secondary, #4F5E5A);
+}

@@ -1157,6 +1157,62 @@ namespace GreenTransit.Infrastructure.Migrations
                     b.ToTable("EntryPlantResidues", (string)null);
                 });
 
+            modelBuilder.Entity("GreenTransit.Domain.Entities.ExplorerLayoutConfig", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AssetId")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<string>("DatasetName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("LayoutConfigJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProviderParticipantId")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("SchemaHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId")
+                        .HasDatabaseName("IX_ExplorerLayoutConfigs_OwnerId");
+
+                    b.HasIndex("OwnerId", "UserId", "AssetId", "ProviderParticipantId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_ExplorerLayoutConfigs_Tenant_User_Asset");
+
+                    b.ToTable("ExplorerLayoutConfigs", (string)null);
+                });
+
             modelBuilder.Entity("GreenTransit.Domain.Entities.Incident", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1827,6 +1883,32 @@ namespace GreenTransit.Infrastructure.Migrations
                     b.ToTable("ProductSpecs", (string)null);
                 });
 
+            modelBuilder.Entity("GreenTransit.Domain.Entities.ProfileEDCConsumer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("ID");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ConsumedProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProfileId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConsumedProfileId");
+
+                    b.HasIndex("ProfileId", "ConsumedProfileId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_ProfileEDCConsumer_ProfileId_ConsumedProfileId");
+
+                    b.ToTable("ProfileEDCConsumer", (string)null);
+                });
+
             modelBuilder.Entity("GreenTransit.Domain.Entities.Province", b =>
                 {
                     b.Property<int>("Id")
@@ -1882,7 +1964,7 @@ namespace GreenTransit.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("RegulatoryTargets");
+                    b.ToTable("RegulatoryTargets", (string)null);
                 });
 
             modelBuilder.Entity("GreenTransit.Domain.Entities.Residue", b =>
@@ -2689,6 +2771,40 @@ namespace GreenTransit.Infrastructure.Migrations
                     b.ToTable("TreatmentPlantResidues", (string)null);
                 });
 
+            modelBuilder.Entity("GreenTransit.Domain.Entities.UserEDCConnector", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("ID");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApiKey")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EDCConnectorId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("EDCServerName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_UserEDCConnector_UserId");
+
+                    b.ToTable("UserEDCConnector", (string)null);
+                });
+
             modelBuilder.Entity("GreenTransit.Domain.Entities.UserProfile", b =>
                 {
                     b.Property<int>("Id")
@@ -3306,6 +3422,25 @@ namespace GreenTransit.Infrastructure.Migrations
                     b.Navigation("Residue");
                 });
 
+            modelBuilder.Entity("GreenTransit.Domain.Entities.ProfileEDCConsumer", b =>
+                {
+                    b.HasOne("GreenTransit.Domain.Entities.UserProfile", "ConsumedProfile")
+                        .WithMany("EDCConsumedByPermissions")
+                        .HasForeignKey("ConsumedProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GreenTransit.Domain.Entities.UserProfile", "Profile")
+                        .WithMany("EDCConsumerPermissions")
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ConsumedProfile");
+
+                    b.Navigation("Profile");
+                });
+
             modelBuilder.Entity("GreenTransit.Domain.Entities.Province", b =>
                 {
                     b.HasOne("GreenTransit.Domain.Entities.TerritoryState", "State")
@@ -3514,6 +3649,17 @@ namespace GreenTransit.Infrastructure.Migrations
                     b.Navigation("TreatmentPlant");
                 });
 
+            modelBuilder.Entity("GreenTransit.Domain.Entities.UserEDCConnector", b =>
+                {
+                    b.HasOne("GreenTransit.Domain.Entities.AppUser", "User")
+                        .WithOne("EDCConnector")
+                        .HasForeignKey("GreenTransit.Domain.Entities.UserEDCConnector", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("GreenTransit.Domain.Entities.UserSharePointCredential", b =>
                 {
                     b.HasOne("GreenTransit.Domain.Entities.AppUser", "User")
@@ -3624,6 +3770,8 @@ namespace GreenTransit.Infrastructure.Migrations
 
             modelBuilder.Entity("GreenTransit.Domain.Entities.AppUser", b =>
                 {
+                    b.Navigation("EDCConnector");
+
                     b.Navigation("UserSharePointCredentials");
                 });
 
@@ -3780,6 +3928,10 @@ namespace GreenTransit.Infrastructure.Migrations
 
             modelBuilder.Entity("GreenTransit.Domain.Entities.UserProfile", b =>
                 {
+                    b.Navigation("EDCConsumedByPermissions");
+
+                    b.Navigation("EDCConsumerPermissions");
+
                     b.Navigation("Users");
                 });
 

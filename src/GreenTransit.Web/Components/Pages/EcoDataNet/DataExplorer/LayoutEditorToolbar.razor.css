@@ -1,0 +1,8 @@
+.layout-editor-toolbar {
+    background: var(--rz-base-200);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+}

@@ -225,8 +225,26 @@ public static class PolicyConstants
     /// <summary>Acceso a las pantallas del modulo EcoDataNet Dataspace (configuracion, publicar y consumir datos por perfil).
     /// Cualquier usuario autenticado puede acceder; el control fino se gestiona desde /security/page-permissions.</summary>
     public const string CanAccessEcoDataNet = "CanAccessEcoDataNet";
+
+    /// <summary>Acceso a la pantalla de configuración del conector EDC. Todos los perfiles autenticados.</summary>
+    public const string CanAccessEDCConnectorConfig = "CanAccessEDCConnectorConfig";
+
+    /// <summary>Acceso a la pantalla de consumo de datos EDC. Todos los perfiles autenticados.</summary>
+    public const string CanAccessEDCConsumeData = "CanAccessEDCConsumeData";
+
+    /// <summary>Acceso al Data Explorer de EDC (visualizador dinámico de datos descargados). Todos los perfiles autenticados.</summary>
+    public const string CanAccessEDCDataExplorer = "CanAccessEDCDataExplorer";
+
     // ─── Administración del sistema ──────────────────────────────────
 
     /// <summary>Operaciones exclusivas del administrador del sistema (ej. seed de datos).</summary>
     public const string AdminOnly = "AdminOnly";
+
+    // ─── Reporting regulador y certificador ──────────────────────────────────
+
+    /// <summary>Dashboard de cumplimiento normativo para REGULATOR: REGULATOR, ADMIN.</summary>
+    public const string CanViewRegulatoryDashboard = "CanViewRegulatoryDashboard";
+
+    /// <summary>Dashboard de certificación/auditoría para CERTIFIER: CERTIFIER, ADMIN.</summary>
+    public const string CanViewCertificationDashboard = "CanViewCertificationDashboard";
 }

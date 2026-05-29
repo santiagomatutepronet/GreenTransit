@@ -315,6 +315,13 @@ else if (_data is not null)
         {
             _jsReady   = true;
             _dotNetRef = DotNetObjectReference.Create(this);
+            // Si los datos ya están disponibles (carga inicial rápida), renderizar ahora
+            if (_data is not null)
+            {
+                _needsChartRender = false;
+                await RenderChartsAsync();
+                return;
+            }
         }
         if (_jsReady && _needsChartRender)
         {
@@ -365,7 +372,10 @@ else if (_data is not null)
             StateHasChanged();
         }
         if (_jsReady)
+        {
             _needsChartRender = true;
+            StateHasChanged();
+        }
     }
 
     private async Task RenderChartsAsync()
