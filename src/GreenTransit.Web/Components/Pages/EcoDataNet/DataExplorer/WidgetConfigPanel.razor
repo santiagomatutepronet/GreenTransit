@@ -411,10 +411,9 @@
 
     private List<FieldOption> GetMapNumericFieldOptions()
     {
-        // Campos numéricos = MapAvailableAllFields excluyendo los string puros
-        // Usamos AvailableValueFields si existen, sino todos los MapAvailableAllFields
-        var numericFields = Widget.AvailableValueFields ?? Widget.MapAvailableAllFields ?? new();
-        return numericFields
+        // Include numeric fields and all other fields so that lat/lon stored as strings are selectable
+        var fields = Widget.MapAvailableAllFields ?? Widget.AvailableValueFields ?? new();
+        return fields
             .Select(f => new FieldOption(Widget.FieldDisplayNames?.GetValueOrDefault(f, f) ?? f, f))
             .ToList();
     }

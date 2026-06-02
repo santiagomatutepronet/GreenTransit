@@ -841,18 +841,27 @@ else if (_result?.Success == true)
         var arr = _result.Schema.Arrays.FirstOrDefault(a => a.Name == cw.SourceArrayName);
         if (arr == null || arr.RawData.Count == 0) return null;
 
+        var allFields    = arr.ItemProperties.Select(p => p.Name).ToList();
+        var stringFields = arr.ItemProperties
+            .Where(p => p.PropertyType is JsonPropertyType.String or JsonPropertyType.DateTime)
+            .Select(p => p.Name)
+            .ToList();
+
         return new DynamicWidgetDescriptor
         {
-            WidgetId          = cw.WidgetId,
-            Type              = WidgetType.Map,
-            Title             = cw.Title,
-            ColumnSpan        = cw.ColumnSpan,
-            SortOrder         = cw.SortOrder ?? 9999,
-            SourceArrayName   = cw.SourceArrayName,
-            MapLatitudeField  = cw.MapLatitudeField,
-            MapLongitudeField = cw.MapLongitudeField,
-            MapTitleField     = cw.MapTitleField,
-            MapData           = arr.RawData
+            WidgetId                 = cw.WidgetId,
+            Type                     = WidgetType.Map,
+            Title                    = cw.Title,
+            ColumnSpan               = cw.ColumnSpan,
+            SortOrder                = cw.SortOrder ?? 9999,
+            SourceArrayName          = cw.SourceArrayName,
+            MapLatitudeField         = cw.MapLatitudeField,
+            MapLongitudeField        = cw.MapLongitudeField,
+            MapTitleField            = cw.MapTitleField,
+            MapData                  = arr.RawData,
+            MapAvailableAllFields    = allFields,
+            MapAvailableStringFields = stringFields,
+            FieldDisplayNames        = arr.ItemProperties.ToDictionary(p => p.Name, p => p.DisplayName)
         };
     }
 }
