@@ -243,110 +243,105 @@ else if (_result?.Success == true)
 
     @* ── Grid de widgets ────────────────────────────────────────────── *@
     <div class="explorer-grid">
-        @foreach (var widget in _currentWidgets
-            .Where(w => !w.IsHidden || (_isEditMode && _showHiddenWidgets))
-            .OrderBy(w => w.SortOrder))
-        {
-            <div style="grid-column: span @widget.ColumnSpan"
-                 class="widget-wrapper @(widget.Type == WidgetType.KpiCard ? "kpi-widget" : "") @(_isEditMode ? "editable" : "") @(widget.IsHidden ? "hidden-widget" : "")"
-                 draggable="@(_isEditMode ? "true" : "false")"
-                 @ondragstart="() => OnDragStart(widget)"
-                 @ondragover:preventDefault
-                 @ondragenter="() => OnDragEnter(widget)"
-                 @ondrop="() => OnDrop(widget)">
+        @{
+            // Unified sorted list: standard + custom widgets together
+            var unifiedItems = new List<(string Id, int SortOrder, bool IsCustom)>();
 
-                @* Contenido del widget *@
-                @switch (widget.Type)
-                {
-                    case WidgetType.KpiCard:
-                        <DynamicKpiCard Widget="widget" />
-                        break;
+            foreach (var w in _currentWidgets.Where(w => !w.IsHidden || (_isEditMode && _showHiddenWidgets)))
+                unifiedItems.Add((w.WidgetId, w.SortOrder, false));
 
-                    case WidgetType.DataTable:
-                        <DynamicDataTable Widget="widget"
-                                          OnColumnWidthChanged="OnTableColumnResized" />
-                        break;
+            foreach (var cw in _customWidgets.Where(w => !w.IsHidden || (_isEditMode && _showHiddenWidgets)))
+                unifiedItems.Add((cw.WidgetId, cw.SortOrder ?? 9999, true));
 
-                    case WidgetType.Chart:
-                        <DynamicChart Widget="widget" />
-                        break;
-
-                    case WidgetType.SectionHeader:
-                        <DynamicSectionHeader Widget="widget" />
-                        break;
-
-                    case WidgetType.KeyValueList:
-                        <DynamicKeyValueList Widget="widget" />
-                        break;
-
-                    case WidgetType.InfoText:
-                        <DynamicInfoText Widget="widget" />
-                        break;
-                }
-
-                @* ── Controles de edición — posición absoluta, no empujan el contenido *@
-                @if (_isEditMode)
-                {
-                    @* Handle de arrastre *@
-                    <div class="drag-handle" title="Arrastrar para reordenar">
-                        <RadzenIcon Icon="drag_indicator" Style="color:var(--gt-dark-petroleum,#0A404B);font-size:1rem" />
-                    </div>
-
-                    @* Panel de configuración (trigger + popover) *@
-                    <WidgetConfigPanel Widget="widget"
-                                       Schema="_result!.Schema"
-                                       OnWidgetChanged="OnWidgetEdited"
-                                       OnWidgetHidden="HideWidget" />
-
-                    @* Botón restaurar (solo si está oculto) *@
-                    @if (widget.IsHidden)
-                    {
-                        <div class="widget-restore-btn">
-                            <RadzenButton Text="Mostrar" Icon="visibility" Size="ButtonSize.ExtraSmall"
-                                          ButtonStyle="ButtonStyle.Success"
-                                          Click="@(() => ShowWidget(widget.WidgetId))" />
-                        </div>
-                    }
-                }
-            </div>
+            unifiedItems.Sort((a, b) => a.SortOrder.CompareTo(b.SortOrder));
         }
 
-            @* ── Widgets personalizados (custom charts, KPIs y mapas) ─────────── *@
-            @foreach (var cw in _customWidgets.Where(w => !w.IsHidden || (_isEditMode && _showHiddenWidgets)))
+        @foreach (var item in unifiedItems)
+        {
+            if (!item.IsCustom)
             {
+                var widget = _currentWidgets.First(w => w.WidgetId == item.Id);
+                <div style="grid-column: span @widget.ColumnSpan"
+                     class="widget-wrapper @(widget.Type == WidgetType.KpiCard ? "kpi-widget" : "") @(_isEditMode ? "editable" : "") @(widget.IsHidden ? "hidden-widget" : "")"
+                     draggable="@(_isEditMode ? "true" : "false")"
+                     @ondragstart="() => OnDragStart(widget.WidgetId)"
+                     @ondragover:preventDefault
+                     @ondrop="() => OnDrop(widget.WidgetId)">
+
+                    @switch (widget.Type)
+                    {
+                        case WidgetType.KpiCard:
+                            <DynamicKpiCard Widget="widget" />
+                            break;
+                        case WidgetType.DataTable:
+                            <DynamicDataTable Widget="widget"
+                                              OnColumnWidthChanged="OnTableColumnResized" />
+                            break;
+                        case WidgetType.Chart:
+                            <DynamicChart Widget="widget" />
+                            break;
+                        case WidgetType.SectionHeader:
+                            <DynamicSectionHeader Widget="widget" />
+                            break;
+                        case WidgetType.KeyValueList:
+                            <DynamicKeyValueList Widget="widget" />
+                            break;
+                        case WidgetType.InfoText:
+                            <DynamicInfoText Widget="widget" />
+                            break;
+                    }
+
+                    @if (_isEditMode)
+                    {
+                        <div class="drag-handle" title="Arrastrar para reordenar">
+                            <RadzenIcon Icon="drag_indicator" Style="color:var(--gt-dark-petroleum,#0A404B);font-size:1rem" />
+                        </div>
+                        <WidgetConfigPanel Widget="widget"
+                                           Schema="_result!.Schema"
+                                           OnWidgetChanged="OnWidgetEdited"
+                                           OnWidgetHidden="HideWidget" />
+                        @if (widget.IsHidden)
+                        {
+                            <div class="widget-restore-btn">
+                                <RadzenButton Text="Mostrar" Icon="visibility" Size="ButtonSize.ExtraSmall"
+                                              ButtonStyle="ButtonStyle.Success"
+                                              Click="@(() => ShowWidget(widget.WidgetId))" />
+                            </div>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                var cw = _customWidgets.First(w => w.WidgetId == item.Id);
                 <div style="grid-column: span @cw.ColumnSpan"
-                     class="widget-wrapper @(cw.WidgetType == WidgetType.KpiCard ? "kpi-widget" : "") @(_isEditMode ? "editable" : "") @(cw.IsHidden ? "hidden-widget" : "")">
+                     class="widget-wrapper @(cw.WidgetType == WidgetType.KpiCard ? "kpi-widget" : "") @(_isEditMode ? "editable" : "") @(cw.IsHidden ? "hidden-widget" : "")"
+                     draggable="@(_isEditMode ? "true" : "false")"
+                     @ondragstart="() => OnDragStart(cw.WidgetId)"
+                     @ondragover:preventDefault
+                     @ondrop="() => OnDrop(cw.WidgetId)">
 
                     @if (cw.WidgetType == WidgetType.Chart && cw.SourceArrayName != null)
                     {
                         var descriptor = BuildCustomChartDescriptor(cw);
-                        if (descriptor != null)
-                        {
-                            <DynamicChart Widget="descriptor" />
-                        }
+                        if (descriptor != null) { <DynamicChart Widget="descriptor" /> }
                     }
                     else if (cw.WidgetType == WidgetType.KpiCard && cw.KpiDefinition != null)
                     {
                         var descriptor = BuildCustomKpiDescriptor(cw);
-                        if (descriptor != null)
-                        {
-                            <DynamicKpiCard Widget="descriptor" />
-                        }
+                        if (descriptor != null) { <DynamicKpiCard Widget="descriptor" /> }
                     }
                     else if (cw.WidgetType == WidgetType.Map && cw.SourceArrayName != null
                              && !string.IsNullOrEmpty(cw.MapLatitudeField) && !string.IsNullOrEmpty(cw.MapLongitudeField))
                     {
                         var descriptor = BuildCustomMapDescriptor(cw);
-                        if (descriptor != null)
-                        {
-                            <DynamicMap Widget="descriptor" />
-                        }
+                        if (descriptor != null) { <DynamicMap Widget="descriptor" /> }
                     }
 
                     @if (_isEditMode)
                     {
-                        <div class="drag-handle" title="Widget personalizado">
-                            <RadzenIcon Icon="person" Style="color:var(--gt-dark-petroleum,#0A404B);font-size:1rem" />
+                        <div class="drag-handle" title="Arrastrar para reordenar">
+                            <RadzenIcon Icon="drag_indicator" Style="color:var(--gt-dark-petroleum,#0A404B);font-size:1rem" />
                         </div>
                         <div style="position:absolute;top:6px;right:6px;z-index:20">
                             <RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall"
@@ -357,7 +352,8 @@ else if (_result?.Success == true)
                     }
                 </div>
             }
-        </div>
+        }
+    </div>
     </div>@* fin edc-explorer-capture *@
 }
 
@@ -383,7 +379,7 @@ else if (_result?.Success == true)
     private List<CustomWidgetDefinition> _customWidgets = new();
 
     // ── Estado drag & drop ───────────────────────────────────────────────────
-    private DynamicWidgetDescriptor? _draggedWidget;
+    private string? _draggedId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -469,34 +465,59 @@ else if (_result?.Success == true)
 
     // ── Drag & Drop ──────────────────────────────────────────────────────────
 
-    private void OnDragStart(DynamicWidgetDescriptor widget)
-        => _draggedWidget = widget;
+    private void OnDragStart(string widgetId) => _draggedId = widgetId;
 
-    private void OnDragEnter(DynamicWidgetDescriptor widget) { }
-
-    private void OnDrop(DynamicWidgetDescriptor targetWidget)
+    private void OnDrop(string targetId)
     {
-        if (_draggedWidget is null || _draggedWidget == targetWidget) return;
+        if (_draggedId is null || _draggedId == targetId) return;
 
-        var visible = _currentWidgets
-            .Where(w => !w.IsHidden || _showHiddenWidgets)
-            .OrderBy(w => w.SortOrder)
-            .ToList();
+        // Build a unified list of (widgetId, sortOrder, isCustom)
+        var unified = GetUnifiedWidgets();
 
-        var draggedIndex = visible.IndexOf(_draggedWidget);
-        var targetIndex  = visible.IndexOf(targetWidget);
+        var draggedIndex = unified.FindIndex(x => x.Id == _draggedId);
+        var targetIndex  = unified.FindIndex(x => x.Id == targetId);
 
         if (draggedIndex < 0 || targetIndex < 0) return;
 
-        visible.RemoveAt(draggedIndex);
-        visible.Insert(targetIndex, _draggedWidget);
+        var dragged = unified[draggedIndex];
+        unified.RemoveAt(draggedIndex);
+        unified.Insert(targetIndex, dragged);
 
-        for (int i = 0; i < visible.Count; i++)
-            visible[i].SortOrder = i * 10;
+        for (int i = 0; i < unified.Count; i++)
+        {
+            var item = unified[i];
+            if (item.IsCustom)
+            {
+                var cw = _customWidgets.FirstOrDefault(w => w.WidgetId == item.Id);
+                if (cw != null) cw.SortOrder = i * 10;
+            }
+            else
+            {
+                var w = _currentWidgets.FirstOrDefault(w => w.WidgetId == item.Id);
+                if (w != null) w.SortOrder = i * 10;
+            }
+        }
 
-        _draggedWidget    = null;
+        _draggedId        = null;
         _hasUnsavedChanges = true;
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Returns a combined, sorted list of all visible widget ids for drag-and-drop ordering.
+    /// </summary>
+    private List<(string Id, int SortOrder, bool IsCustom)> GetUnifiedWidgets()
+    {
+        var result = new List<(string Id, int SortOrder, bool IsCustom)>();
+
+        foreach (var w in _currentWidgets.Where(w => !w.IsHidden || _showHiddenWidgets))
+            result.Add((w.WidgetId, w.SortOrder, false));
+
+        foreach (var cw in _customWidgets.Where(w => !w.IsHidden || _showHiddenWidgets))
+            result.Add((cw.WidgetId, cw.SortOrder ?? 9999, true));
+
+        result.Sort((a, b) => a.SortOrder.CompareTo(b.SortOrder));
+        return result;
     }
 
     // ── Gestión de widgets ───────────────────────────────────────────────────
