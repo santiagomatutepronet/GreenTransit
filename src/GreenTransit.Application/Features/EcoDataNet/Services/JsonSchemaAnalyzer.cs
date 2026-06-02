@@ -304,7 +304,9 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
         string? latCandidate = null;
         string? lonCandidate = null;
 
-        foreach (var prop in desc.ItemProperties.Where(p => p.PropertyType == JsonPropertyType.Number))
+        foreach (var prop in desc.ItemProperties.Where(p =>
+            p.PropertyType == JsonPropertyType.Number ||
+            p.PropertyType == JsonPropertyType.String))
         {
             var lower = prop.Name.ToLowerInvariant();
 
@@ -354,11 +356,19 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
         var samples = new List<double>();
         foreach (var item in items.Take(20))
         {
-            if (item.TryGetProperty(propName, out var pv)
-                && pv.ValueKind == JsonValueKind.Number
-                && pv.TryGetDouble(out var d))
+            if (item.TryGetProperty(propName, out var pv))
             {
-                samples.Add(d);
+                double d;
+                if (pv.ValueKind == JsonValueKind.Number && pv.TryGetDouble(out d))
+                {
+                    samples.Add(d);
+                }
+                else if (pv.ValueKind == JsonValueKind.String
+                    && double.TryParse(pv.GetString(), System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out d))
+                {
+                    samples.Add(d);
+                }
             }
         }
 

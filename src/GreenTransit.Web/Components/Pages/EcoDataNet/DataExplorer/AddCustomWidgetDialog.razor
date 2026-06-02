@@ -83,23 +83,23 @@
     @* ── Opciones de Mapa ────────────────────────────────────────────────────── *@
     @if (_widgetType == WidgetType.Map)
     {
-        @if (_numericFields.Count >= 2)
+        @if (_geoFields.Count >= 2)
         {
             <RadzenFormField Text="Campo Latitud" Variant="Variant.Text" Style="width:100%">
                 <ChildContent>
                     <RadzenDropDown @bind-Value="_mapLatitudeField"
-                                    Data="@_numericFields"
+                                    Data="@_geoFields"
                                     Style="width:100%"
-                                    Placeholder="Campo numérico de latitud" />
+                                    Placeholder="Campo de latitud" />
                 </ChildContent>
             </RadzenFormField>
 
             <RadzenFormField Text="Campo Longitud" Variant="Variant.Text" Style="width:100%">
                 <ChildContent>
                     <RadzenDropDown @bind-Value="_mapLongitudeField"
-                                    Data="@_numericFields"
+                                    Data="@_geoFields"
                                     Style="width:100%"
-                                    Placeholder="Campo numérico de longitud" />
+                                    Placeholder="Campo de longitud" />
                 </ChildContent>
             </RadzenFormField>
 
@@ -115,7 +115,7 @@
         else
         {
             <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" AllowClose="false">
-                El array seleccionado necesita al menos dos campos numéricos (latitud y longitud) para crear un mapa.
+                El array seleccionado necesita al menos dos campos numéricos o con valores de coordenadas (latitud y longitud) para crear un mapa.
             </RadzenAlert>
         }
     }
@@ -220,6 +220,7 @@
 
     private List<string> _allFields = new();
     private List<string> _numericFields = new();
+    private List<string> _geoFields = new();
 
     // --- Campos para Mapa ---
     private string? _mapLatitudeField;
@@ -281,6 +282,7 @@
     {
         _allFields = new();
         _numericFields = new();
+        _geoFields = new();
         _chartCategoryField = null;
         _chartValueField = null;
         _kpiPrimaryField = null;
@@ -294,6 +296,8 @@
             var (all, numeric) = GetFieldsForArray(_sourceArrayName);
             _allFields = all;
             _numericFields = numeric;
+            // Geo candidates: numeric fields first, then string fields (lat/lon can be stored as strings)
+            _geoFields = numeric.Concat(all.Where(f => !numeric.Contains(f))).ToList();
         }
     }
 
