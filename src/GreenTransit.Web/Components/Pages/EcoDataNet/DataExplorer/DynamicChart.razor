@@ -20,6 +20,9 @@
                                        CategoryProperty="@nameof(ChartDataItem.Category)"
                                        ValueProperty="@nameof(ChartDataItem.Value)"
                                        Title="@Widget.Title">
+                        <ChildContent>
+                            <RadzenSeriesDataLabels Visible="true" />
+                        </ChildContent>
                         <TooltipTemplate Context="item">
                             <div>
                                 <strong>@item.Category</strong><br/>
@@ -34,6 +37,9 @@
                                      CategoryProperty="@nameof(ChartDataItem.Category)"
                                      ValueProperty="@nameof(ChartDataItem.Value)"
                                      Title="@Widget.Title">
+                        <ChildContent>
+                            <RadzenSeriesDataLabels Visible="true" />
+                        </ChildContent>
                         <TooltipTemplate Context="item">
                             <div>
                                 <strong>@item.Category</strong><br/>
@@ -48,6 +54,9 @@
                                      CategoryProperty="@nameof(ChartDataItem.Category)"
                                      ValueProperty="@nameof(ChartDataItem.Value)"
                                      Title="@_primarySeriesTitle">
+                        <ChildContent>
+                            <RadzenSeriesDataLabels Visible="true" />
+                        </ChildContent>
                         <TooltipTemplate Context="item">
                             <div>
                                 <strong>@item.Category</strong><br/>
@@ -70,6 +79,9 @@
                                           Title="@seriesTitle"
                                           Stroke="@GetSeriesColor(idx)"
                                           Fill="@GetSeriesColor(idx)">
+                            <ChildContent>
+                                <RadzenSeriesDataLabels Visible="true" />
+                            </ChildContent>
                             <TooltipTemplate Context="item">
                                 <div>
                                     <strong>@item.Category</strong><br/>
@@ -92,6 +104,9 @@
                                           ValueProperty="@nameof(ChartDataItem.Value)"
                                           Title="@seriesTitle"
                                           Stroke="@GetSeriesColor(idx)">
+                            <ChildContent>
+                                <RadzenSeriesDataLabels Visible="true" />
+                            </ChildContent>
                             <TooltipTemplate Context="item">
                                 <div>
                                     <strong>@item.Category</strong><br/>
@@ -115,6 +130,9 @@
                                             ValueProperty="@nameof(ChartDataItem.Value)"
                                             Title="@seriesTitle"
                                             Fill="@GetSeriesColor(idx)">
+                            <ChildContent>
+                                <RadzenSeriesDataLabels Visible="true" />
+                            </ChildContent>
                             <TooltipTemplate Context="item">
                                 <div>
                                     <strong>@item.Category</strong><br/>
