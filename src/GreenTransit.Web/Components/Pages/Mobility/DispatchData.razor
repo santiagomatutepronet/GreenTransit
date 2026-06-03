@@ -272,6 +272,7 @@ else if (_data is not null)
 
     private static readonly CultureInfo _es = new("es-ES");
     private bool _jsReady;
+    private bool _needsChartRender;
     private DotNetObjectReference<DispatchData>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
@@ -288,8 +289,11 @@ else if (_data is not null)
         {
             _jsReady   = true;
             _dotNetRef = DotNetObjectReference.Create(this);
-            if (_data is not null)
-                await RenderChartsAsync();
+        }
+        if (_jsReady && _needsChartRender)
+        {
+            _needsChartRender = false;
+            await RenderChartsAsync();
         }
     }
 
@@ -334,8 +338,8 @@ else if (_data is not null)
             _loading = false;
             StateHasChanged();
         }
-        if (_jsReady)
-            await RenderChartsAsync();
+        _needsChartRender = true;
+        StateHasChanged();
     }
 
     private async Task RenderChartsAsync()

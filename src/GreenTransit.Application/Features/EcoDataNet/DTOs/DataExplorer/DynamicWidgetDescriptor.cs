@@ -139,6 +139,15 @@ public class DynamicWidgetDescriptor
 
     /// <summary>Pares clave-valor para widgets de tipo KeyValueList.</summary>
     public Dictionary<string, string>? KeyValuePairs { get; set; }
+
+    // --- Opciones de visualización de gráfico ---
+
+    /// <summary>
+    /// Si true, se muestran las etiquetas de datos sobre cada punto/barra/segmento del gráfico.
+    /// El tooltip se muestra siempre al pasar el ratón, independientemente de este valor.
+    /// Por defecto true (comportamiento original).
+    /// </summary>
+    public bool ShowDataLabels { get; set; } = true;
 }
 
 public enum WidgetType

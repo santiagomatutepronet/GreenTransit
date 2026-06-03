@@ -120,6 +120,15 @@
                     </RadzenFormField>
                 }
             }
+
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem"
+                         Style="margin-top:0.75rem">
+                <RadzenCheckBox TValue="bool"
+                                @bind-Value="Widget.ShowDataLabels"
+                                Name="@($"labels_{Widget.WidgetId}")"
+                                Change="@(_ => NotifyChange())" />
+                <RadzenLabel Text="Mostrar etiquetas" Component="@($"labels_{Widget.WidgetId}")" />
+            </RadzenStack>
         }
 
         @if (Widget.Type == WidgetType.DataTable && Widget.TableColumns != null && Widget.TableColumns.Any())

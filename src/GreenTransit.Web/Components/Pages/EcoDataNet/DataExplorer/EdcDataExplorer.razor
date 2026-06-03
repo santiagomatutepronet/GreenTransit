@@ -324,7 +324,17 @@ else if (_result?.Success == true)
                     @if (cw.WidgetType == WidgetType.Chart && cw.SourceArrayName != null)
                     {
                         var descriptor = BuildCustomChartDescriptor(cw);
-                        if (descriptor != null) { <DynamicChart Widget="descriptor" /> }
+                        if (descriptor != null)
+                        {
+                            <DynamicChart Widget="descriptor" />
+                            @if (_isEditMode)
+                            {
+                                <WidgetConfigPanel Widget="descriptor"
+                                                   Schema="@_result?.Schema"
+                                                   OnWidgetChanged="@(d => OnCustomChartEdited(cw, d))"
+                                                   OnWidgetHidden="@(_ => { cw.IsHidden = true; _hasUnsavedChanges = true; StateHasChanged(); })" />
+                            }
+                        }
                     }
                     else if (cw.WidgetType == WidgetType.KpiCard && cw.KpiDefinition != null)
                     {
@@ -343,12 +353,25 @@ else if (_result?.Success == true)
                         <div class="drag-handle" title="Arrastrar para reordenar">
                             <RadzenIcon Icon="drag_indicator" Style="color:var(--gt-dark-petroleum,#0A404B);font-size:1rem" />
                         </div>
-                        <div style="position:absolute;top:6px;right:6px;z-index:20">
-                            <RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall"
-                                          ButtonStyle="ButtonStyle.Danger"
-                                          title="Eliminar widget personalizado"
-                                          Click="@(() => RemoveCustomWidget(cw.WidgetId))" />
-                        </div>
+                        @* El botón eliminar solo se muestra si NO es Chart (los Chart ya tienen el panel de configuración que incluye su propio botón ocultar) *@
+                        @if (cw.WidgetType != WidgetType.Chart)
+                        {
+                            <div style="position:absolute;top:6px;right:6px;z-index:20">
+                                <RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              title="Eliminar widget personalizado"
+                                              Click="@(() => RemoveCustomWidget(cw.WidgetId))" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="position:absolute;top:6px;right:40px;z-index:20">
+                                <RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              title="Eliminar widget personalizado"
+                                              Click="@(() => RemoveCustomWidget(cw.WidgetId))" />
+                            </div>
+                        }
                     }
                 </div>
             }
@@ -580,6 +603,9 @@ else if (_result?.Success == true)
                         ov.CustomChartBinding.CustomValueFields = widget.ChartValueFields?.ToList();
                     hasChanges = true;
                 }
+
+                if (widget.ShowDataLabels != auto.ShowDataLabels)
+                    { ov.CustomShowDataLabels = widget.ShowDataLabels; hasChanges = true; }
             }
 
             if (widget.Type == WidgetType.DataTable && widget.TableColumns != null && auto.TableColumns != null)
@@ -801,6 +827,18 @@ else if (_result?.Success == true)
         _hasUnsavedChanges = true;
     }
 
+    private void OnCustomChartEdited(CustomWidgetDefinition cw, DynamicWidgetDescriptor updated)
+    {
+        cw.Title              = updated.Title;
+        cw.ColumnSpan         = updated.ColumnSpan;
+        cw.ChartType          = updated.ChartType;
+        cw.ChartCategoryField = updated.ChartCategoryField;
+        cw.ChartValueFields   = updated.ChartValueFields?.ToList();
+        cw.ShowDataLabels     = updated.ShowDataLabels;
+        _hasUnsavedChanges = true;
+        StateHasChanged();
+    }
+
     private DynamicWidgetDescriptor? BuildCustomChartDescriptor(CustomWidgetDefinition cw)
     {
         if (_result?.Schema == null || string.IsNullOrEmpty(cw.SourceArrayName)) return null;
@@ -831,7 +869,18 @@ else if (_result?.Success == true)
             ChartType          = cw.ChartType ?? ChartSubType.BarVertical,
             ChartCategoryField = cw.ChartCategoryField,
             ChartValueFields   = cw.ChartValueFields ?? new(),
-            ChartData          = chartData
+            ChartData          = chartData,
+            ShowDataLabels     = cw.ShowDataLabels,
+            AvailableCategoryFields = arr.ItemProperties
+                .Where(p => p.PropertyType is JsonPropertyType.String or JsonPropertyType.DateTime)
+                .Select(p => p.Name)
+                .ToList(),
+            AvailableValueFields = arr.ItemProperties
+                .Where(p => p.PropertyType == JsonPropertyType.Number)
+                .Select(p => p.Name)
+                .ToList(),
+            FieldDisplayNames = arr.ItemProperties
+                .ToDictionary(p => p.Name, p => p.DisplayName)
         };
     }
 
