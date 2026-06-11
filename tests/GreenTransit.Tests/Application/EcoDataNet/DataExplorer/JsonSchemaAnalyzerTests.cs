@@ -1,6 +1,7 @@
 using FluentAssertions;
 using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer;
 using GreenTransit.Application.Features.EcoDataNet.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GreenTransit.Tests.Application.EcoDataNet.DataExplorer;
 
@@ -10,7 +11,7 @@ namespace GreenTransit.Tests.Application.EcoDataNet.DataExplorer;
 /// </summary>
 public sealed class JsonSchemaAnalyzerTests
 {
-    private readonly JsonSchemaAnalyzer _sut = new();
+    private readonly JsonSchemaAnalyzer _sut = new(NullLogger<JsonSchemaAnalyzer>.Instance);
 
     // ── JSON inválido / vacío ──────────────────────────────────────────────
 
