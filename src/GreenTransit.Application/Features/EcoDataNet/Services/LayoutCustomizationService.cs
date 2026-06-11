@@ -150,11 +150,15 @@ public class LayoutCustomizationService : ILayoutCustomizationService
                         .Where(f => widget.MapAvailableAllFields?.Contains(f) == true)
                         .ToList();
 
-                    if (validTooltip.Count > 0)
-                        widget.MapTooltipFields = validTooltip;
-                }
-            }
-        }
+                            if (validTooltip.Count > 0)
+                                    widget.MapTooltipFields = validTooltip;
+                            }
+                        }
+
+                        // Aplicar override de etiquetas de datos del gráfico
+                        if (ov.CustomShowDataLabels.HasValue && widget.Type == WidgetType.Chart)
+                            widget.ShowDataLabels = ov.CustomShowDataLabels.Value;
+                    }
 
         return new LayoutMergeResult
         {

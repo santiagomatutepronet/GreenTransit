@@ -57,4 +57,10 @@ public class WidgetLayoutOverride
     /// Se serializa dentro de LayoutConfigJson junto con el resto de overrides.
     /// </summary>
     public MapFieldBinding? CustomMapBinding { get; set; }
+
+    /// <summary>
+    /// Indica si se deben mostrar las etiquetas de datos en el gráfico.
+    /// Null = usar el valor por defecto (true). Solo aplica a widgets de tipo Chart.
+    /// </summary>
+    public bool? CustomShowDataLabels { get; set; }
 }

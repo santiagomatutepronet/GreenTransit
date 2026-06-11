@@ -47,6 +47,9 @@ public class CustomWidgetDefinition
     /// <summary>Campos para el eje Y / series.</summary>
     public List<string>? ChartValueFields { get; set; }
 
+    /// <summary>Si true, se muestran etiquetas de datos sobre el gráfico. Por defecto true.</summary>
+    public bool ShowDataLabels { get; set; } = true;
+
     // --- Campos para KPI calculado ---
 
     /// <summary>Definición del KPI calculado (null si es Chart/Map).</summary>

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer;
+using Microsoft.Extensions.Logging;
 
 namespace GreenTransit.Application.Features.EcoDataNet.Services;
 
@@ -10,6 +11,13 @@ namespace GreenTransit.Application.Features.EcoDataNet.Services;
 /// </summary>
 public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
 {
+    private readonly ILogger<JsonSchemaAnalyzer> _logger;
+
+    public JsonSchemaAnalyzer(ILogger<JsonSchemaAnalyzer> logger)
+    {
+        _logger = logger;
+    }
+
     private static readonly Regex IsoDateRegex = new(@"^\d{4}-\d{2}(-\d{2})?", RegexOptions.Compiled);
     /// <summary>Máx. elementos del array usados para inferir el esquema y datos del gráfico.</summary>
     private const int MaxArrayItems = 500;
@@ -68,8 +76,13 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
 
             return schema;
         }
-        catch
+        catch (Exception ex)
         {
+            var head = jsonContent.Length > 200 ? jsonContent[..200] : jsonContent;
+            var tail = jsonContent.Length > 200 ? jsonContent[^Math.Min(100, jsonContent.Length)..] : string.Empty;
+            _logger.LogWarning(ex,
+                "JsonSchemaAnalyzer: fallo ({ExType}) — inicio: {Head} | fin: {Tail}",
+                ex.GetType().Name, head, tail);
             return null;
         }
     }
@@ -190,10 +203,11 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
         // Array de objetos — analizar esquema del primer elemento
         var firstProps = items[0].EnumerateObject().Select(p => p.Name).ToHashSet();
 
-        // Verificar homogeneidad con los siguientes 10 elementos
+        // Verificar homogeneidad con los siguientes 10 elementos (ignorar items no-objeto, p.ej. null)
         var sampleCount = Math.Min(items.Count, 10);
         var matchCount = items.Take(sampleCount).Count(item =>
         {
+            if (item.ValueKind != JsonValueKind.Object) return false;
             var itemProps = item.EnumerateObject().Select(p => p.Name).ToHashSet();
             return itemProps.Count == firstProps.Count && firstProps.All(p => itemProps.Contains(p));
         });
@@ -217,6 +231,7 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
             JsonElement firstNonNull = prop.Value;
             foreach (var sampleItem in items.Take(sampleCount))
             {
+                if (sampleItem.ValueKind != JsonValueKind.Object) continue;
                 if (sampleItem.TryGetProperty(prop.Name, out var candidate)
                     && candidate.ValueKind != JsonValueKind.Null
                     && candidate.ValueKind != JsonValueKind.Undefined)
@@ -242,11 +257,16 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
             {
                 itemPropDesc.PropertyType = JsonPropertyType.Boolean;
             }
+            else if (firstNonNull.ValueKind == JsonValueKind.Null)
+            {
+                // Campo siempre nulo en todos los samples: no lo clasificamos como String
+                itemPropDesc.PropertyType = JsonPropertyType.Null;
+            }
 
             // Hasta 5 valores de ejemplo
             itemPropDesc.SampleValues = items
                 .Take(5)
-                .Where(i => i.TryGetProperty(prop.Name, out _))
+                .Where(i => i.ValueKind == JsonValueKind.Object && i.TryGetProperty(prop.Name, out _))
                 .Select(i => { i.TryGetProperty(prop.Name, out var pv); return pv.ToString(); })
                 .ToList();
 
@@ -268,7 +288,7 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
         foreach (var strProp in desc.ItemProperties.Where(p => p.PropertyType == JsonPropertyType.String))
         {
             var uniqueVals = items
-                .Where(i => i.TryGetProperty(strProp.Name, out _))
+                .Where(i => i.ValueKind == JsonValueKind.Object && i.TryGetProperty(strProp.Name, out _))
                 .Select(i => { i.TryGetProperty(strProp.Name, out var pv); return pv.GetString(); })
                 .Distinct()
                 .Count();
@@ -280,16 +300,18 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
             .FirstOrDefault()?.Name;
 
         // RawData: limitado a MaxTableRows para no materializar miles de diccionarios
-        desc.RawData = items.Take(MaxTableRows).Select(item =>
-        {
-            var dict = new Dictionary<string, object?>();
-            foreach (var prop in item.EnumerateObject())
+        desc.RawData = items.Take(MaxTableRows)
+            .Where(item => item.ValueKind == JsonValueKind.Object)
+            .Select(item =>
             {
-                if (!ExcludedProperties.Contains(prop.Name))
-                    dict[prop.Name] = GetRawValue(prop.Value);
-            }
-            return dict;
-        }).ToList();
+                var dict = new Dictionary<string, object?>();
+                foreach (var prop in item.EnumerateObject())
+                {
+                    if (!ExcludedProperties.Contains(prop.Name))
+                        dict[prop.Name] = GetRawValue(prop.Value);
+                }
+                return dict;
+            }).ToList();
 
         // Detección de coordenadas geográficas (lat/lon)
         DetectGeoCoordinates(desc, items);
@@ -356,6 +378,7 @@ public class JsonSchemaAnalyzer : IJsonSchemaAnalyzer
         var samples = new List<double>();
         foreach (var item in items.Take(20))
         {
+            if (item.ValueKind != JsonValueKind.Object) continue;
             if (item.TryGetProperty(propName, out var pv))
             {
                 double d;
