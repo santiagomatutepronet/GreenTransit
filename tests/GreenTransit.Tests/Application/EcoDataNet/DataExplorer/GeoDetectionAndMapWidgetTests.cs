@@ -1,6 +1,7 @@
 using FluentAssertions;
 using GreenTransit.Application.Features.EcoDataNet.DTOs.DataExplorer;
 using GreenTransit.Application.Features.EcoDataNet.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Globalization;
 
 namespace GreenTransit.Tests.Application.EcoDataNet.DataExplorer;
@@ -11,7 +12,7 @@ namespace GreenTransit.Tests.Application.EcoDataNet.DataExplorer;
 /// </summary>
 public sealed class GeoDetectionAndMapWidgetTests
 {
-    private readonly JsonSchemaAnalyzer _analyzer = new();
+    private readonly JsonSchemaAnalyzer _analyzer = new(NullLogger<JsonSchemaAnalyzer>.Instance);
     private readonly DashboardLayoutBuilder _builder = new();
 
     // ── Helpers ──────────────────────────────────────────────────────────────
